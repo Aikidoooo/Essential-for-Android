@@ -3,8 +3,6 @@ package jp.essential.app.update
 import android.app.Application
 import android.content.Intent
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -16,9 +14,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import jp.essential.app.BuildConfig
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 internal class AppUpdateModel(application: Application) : AndroidViewModel(application) {
     private val preferences = application.getSharedPreferences("app_update", 0)
@@ -30,6 +26,7 @@ internal class AppUpdateModel(application: Application) : AndroidViewModel(appli
     var release by mutableStateOf<AppRelease?>(null); private set
     var showDialog by mutableStateOf(false)
     var downloaded by mutableStateOf(false); private set
+    var downloadFailed by mutableStateOf(false); private set
     private var started = false
 
     fun onStart() {
@@ -49,6 +46,7 @@ internal class AppUpdateModel(application: Application) : AndroidViewModel(appli
             try {
                 release = repository.latest()
                 downloaded = false
+                downloadFailed = false
                 message = if (release == null) "最新版を使用しています" else "新しいバージョンがあります"
                 showDialog = release != null
             } catch (error: Exception) {
@@ -61,6 +59,7 @@ internal class AppUpdateModel(application: Application) : AndroidViewModel(appli
         val target = release ?: return
         if (busy) return
         busy = true
+        downloadFailed = false
         progress = 0f
         message = "APKをダウンロードしています"
         viewModelScope.launch {
@@ -70,6 +69,7 @@ internal class AppUpdateModel(application: Application) : AndroidViewModel(appli
                 message = "検証済みです。インストールへ進めます"
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
+                downloadFailed = true
                 message = error.message ?: "ダウンロードに失敗しました。再試行してください"
             } finally { busy = false; progress = null }
         }
@@ -82,29 +82,19 @@ internal fun AppUpdateHost(model: AppUpdateModel = viewModel()) {
     LaunchedEffect(model) { model.onStart() }
     val release = model.release
     if (model.showDialog && release != null) {
-        AlertDialog(
-            onDismissRequest = { if (!model.busy) model.showDialog = false },
-            title = { Text("Essentialのアップデート") },
-            text = {
-                Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("現在 ${BuildConfig.VERSION_NAME} → 最新 ${release.version}")
-                    Text("Release Notes", style = MaterialTheme.typography.titleMedium)
-                    Text(release.notes.ifBlank { "リリースノートはありません" })
-                    Text(if (release.digest != null) "SHA-256・署名・アプリIDを検証します" else "SHA-256未提供。署名・アプリIDを検証します")
-                    model.progress?.let { value ->
-                        LinearProgressIndicator(progress = { value }, modifier = Modifier.fillMaxWidth())
-                        Text("${(value * 100).toInt()}%")
-                    }
-                    Text(model.message)
-                }
+        UpdateAvailableDialog(
+            release = release,
+            currentVersion = BuildConfig.VERSION_NAME,
+            busy = model.busy,
+            progress = model.progress,
+            downloaded = model.downloaded,
+            failed = model.downloadFailed,
+            message = model.message,
+            onDismiss = { model.showDialog = false },
+            onUpdate = {
+                if (model.downloaded) context.startActivity(Intent(context, UpdateInstallActivity::class.java))
+                else model.download()
             },
-            confirmButton = {
-                TextButton(enabled = !model.busy, onClick = {
-                    if (model.downloaded) context.startActivity(Intent(context, UpdateInstallActivity::class.java))
-                    else model.download()
-                }) { Text(if (model.downloaded) "インストール" else "アップデート") }
-            },
-            dismissButton = { TextButton(enabled = !model.busy, onClick = { model.showDialog = false }) { Text("後で") } },
         )
     }
 }
