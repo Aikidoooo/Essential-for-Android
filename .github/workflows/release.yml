@@ -88,5 +88,9 @@ jobs:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          gh release create "$RELEASE_TAG" release-assets/* --draft --verify-tag --generate-notes --title "Essential $RELEASE_TAG"
+          notes=(--generate-notes)
+          if [ -f ".github/release-notes/$RELEASE_TAG.md" ]; then
+            notes=(--notes-file ".github/release-notes/$RELEASE_TAG.md")
+          fi
+          gh release create "$RELEASE_TAG" release-assets/* --draft --verify-tag "${notes[@]}" --title "Essential $RELEASE_TAG"
           gh release edit "$RELEASE_TAG" --draft=false --latest

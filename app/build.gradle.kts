@@ -15,8 +15,8 @@ android {
         applicationId = "jp.essential.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 13
-        versionName = "0.5.2"
+        versionCode = 14
+        versionName = "0.5.3"
         buildConfigField("String", "UPDATE_REPOSITORY", "\"$updateRepository\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -89,6 +89,8 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    implementation("org.jsoup:jsoup:1.18.3")
+    implementation("androidx.exifinterface:exifinterface:1.4.1")
 
     implementation("androidx.camera:camera-core:1.5.3")
     implementation("androidx.camera:camera-camera2:1.5.3")

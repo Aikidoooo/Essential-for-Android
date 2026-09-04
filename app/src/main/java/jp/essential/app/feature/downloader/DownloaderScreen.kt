@@ -18,6 +18,21 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.material3.TextButton
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.runtime.produceState
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.CancellationException
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -90,6 +105,10 @@ fun DownloaderScreen(
     var selectedCandidateIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var state by remember { mutableStateOf<DownloadState>(DownloadState.Idle) }
     var pendingDownload by remember { mutableStateOf(false) }
+    var imageLoading by remember { mutableStateOf(false) }
+    var imageError by remember { mutableStateOf<String?>(null) }
+    var analyzedUrl by remember { mutableStateOf("") }
+    var imageReload by remember { mutableStateOf(0) }
 
     val isBusy = state is DownloadState.Preparing || state is DownloadState.Running
     val storagePermissionLauncher = rememberLauncherForActivityResult(
@@ -122,6 +141,28 @@ fun DownloaderScreen(
 
     LaunchedEffect(initialUrl) {
         if (!initialUrl.isNullOrBlank()) url = initialUrl
+    }
+
+    LaunchedEffect(url, mediaType, imageReload) {
+        candidates = emptyList()
+        selectedCandidateIds = emptySet()
+        analyzedUrl = ""
+        imageError = null
+        imageLoading = false
+        if (mediaType == DownloadMediaType.Image && url.isNotBlank()) {
+            imageLoading = true
+            try {
+                delay(400)
+                val requestedUrl = url
+                val result = engine.analyzeImages(requestedUrl)
+                // URL変更や画面離脱後に古い解析結果を反映しない。
+                coroutineContext.ensureActive()
+                result.fold(onSuccess = {
+                    candidates = it
+                    analyzedUrl = requestedUrl
+                }, onFailure = { imageError = it.message ?: "画像を読み込めませんでした" })
+            } finally { imageLoading = false }
+        }
     }
 
     LazyColumn(
@@ -243,34 +284,35 @@ fun DownloaderScreen(
                         onQuality = { imageQuality = it },
                         format = imageFormat,
                         onFormat = { imageFormat = it },
-                        candidates = candidates,
-                        selectedIds = selectedCandidateIds,
-                        enabled = !isBusy,
-                        onToggleCandidate = { candidate ->
-                            selectedCandidateIds = if (candidate.id in selectedCandidateIds) {
-                                selectedCandidateIds - candidate.id
-                            } else {
-                                selectedCandidateIds + candidate.id
-                            }
-                        },
-                        onAnalyze = {
-                            scope.launch {
-                                state = DownloadState.Preparing("画像候補を解析しています")
-                                engine.analyzeImages(url).fold(
-                                    onSuccess = { result ->
-                                        candidates = result
-                                        selectedCandidateIds = result.take(1).mapTo(mutableSetOf(), ImageCandidate::id)
-                                        state = DownloadState.Idle
-                                    },
-                                    onFailure = { error ->
-                                        candidates = emptyList()
-                                        selectedCandidateIds = emptySet()
-                                        state = DownloadState.Failed(error.message ?: "画像候補を取得できませんでした")
-                                    },
-                                )
-                            }
-                        },
+                        enabled = !isBusy && !imageLoading,
+                        onAnalyze = { imageReload++ },
                     )
+                }
+            }
+        }
+        if (mediaType == DownloadMediaType.Image) {
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (imageLoading) {
+                        LinearProgressIndicator(Modifier.fillMaxWidth())
+                        Text("URL内の画像を読み込んでいます")
+                    }
+                    imageError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    if (candidates.isNotEmpty()) Text("${candidates.size}枚の画像・${selectedCandidateIds.size}枚選択中")
+                    Text("横にスワイプして確認・タップで選択・長押しで拡大プレビュー", style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+            item {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                items(candidates, key = { it.url }) { candidate ->
+                ImageCandidateCard(candidate, candidate.id in selectedCandidateIds, !isBusy && analyzedUrl == url,
+                    modifier = Modifier.width(168.dp),
+                    loadPreview = engine::preview,
+                    onToggle = {
+                        selectedCandidateIds = if (candidate.id in selectedCandidateIds) selectedCandidateIds - candidate.id
+                        else selectedCandidateIds + candidate.id
+                    })
+                }
                 }
             }
         }
@@ -303,7 +345,7 @@ fun DownloaderScreen(
                     }
                 },
                 enabled = !isBusy && url.isNotBlank() &&
-                    (mediaType != DownloadMediaType.Image || selectedCandidateIds.isNotEmpty()),
+                    (mediaType != DownloadMediaType.Image || (!imageLoading && analyzedUrl == url && selectedCandidateIds.isNotEmpty())),
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(58.dp),
@@ -318,7 +360,7 @@ fun DownloaderScreen(
                     Spacer(Modifier.width(10.dp))
                     Text("処理中")
                 } else {
-                    Text("Download/Essentialへ保存")
+                    Text(if (mediaType == DownloadMediaType.Image) "選択した${selectedCandidateIds.size}枚を保存" else "Download/Essentialへ保存")
                 }
             }
         }
@@ -377,10 +419,7 @@ private fun ImageOptions(
     onQuality: (ImageQuality) -> Unit,
     format: ImageFormat,
     onFormat: (ImageFormat) -> Unit,
-    candidates: List<ImageCandidate>,
-    selectedIds: Set<String>,
     enabled: Boolean,
-    onToggleCandidate: (ImageCandidate) -> Unit,
     onAnalyze: () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -392,49 +431,63 @@ private fun ImageOptions(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(18.dp),
         ) {
-            Text(if (candidates.isEmpty()) "URLから画像候補を取得" else "画像候補を再取得")
+            Text("画像一覧を再読み込み")
         }
-        AnimatedVisibility(candidates.isNotEmpty()) {
-            Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                Text(
-                    "保存する画像・複数選択可",
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                candidates.forEach { candidate ->
-                    MotionSurface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
-                        contentColor = MaterialTheme.colorScheme.onSurface,
-                        enabled = enabled,
-                        onClick = { onToggleCandidate(candidate) },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Checkbox(
-                                checked = candidate.id in selectedIds,
-                                onCheckedChange = { onToggleCandidate(candidate) },
-                                enabled = enabled,
-                            )
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    candidate.label,
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                                Text(
-                                    candidate.url,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            }
-                        }
+    }
+}
+
+@Composable
+internal fun ImageCandidateCard(
+    candidate: ImageCandidate,
+    selected: Boolean,
+    enabled: Boolean,
+    loadPreview: suspend (ImageCandidate) -> android.graphics.Bitmap?,
+    onToggle: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var showPreview by remember(candidate.url) { mutableStateOf(false) }
+    var previewFailed by remember(candidate.url) { mutableStateOf(false) }
+    val preview by produceState<android.graphics.Bitmap?>(null, candidate.url) {
+        try {
+            value = loadPreview(candidate)
+            previewFailed = value == null
+        } catch (error: Exception) {
+            if (error is CancellationException) throw error
+            previewFailed = true
+        }
+    }
+    MotionSurface(
+        shape = RoundedCornerShape(22.dp),
+        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
+        contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+        enabled = enabled, onClick = onToggle, onLongClick = { showPreview = true }, modifier = modifier,
+    ) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box(Modifier.fillMaxWidth().height(180.dp).clip(RoundedCornerShape(14.dp)), contentAlignment = Alignment.Center) {
+                val bitmap = preview
+                if (bitmap != null) Image(bitmap.asImageBitmap(), candidate.label, Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+                else if (previewFailed) Text("プレビューを読み込めませんでした", style = MaterialTheme.typography.bodySmall)
+                else CircularProgressIndicator(Modifier.size(28.dp))
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(checked = selected, onCheckedChange = { onToggle() }, enabled = enabled)
+                Text(candidate.label, Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+        }
+    }
+    if (showPreview) {
+        Dialog(onDismissRequest = { showPreview = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+            Surface(Modifier.fillMaxWidth().padding(16.dp), shape = RoundedCornerShape(28.dp),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.97f)) {
+                Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(candidate.label, style = MaterialTheme.typography.titleMedium)
+                    Box(Modifier.fillMaxWidth().weight(1f, fill = false).heightIn(min = 180.dp), contentAlignment = Alignment.Center) {
+                        val bitmap = preview
+                        if (bitmap != null) Image(bitmap.asImageBitmap(), "拡大プレビュー", Modifier.fillMaxWidth(), contentScale = ContentScale.Fit)
+                        else if (previewFailed) Text("プレビューを読み込めませんでした")
+                        else CircularProgressIndicator()
                     }
+                    TextButton(onClick = { showPreview = false }) { Text("閉じる") }
                 }
             }
         }
@@ -581,6 +634,7 @@ private fun FeatureTopBar(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun MotionSurface(
     shape: Shape,
@@ -589,6 +643,7 @@ private fun MotionSurface(
     enabled: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    onLongClick: (() -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -605,11 +660,13 @@ private fun MotionSurface(
         modifier = modifier
             .graphicsLayer(scaleX = scale, scaleY = scale)
             .clip(shape)
-            .clickable(
+            .combinedClickable(
                 enabled = enabled,
                 interactionSource = interactionSource,
                 indication = ripple(bounded = true),
                 onClick = onClick,
+                onLongClick = onLongClick,
+                onLongClickLabel = if (onLongClick != null) "拡大プレビュー" else null,
             ),
         content = content,
     )

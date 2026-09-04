@@ -237,7 +237,20 @@ private fun EssentialApp(
                     .fillMaxSize()
                     .padding(innerPadding),
             ) {
-                when (activeFeature) {
+                AnimatedContent(
+                    targetState = activeFeature,
+                    modifier = Modifier.fillMaxSize(),
+                    transitionSpec = {
+                        val direction = if (targetState != null) 1 else -1
+                        // タブ切替と同じ段階的なフェード・移動・拡大で機能画面へつなぐ。
+                        (fadeIn(tween(240, delayMillis = 70)) +
+                            slideInHorizontally(tween(340, delayMillis = 50, easing = FastOutSlowInEasing)) { it * direction / 18 } +
+                            scaleIn(tween(340, delayMillis = 50, easing = FastOutSlowInEasing), initialScale = 0.985f)) togetherWith
+                            (fadeOut(tween(110)) + slideOutHorizontally(tween(160)) { -it * direction / 28 })
+                    },
+                    label = "機能を開く段階的モーション",
+                ) { feature ->
+                when (feature) {
                     FeatureRoute.Downloader -> DownloaderScreen(
                         initialUrl = sharedUrl,
                         onBack = { activeFeature = null },
@@ -282,6 +295,7 @@ private fun EssentialApp(
                         }
                         }
                     }
+                }
                 }
             }
         }

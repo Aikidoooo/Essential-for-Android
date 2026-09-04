@@ -54,6 +54,7 @@ data class ImageCandidate(
     val width: Int?,
     val height: Int?,
     val label: String,
+    val alternateUrls: List<String> = emptyList(),
 )
 
 data class DownloaderSelection(
