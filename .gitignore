@@ -1,0 +1,20 @@
+*.iml
+.gradle/
+.gradle-user-home/
+.idea/
+local.properties
+**/build/
+core-rust/target/
+.DS_Store
+captures/
+.externalNativeBuild/
+.cxx/
+*.jks
+*.keystore
+keystore.properties
+# 検証成果物と利用者の添付画像を公開リポジトリへ含めない。
+/.codex-remote-attachments/
+/essential-*.png
+/essential-*.mp4
+/essential-*.xml
+*.apk

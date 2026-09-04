@@ -1,0 +1,92 @@
+name: Android Release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - name: バージョンとタグの一致を確認
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          version=$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts)
+          test "$RELEASE_TAG" = "v$version"
+      - name: AndroidとRustを準備
+        run: |
+          sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.0.12077973'
+          rustup toolchain install 1.85.1 --profile minimal
+          rustup default 1.85.1
+          rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
+      - name: Rust JNIを再ビルド
+        shell: bash
+        run: |
+          set -euo pipefail
+          toolchain="$ANDROID_HOME/ndk/27.0.12077973/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$toolchain/aarch64-linux-android26-clang"
+          export CARGO_TARGET_ARMV7_LINUX_ANDROIDEABI_LINKER="$toolchain/armv7a-linux-androideabi26-clang"
+          export CARGO_TARGET_I686_LINUX_ANDROID_LINKER="$toolchain/i686-linux-android26-clang"
+          export CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER="$toolchain/x86_64-linux-android26-clang"
+          export RUSTFLAGS='-C link-arg=-Wl,-z,max-page-size=16384'
+          for pair in aarch64-linux-android:arm64-v8a armv7-linux-androideabi:armeabi-v7a i686-linux-android:x86 x86_64-linux-android:x86_64; do
+            target="${pair%:*}"
+            abi="${pair#*:}"
+            cargo build --locked --release --manifest-path core-rust/Cargo.toml --target "$target"
+            mkdir -p "app/src/main/jniLibs/$abi"
+            cp "core-rust/target/$target/release/libessential_core.so" "app/src/main/jniLibs/$abi/"
+          done
+      - name: 検査と署名付きAPK生成
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          RELEASE_STORE_FILE: ${{ runner.temp }}/essential-release.jks
+          UPDATE_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          test -n "$KEYSTORE_BASE64" && test -n "$RELEASE_STORE_PASSWORD" && test -n "$RELEASE_KEY_ALIAS" && test -n "$RELEASE_KEY_PASSWORD"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RELEASE_STORE_FILE"
+          trap 'rm -f "$RELEASE_STORE_FILE"' EXIT
+          bash gradlew testDebugUnitTest lintDebug assembleRelease "-PUPDATE_REPOSITORY=$UPDATE_REPO" --no-daemon
+      - name: 配布ファイルとハッシュを作成
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          for abi in arm64-v8a armeabi-v7a x86 x86_64 universal; do
+            apk="app/build/outputs/apk/release/app-$abi-release.apk"
+            "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify "$apk"
+            "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -P 16 4 "$apk"
+            cp "$apk" "release-assets/Essential-${RELEASE_TAG#v}-$abi.apk"
+          done
+          cd release-assets
+          sha256sum *.apk > SHA256SUMS.txt
+      - name: 全ファイルを添付してからReleaseを公開
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          gh release create "$RELEASE_TAG" release-assets/* --draft --verify-tag --generate-notes --title "Essential $RELEASE_TAG"
+          gh release edit "$RELEASE_TAG" --draft=false --latest
