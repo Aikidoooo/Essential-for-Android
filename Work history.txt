@@ -639,3 +639,9 @@
 - ソースコード、DOSUKOI同梱HTML／アイコン、Android設定、端末方針、機能境界、作業履歴、Design QAをstageし、コミット`f23c8d6b0d767e39f4d17593cbf115c292fc743d`（`Essentialの機能とDOSUKOI UIを更新`）を作成した。
 - `git push origin main`を実行し、GitHubリポジトリ`https://github.com/Aikidoooo/Essential-for-Android`の`main`へpushした。`git ls-remote`でリモートの`refs/heads/main`が同じコミットIDを指すことを確認した。
 - GitHub ActionsのRelease公開はタグpushで起動するため、今回はタグ作成・Release公開は行っていない。Releaseを公開する場合は、`app/build.gradle.kts`のversionNameと一致する`vX.Y.Z`タグを別途pushする。
+
+【2026-09-07 Essential 0.5.4アップデート公開準備】
+- 既存最新版`v0.5.3`の次のパッチ版として、`app/build.gradle.kts`をversionCode=15、versionName=0.5.4へ更新した。applicationId=`jp.essential.app`、minSdk=26、targetSdk=35は維持した。
+- `.github/release-notes/v0.5.4.md`を追加し、ミニゲーム、DOSUKOIのMaterial 3 Expressive UIとオンラインルーム、条件カード境界修正、120fps対応、マインスイーパー旗モード、QRタイル修正、ショートカット導線、Progressive Motionの内容を記載した。
+- ASCIIパスのJunction`C:\Users\waki1\Desktop\EssentialRelease054`を使用し、`test lint assembleDebug assembleRelease --no-daemon --max-workers=1`を実行してBUILD SUCCESSFUL。debug／releaseの全ABI APKが生成された。JNI内の`libffmpeg.zip.so`と`libpython.zip.so`をstripできない既存警告、システムバー色APIの非推奨警告はあるが、ビルドを阻害していない。
+- `aapt dump badging`でdebug APKがpackage=`jp.essential.app`、versionCode=`15`、versionName=`0.5.4`、minSdk=`26`であることを確認した。正式な署名付きAPKは`v0.5.4`タグpush後にGitHub ActionsとRepository Secretsを使用して生成・公開する。
