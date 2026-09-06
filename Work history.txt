@@ -645,3 +645,6 @@
 - `.github/release-notes/v0.5.4.md`を追加し、ミニゲーム、DOSUKOIのMaterial 3 Expressive UIとオンラインルーム、条件カード境界修正、120fps対応、マインスイーパー旗モード、QRタイル修正、ショートカット導線、Progressive Motionの内容を記載した。
 - ASCIIパスのJunction`C:\Users\waki1\Desktop\EssentialRelease054`を使用し、`test lint assembleDebug assembleRelease --no-daemon --max-workers=1`を実行してBUILD SUCCESSFUL。debug／releaseの全ABI APKが生成された。JNI内の`libffmpeg.zip.so`と`libpython.zip.so`をstripできない既存警告、システムバー色APIの非推奨警告はあるが、ビルドを阻害していない。
 - `aapt dump badging`でdebug APKがpackage=`jp.essential.app`、versionCode=`15`、versionName=`0.5.4`、minSdk=`26`であることを確認した。正式な署名付きAPKは`v0.5.4`タグpush後にGitHub ActionsとRepository Secretsを使用して生成・公開する。
+- 公開コミット`fe6b50449ef55c029bc9dbe041c9e58b3bcd1cf9`を`main`へpushし、注釈付きタグ`v0.5.4`を同コミットへ作成してpushした。GitHub Actions run `34042277663`のAndroid Releaseが`completed / success`で完了した。
+- GitHub Release `Essential v0.5.4`がdraft=false、prerelease=falseで正式公開されたことを公開APIで確認した。arm64-v8a、armeabi-v7a、x86、x86_64、universalの署名付きAPK 5種類と`SHA256SUMS.txt`がuploaded状態で添付されている。
+- 公開された`SHA256SUMS.txt`を取得し、5種類すべてのAPKに64桁のSHA-256値が記録されていることを確認した。Release URLは`https://github.com/Aikidoooo/Essential-for-Android/releases/tag/v0.5.4`。
