@@ -16,6 +16,7 @@ Material 3 Expressiveを基調にしたAndroidアプリです。ホーム、ダ�
 - ダウンローダー: yt-dlpとFFmpegを使い、権利のある公開動画・音声・画像を`Download/Essential`へ保存します。
 - QRスキャナー: CameraX、端末のCamera HAL、端末内ML KitでQRコードを読み取ります。Quick Settings Tileにも対応します。
 - 予定表ジェネレーター: 予定を入力し、PDF・UTF-8文章・PNG画像へ端末内で出力します。
+- ミニゲーム: マインスイーパーを端末内で遊べます。どすこいは指定HTMLをWebViewへ最適化して同梱し、Firebase Realtime Databaseの匿名認証・ルーム同期に対応します。
 
 制限事項は`ENGINE_LIMITS.md`、対象端末方針は`DEVICE_SUPPORT.md`、ライセンス上の注意は`THIRD_PARTY_NOTICES.md`を参照してください。
 

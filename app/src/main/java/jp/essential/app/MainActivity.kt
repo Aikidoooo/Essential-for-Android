@@ -17,6 +17,7 @@ class MainActivity : ComponentActivity() {
     private val sharedUrl = mutableStateOf<String?>(null)
     private val requestedFeature = mutableStateOf<String?>(null)
     private val motionFps = mutableStateOf(60)
+    private val homeShortcut = mutableStateOf(FEATURE_DOWNLOADER)
 
     private fun applyMotionFps(value: Int) {
         val fps = value.takeIf { it in listOf(30, 60, 120) } ?: 60
@@ -62,6 +63,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val preferences = getSharedPreferences("appearance", MODE_PRIVATE)
+        homeShortcut.value = preferences.getString("home_shortcut_feature", FEATURE_DOWNLOADER) ?: FEATURE_DOWNLOADER
         val initialDark = preferences.getBoolean("dark_theme", resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES)
         // 初回Compose描画とクロスフェードの下地を、保存済みテーマに合わせる。
         window.setBackgroundDrawable(android.graphics.drawable.GradientDrawable(
@@ -71,6 +73,8 @@ class MainActivity : ComponentActivity() {
         ))
         applyMotionFps(preferences.getInt("motion_fps", 60))
         handleIntent(intent)
+        val firstSetup = !preferences.getBoolean("home_shortcut_configured", false) &&
+            sharedUrl.value.isNullOrBlank() && requestedFeature.value.isNullOrBlank()
         setContent {
             EssentialRoot(
                 sharedUrl = sharedUrl.value,
@@ -79,6 +83,13 @@ class MainActivity : ComponentActivity() {
                 onDarkThemeApplied = ::applyDarkAppearance,
                 motionFps = motionFps.value,
                 onMotionFpsChange = ::applyMotionFps,
+                initialHomeShortcut = homeShortcut.value,
+                initialSetupRequired = firstSetup,
+                onHomeShortcutChange = { route ->
+                    homeShortcut.value = route
+                    preferences.edit().putString("home_shortcut_feature", route)
+                        .putBoolean("home_shortcut_configured", true).apply()
+                },
             )
         }
     }

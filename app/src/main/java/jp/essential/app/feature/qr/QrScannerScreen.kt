@@ -84,6 +84,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import jp.essential.app.device.DeviceOptimizer
 import jp.essential.app.R
+import jp.essential.app.ui.ProgressiveWidget
 
 @Composable
 fun QrScannerScreen(onBack: () -> Unit) {
@@ -118,11 +119,13 @@ fun QrScannerScreen(onBack: () -> Unit) {
     }
 
     if (!permissionGranted) {
-        CameraPermissionScreen(
-            denied = permissionDenied,
-            onRequest = { permissionLauncher.launch(Manifest.permission.CAMERA) },
-            onBack = onBack,
-        )
+        ProgressiveWidget(0, Modifier.fillMaxSize()) {
+            CameraPermissionScreen(
+                denied = permissionDenied,
+                onRequest = { permissionLauncher.launch(Manifest.permission.CAMERA) },
+                onBack = onBack,
+            )
+        }
         return
     }
 
@@ -136,6 +139,7 @@ fun QrScannerScreen(onBack: () -> Unit) {
     val analysisGate = remember { AtomicBoolean(false) }
 
     Box(modifier = Modifier.fillMaxSize()) {
+        ProgressiveWidget(0, Modifier.fillMaxSize()) {
         AndroidView(
             factory = { viewContext ->
                 PreviewView(viewContext).apply {
@@ -150,6 +154,7 @@ fun QrScannerScreen(onBack: () -> Unit) {
             },
             modifier = Modifier.fillMaxSize(),
         )
+        }
 
         DisposableEffect(previewView, lifecycleOwner) {
             val view = previewView
@@ -253,8 +258,9 @@ fun QrScannerScreen(onBack: () -> Unit) {
             }
         }
 
-        ScannerOverlay()
+        ProgressiveWidget(1, Modifier.fillMaxSize()) { ScannerOverlay() }
 
+        ProgressiveWidget(2, Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -354,6 +360,7 @@ fun QrScannerScreen(onBack: () -> Unit) {
                     )
                 }
             }
+        }
         }
     }
 }

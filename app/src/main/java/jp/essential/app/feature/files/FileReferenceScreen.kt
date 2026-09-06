@@ -45,6 +45,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import java.util.Locale
 import kotlinx.coroutines.launch
+import jp.essential.app.ui.progressiveItem
 
 @Composable
 fun FileReferenceScreen(onBack: () -> Unit) {
@@ -92,8 +93,9 @@ fun FileReferenceScreen(onBack: () -> Unit) {
         contentPadding = PaddingValues(start = 20.dp, top = 18.dp, end = 20.dp, bottom = 30.dp),
         verticalArrangement = Arrangement.spacedBy(15.dp),
     ) {
-        item { FileTopBar(onBack) }
-        item {
+        var motionIndex = 0
+        progressiveItem(motionIndex++) { FileTopBar(onBack) }
+        progressiveItem(motionIndex++) {
             Surface(
                 color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.74f),
                 shape = RoundedCornerShape(24.dp),
@@ -113,7 +115,7 @@ fun FileReferenceScreen(onBack: () -> Unit) {
                 }
             }
         }
-        item {
+        progressiveItem(motionIndex++) {
             AnimatedContent(referencedFile, label = "参照ファイル") { file ->
                 if (file == null) {
                     Surface(
@@ -128,8 +130,8 @@ fun FileReferenceScreen(onBack: () -> Unit) {
             }
         }
         referencedFile?.let { file ->
-            item { SectionTitle("圧縮", "目標以下を目指して新しいファイルを生成") }
-            item {
+            progressiveItem(motionIndex++) { SectionTitle("圧縮", "目標以下を目指して新しいファイルを生成") }
+            progressiveItem(motionIndex++) {
                 OptionButtons(
                     values = listOf(20, 50, 100, 500),
                     selected = targetMegabytes,
@@ -137,7 +139,7 @@ fun FileReferenceScreen(onBack: () -> Unit) {
                     onSelected = { targetMegabytes = it },
                 )
             }
-            item {
+            progressiveItem(motionIndex++) {
                 ToolCard {
                     Text("自由設定　${targetMegabytes}MB以下", fontWeight = FontWeight.Bold)
                     Slider(
@@ -165,7 +167,7 @@ fun FileReferenceScreen(onBack: () -> Unit) {
                     }
                 }
                 ReferencedMediaType.Video -> {
-                    item {
+                    progressiveItem(motionIndex++) {
                         ToolCard {
                             SectionTitle("フレーム切り取り", "時刻または1フレーム単位でPNGへ")
                             val positionMillis = (file.durationMillis * framePosition).toLong()
@@ -187,7 +189,7 @@ fun FileReferenceScreen(onBack: () -> Unit) {
                             }
                         }
                     }
-                    item {
+                    progressiveItem(motionIndex++) {
                         ToolCard {
                             SectionTitle("音声ファイル化", "動画の音声を高速にMP3へ変換")
                             ActionButton("MP3へ変換", processingLabel) {
@@ -195,7 +197,7 @@ fun FileReferenceScreen(onBack: () -> Unit) {
                             }
                         }
                     }
-                    item {
+                    progressiveItem(motionIndex++) {
                         ToolCard {
                             SectionTitle("GIF化", "用途に合わせて画質と滑らかさを選択")
                             OptionButtons(GifPreset.entries, gifPreset, GifPreset::label) { gifPreset = it }
@@ -229,7 +231,7 @@ fun FileReferenceScreen(onBack: () -> Unit) {
                 }
             }
         }
-        item {
+        progressiveItem(motionIndex++) {
             AnimatedVisibility(processingLabel != null || resultMessage != null) {
                 Surface(
                     color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),

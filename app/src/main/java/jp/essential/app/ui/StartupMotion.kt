@@ -67,8 +67,8 @@ internal fun ProgressiveWidget(index: Int, modifier: Modifier = Modifier, conten
     val progress = remember { Animatable(if (revealed) 1f else 0f) }
     LaunchedEffect(Unit) {
         if (!revealed) {
-            delay((index * 45L).coerceIn(0L, 180L))
-            progress.animateTo(1f, tween(320, easing = FastOutSlowInEasing))
+            delay((index * 65L).coerceIn(0L, 520L))
+            progress.animateTo(1f, tween(380, easing = FastOutSlowInEasing))
             revealed = true
         }
     }
@@ -76,8 +76,8 @@ internal fun ProgressiveWidget(index: Int, modifier: Modifier = Modifier, conten
     Box(modifier.graphicsLayer {
         val fraction = progress.value
         alpha = fraction
-        translationY = (1f - fraction) * 18.dp.toPx()
-        scaleX = 0.985f + 0.015f * fraction
+        translationY = (1f - fraction) * 34.dp.toPx()
+        scaleX = 0.99f + 0.01f * fraction
         scaleY = scaleX
     }) { content() }
 }

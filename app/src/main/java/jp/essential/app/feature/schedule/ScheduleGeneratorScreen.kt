@@ -53,6 +53,8 @@ import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.launch
+import jp.essential.app.ui.ProgressiveWidget
+import jp.essential.app.ui.progressiveItem
 
 private enum class ScheduleOutput { Pdf, Text, Image }
 
@@ -119,8 +121,9 @@ fun ScheduleGeneratorScreen(onBack: () -> Unit) {
         contentPadding = PaddingValues(start = 20.dp, top = 18.dp, end = 20.dp, bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        item { ScheduleTopBar(onBack) }
-        item {
+        var motionIndex = 0
+        progressiveItem(motionIndex++) { ScheduleTopBar(onBack) }
+        progressiveItem(motionIndex++) {
             Box(
                 modifier = Modifier.fillMaxWidth()
                     .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f), RoundedCornerShape(22.dp))
@@ -133,19 +136,20 @@ fun ScheduleGeneratorScreen(onBack: () -> Unit) {
                 )
             }
         }
-        item { SectionTitle("行程全体", "題名・日付範囲・参加者") }
-        item { ScheduleField("題名", title, { title = it }, "例: 京都2日間旅行") }
-        item { ScheduleField("目的", purpose, { purpose = it }, "例: 友人との観光") }
-        item { ScheduleField("集合場所・主な場所", place, { place = it }, "集合場所・主な目的地") }
-        item {
+        progressiveItem(motionIndex++) { SectionTitle("行程全体", "題名・日付範囲・参加者") }
+        progressiveItem(motionIndex++) { ScheduleField("題名", title, { title = it }, "例: 京都2日間旅行") }
+        progressiveItem(motionIndex++) { ScheduleField("目的", purpose, { purpose = it }, "例: 友人との観光") }
+        progressiveItem(motionIndex++) { ScheduleField("集合場所・主な場所", place, { place = it }, "集合場所・主な目的地") }
+        progressiveItem(motionIndex++) {
             DateRangeField(startDate, endDate) { start, end ->
                 startDate = start
                 endDate = end
             }
         }
-        item { SectionTitle("誰が来るか", "名前を埋めると次の入力欄が現れます") }
+        progressiveItem(motionIndex++) { SectionTitle("誰が来るか", "名前を埋めると次の入力欄が現れます") }
         attendeeNames.forEachIndexed { index, name ->
             item(key = "attendee-$index") {
+                ProgressiveWidget(motionIndex + index) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     ScheduleField(
                         label = "参加者 ${index + 1}",
@@ -163,11 +167,14 @@ fun ScheduleGeneratorScreen(onBack: () -> Unit) {
                         TextButton(onClick = { attendeeNames.removeAt(index) }) { Text("削除") }
                     }
                 }
+                }
             }
         }
-        item { SectionTitle("行程表", "出発・経由・到着と所要時間を追加") }
+        motionIndex += attendeeNames.size
+        progressiveItem(motionIndex++) { SectionTitle("行程表", "出発・経由・到着と所要時間を追加") }
         scheduleEntries.forEachIndexed { index, entry ->
             item(key = "schedule-entry-$index") {
+                ProgressiveWidget(motionIndex + index) {
                 ScheduleEntryEditor(
                     index = index,
                     entry = entry,
@@ -175,9 +182,11 @@ fun ScheduleGeneratorScreen(onBack: () -> Unit) {
                     onChange = { scheduleEntries[index] = it },
                     onDelete = { scheduleEntries.removeAt(index) },
                 )
+                }
             }
         }
-        item {
+        motionIndex += scheduleEntries.size
+        progressiveItem(motionIndex++) {
             OutlinedButton(
                 onClick = { if (scheduleEntries.size < 20) scheduleEntries += ScheduleEntry() },
                 enabled = scheduleEntries.size < 20,
@@ -185,18 +194,18 @@ fun ScheduleGeneratorScreen(onBack: () -> Unit) {
                 shape = RoundedCornerShape(18.dp),
             ) { Text(if (scheduleEntries.size < 20) "行程を追加" else "行程は20件まで") }
         }
-        item {
+        progressiveItem(motionIndex++) {
             ScheduleField("全体の注意事項・メモ", notes, { notes = it }, "持ち物、予約番号、変更条件など", minLines = 4)
         }
-        item { SectionTitle("出力", "同じ内容から3形式を自動生成") }
-        item {
+        progressiveItem(motionIndex++) { SectionTitle("出力", "同じ内容から3形式を自動生成") }
+        progressiveItem(motionIndex++) {
             Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
                 OutputButton("PDF表", Modifier.weight(1f), isWriting) { pdfLauncher.launch("${safeName()}.pdf") }
                 OutputButton("文章", Modifier.weight(1f), isWriting) { textLauncher.launch("${safeName()}.txt") }
                 OutputButton("縦型画像", Modifier.weight(1f), isWriting) { imageLauncher.launch("${safeName()}.png") }
             }
         }
-        item {
+        progressiveItem(motionIndex++) {
             AnimatedVisibility(isWriting || message != null) {
                 Row(
                     modifier = Modifier.fillMaxWidth()

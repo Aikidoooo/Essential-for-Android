@@ -4,10 +4,8 @@
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
+    <!-- Material Icons QrCode2のパス。塗りつぶしのセルでクイック設定でも崩れない。 -->
     <path
-        android:fillColor="@android:color/transparent"
-        android:pathData="M3,3h7v7H3zM14,3h7v7h-7zM3,14h7v7H3zM15,14h2v2h-2zM19,14h2v4h-2zM14,18h4v3h-4zM20,20h1v1h-1z"
-        android:strokeColor="@android:color/white"
-        android:strokeLineJoin="round"
-        android:strokeWidth="2" />
+        android:fillColor="@android:color/white"
+        android:pathData="M3,11h8V3H3v8zM5,5h4v4H5V5zM3,21h8v-8H3v8zM5,15h4v4H5v-4zM13,3v8h8V3h-8zM15,5h4v4h-4V5zM13,13h2v2h-2zM15,15h2v2h-2zM17,13h2v2h-2zM19,15h2v2h-2zM13,17h2v2h-2zM15,19h2v2h-2zM17,17h2v2h-2zM19,19h2v2h-2z" />
 </vector>

@@ -82,6 +82,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.launch
 import jp.essential.app.R
+import jp.essential.app.ui.progressiveItem
 
 @Composable
 fun DownloaderScreen(
@@ -170,17 +171,18 @@ fun DownloaderScreen(
         contentPadding = PaddingValues(start = 20.dp, top = 18.dp, end = 20.dp, bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        item {
+        var motionIndex = 0
+        progressiveItem(motionIndex++) {
             FeatureTopBar(
                 title = "ダウンローダー",
                 subtitle = "yt-dlp + FFmpeg・端末内処理",
                 onBack = onBack,
             )
         }
-        item {
+        progressiveItem(motionIndex++) {
             SafetyNotice()
         }
-        item {
+        progressiveItem(motionIndex++) {
             MotionSurface(
                 shape = RoundedCornerShape(20.dp),
                 color = MaterialTheme.colorScheme.surface.copy(alpha = 0.78f),
@@ -205,7 +207,7 @@ fun DownloaderScreen(
                 }
             }
         }
-        item {
+        progressiveItem(motionIndex++) {
             OutlinedTextField(
                 value = url,
                 onValueChange = { url = it },
@@ -240,7 +242,7 @@ fun DownloaderScreen(
                 },
             )
         }
-        item {
+        progressiveItem(motionIndex++) {
             LabeledOptions(
                 label = "種類",
                 values = DownloadMediaType.entries,
@@ -253,7 +255,7 @@ fun DownloaderScreen(
                 },
             )
         }
-        item {
+        progressiveItem(motionIndex++) {
             AnimatedContent(
                 targetState = mediaType,
                 transitionSpec = {
@@ -291,7 +293,7 @@ fun DownloaderScreen(
             }
         }
         if (mediaType == DownloadMediaType.Image) {
-            item {
+            progressiveItem(motionIndex++) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (imageLoading) {
                         LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -302,7 +304,7 @@ fun DownloaderScreen(
                     Text("横にスワイプして確認・タップで選択・長押しで拡大プレビュー", style = MaterialTheme.typography.bodyMedium)
                 }
             }
-            item {
+            progressiveItem(motionIndex++) {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 items(candidates, key = { it.url }) { candidate ->
                 ImageCandidateCard(candidate, candidate.id in selectedCandidateIds, !isBusy && analyzedUrl == url,
@@ -316,10 +318,10 @@ fun DownloaderScreen(
                 }
             }
         }
-        item {
+        progressiveItem(motionIndex++) {
             DownloadStatus(state)
         }
-        item {
+        progressiveItem(motionIndex++) {
             Button(
                 onClick = {
                     val selection = DownloaderSelection(

@@ -95,6 +95,7 @@ import jp.essential.app.core.EssentialCore
 import jp.essential.app.feature.downloader.DownloaderScreen
 import jp.essential.app.feature.downloader.YtDlpUpdateSettingsCard
 import jp.essential.app.feature.files.FileReferenceScreen
+import jp.essential.app.feature.minigame.MiniGameScreen
 import jp.essential.app.feature.qr.QrScannerScreen
 import jp.essential.app.feature.schedule.ScheduleGeneratorScreen
 import jp.essential.app.ui.theme.EssentialLime
@@ -124,6 +125,8 @@ private enum class EssentialSymbol {
     Download,
     Qr,
     Calendar,
+    Game,
+    Routine,
 }
 
 private enum class FeatureRoute(val requestId: String) {
@@ -131,6 +134,7 @@ private enum class FeatureRoute(val requestId: String) {
     QrScanner("qr_scanner"),
     Schedule("schedule"),
     Files("files"),
+    MiniGame("mini_game"),
 }
 
 private data class FeatureItem(
@@ -149,6 +153,9 @@ fun EssentialRoot(
     onDarkThemeApplied: (Boolean) -> Unit = {},
     motionFps: Int = 60,
     onMotionFpsChange: (Int) -> Unit = {},
+    initialHomeShortcut: String = FeatureRoute.Downloader.requestId,
+    initialSetupRequired: Boolean = false,
+    onHomeShortcutChange: (String) -> Unit = {},
 ) {
     val systemDarkTheme = isSystemInDarkTheme()
     var darkTheme by rememberSaveable { mutableStateOf(initialDarkTheme ?: systemDarkTheme) }
@@ -169,6 +176,9 @@ fun EssentialRoot(
                 requestedFeature = requestedFeature,
                 motionFps = motionFps,
                 onMotionFpsChange = onMotionFpsChange,
+                initialHomeShortcut = initialHomeShortcut,
+                initialSetupRequired = initialSetupRequired,
+                onHomeShortcutChange = onHomeShortcutChange,
             )
         }
     }
@@ -182,9 +192,18 @@ private fun EssentialApp(
     requestedFeature: String?,
     motionFps: Int,
     onMotionFpsChange: (Int) -> Unit,
+    initialHomeShortcut: String,
+    initialSetupRequired: Boolean,
+    onHomeShortcutChange: (String) -> Unit,
 ) {
-    var destination by rememberSaveable { mutableStateOf(Destination.Home) }
+    var destination by rememberSaveable {
+        mutableStateOf(if (initialSetupRequired) Destination.Settings else Destination.Home)
+    }
     var activeFeature by rememberSaveable { mutableStateOf<FeatureRoute?>(null) }
+    var dosukoiActive by rememberSaveable { mutableStateOf(false) }
+    var homeShortcut by rememberSaveable {
+        mutableStateOf(FeatureRoute.entries.firstOrNull { it.requestId == initialHomeShortcut } ?: FeatureRoute.Downloader)
+    }
     val destinationState = rememberSaveableStateHolder()
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -216,12 +235,18 @@ private fun EssentialApp(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        AnimatedBackdrop()
+        if (dosukoiActive) {
+            // DOSUKOIはWebView自身がFluid Gradientを描画するため、背面のCanvasを止めて二重描画を避ける。
+            Box(Modifier.fillMaxSize().background(Color(0xFF0F0F1A)))
+        } else {
+            AnimatedBackdrop()
+        }
         Scaffold(
             modifier = Modifier.fillMaxSize(),
             containerColor = Color.Transparent,
             contentColor = MaterialTheme.colorScheme.onSurface,
-            contentWindowInsets = WindowInsets.safeDrawing,
+            // どすこいは暗色の背景をステータス／ナビゲーションバーまで連続させる。
+            contentWindowInsets = if (dosukoiActive) WindowInsets(0, 0, 0, 0) else WindowInsets.safeDrawing,
             snackbarHost = { SnackbarHost(snackbarHostState) },
             bottomBar = {
                 if (activeFeature == null) {
@@ -242,11 +267,8 @@ private fun EssentialApp(
                     modifier = Modifier.fillMaxSize(),
                     transitionSpec = {
                         val direction = if (targetState != null) 1 else -1
-                        // タブ切替と同じ段階的なフェード・移動・拡大で機能画面へつなぐ。
-                        (fadeIn(tween(240, delayMillis = 70)) +
-                            slideInHorizontally(tween(340, delayMillis = 50, easing = FastOutSlowInEasing)) { it * direction / 18 } +
-                            scaleIn(tween(340, delayMillis = 50, easing = FastOutSlowInEasing), initialScale = 0.985f)) togetherWith
-                            (fadeOut(tween(110)) + slideOutHorizontally(tween(160)) { -it * direction / 28 })
+                        // 入場は各機能内のまとまりに任せ、画面全体の横スライドは行わない。
+                        fadeIn(tween(if (targetState != null) 90 else 180)) togetherWith fadeOut(tween(100))
                     },
                     label = "機能を開く段階的モーション",
                 ) { feature ->
@@ -262,6 +284,11 @@ private fun EssentialApp(
                     FeatureRoute.QrScanner -> QrScannerScreen { activeFeature = null }
                     FeatureRoute.Schedule -> ScheduleGeneratorScreen { activeFeature = null }
                     FeatureRoute.Files -> FileReferenceScreen { activeFeature = null }
+                    FeatureRoute.MiniGame -> MiniGameScreen(
+                        onBack = { activeFeature = null },
+                        onDosukoiVisibilityChange = { dosukoiActive = it },
+                        motionFps = motionFps,
+                    )
                     null -> AnimatedContent(
                         targetState = destination,
                         modifier = Modifier.fillMaxSize(),
@@ -282,15 +309,22 @@ private fun EssentialApp(
                                 onOpenFeature = { activeFeature = it },
                                 onOpenAll = { destination = Destination.Features },
                                 onComingSoon = onComingSoon,
+                                shortcut = homeShortcut,
                             )
                             Destination.Features -> FeaturesScreen(
                                 onOpenFeature = { activeFeature = it },
+                                onComingSoon = onComingSoon,
                             )
                             Destination.Settings -> SettingsScreen(
                                 darkTheme = darkTheme,
                                 onDarkThemeChange = onDarkThemeChange,
                                 motionFps = motionFps,
                                 onMotionFpsChange = onMotionFpsChange,
+                                homeShortcut = homeShortcut,
+                                onHomeShortcutChange = {
+                                    homeShortcut = it
+                                    onHomeShortcutChange(it.requestId)
+                                },
                             )
                         }
                         }
@@ -345,6 +379,7 @@ private fun HomeScreen(
     onOpenFeature: (FeatureRoute) -> Unit,
     onOpenAll: () -> Unit,
     onComingSoon: () -> Unit,
+    shortcut: FeatureRoute,
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -352,7 +387,7 @@ private fun HomeScreen(
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
         progressiveItem(0) { AppHeader() }
-        progressiveItem(1) { HeroCard { onOpenFeature(FeatureRoute.Downloader) } }
+        progressiveItem(1) { HeroCard(shortcut) { onOpenFeature(shortcut) } }
         progressiveItem(2) { SectionHeader(title = "使える機能", action = "すべて見る", onAction = onOpenAll) }
         progressiveItem(3) {
             FeatureGrid(
@@ -361,6 +396,8 @@ private fun HomeScreen(
                     FeatureItem("QRスキャナー", "純正カメラ経路で高速読取", EssentialSymbol.Qr, EssentialLime, FeatureRoute.QrScanner),
                     FeatureItem("行程表", "経由地を含めて3形式へ", EssentialSymbol.Calendar, EssentialYellow, FeatureRoute.Schedule),
                     FeatureItem("ファイル参照", "圧縮・変換・背景透過", EssentialSymbol.Media, EssentialRed, FeatureRoute.Files),
+                    FeatureItem("ミニゲーム", "言葉遊び・マインスイーパー", EssentialSymbol.Game, Color(0xFF9C6BFF), FeatureRoute.MiniGame),
+                    FeatureItem("日課", "毎日の習慣をまとめる機能", EssentialSymbol.Routine, Color(0xFF27B99A), null),
                 ),
                 onClick = { feature ->
                     feature.route?.let(onOpenFeature) ?: onComingSoon()
@@ -428,7 +465,7 @@ private fun AppHeader() {
 }
 
 @Composable
-private fun HeroCard(onClick: () -> Unit) {
+private fun HeroCard(shortcut: FeatureRoute, onClick: () -> Unit) {
     val dark = LocalEssentialDark.current
     val heroLight by animateColorAsState(if (dark) Color(0xFF814AFF) else EssentialYellow, tween(700), label = "カードの紫")
     val heroShade by animateColorAsState(if (dark) Color(0xFF225AFF) else EssentialOrange, tween(700), label = "カードの青")
@@ -490,7 +527,7 @@ private fun HeroCard(onClick: () -> Unit) {
                     Spacer(Modifier.height(10.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            text = "あなたに合う機能をここへ追加",
+                            text = "${shortcut.displayName()}を開く",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -666,7 +703,7 @@ private fun RustCoreBanner() {
 }
 
 @Composable
-private fun FeaturesScreen(onOpenFeature: (FeatureRoute) -> Unit) {
+private fun FeaturesScreen(onOpenFeature: (FeatureRoute) -> Unit, onComingSoon: () -> Unit) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = 20.dp, top = 22.dp, end = 20.dp, bottom = 28.dp),
@@ -676,7 +713,7 @@ private fun FeaturesScreen(onOpenFeature: (FeatureRoute) -> Unit) {
             Text("機能一覧", style = MaterialTheme.typography.headlineLarge)
             Spacer(Modifier.height(5.dp))
             Text(
-                "端末内で動く4つの機能です。必要なものを選んでください。",
+                "利用可能な機能と、これから追加する機能です。",
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -718,6 +755,25 @@ private fun FeaturesScreen(onOpenFeature: (FeatureRoute) -> Unit) {
             )
         }
         progressiveItem(5) {
+            CategoryPanel(
+                title = "ミニゲーム",
+                description = "言葉遊び・マインスイーパー",
+                symbol = EssentialSymbol.Game,
+                accent = Color(0xFF9C6BFF),
+                onClick = { onOpenFeature(FeatureRoute.MiniGame) },
+            )
+        }
+        progressiveItem(6) {
+            CategoryPanel(
+                title = "日課",
+                description = "毎日の習慣をまとめる機能を追加予定",
+                symbol = EssentialSymbol.Routine,
+                accent = Color(0xFF27B99A),
+                available = false,
+                onClick = onComingSoon,
+            )
+        }
+        progressiveItem(7) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -740,6 +796,7 @@ private fun CategoryPanel(
     description: String,
     symbol: EssentialSymbol,
     accent: Color,
+    available: Boolean = true,
     onClick: () -> Unit,
 ) {
     PressableGlassCard(
@@ -775,12 +832,14 @@ private fun CategoryPanel(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            EssentialSymbol(
-                EssentialSymbol.Arrow,
-                MaterialTheme.colorScheme.onSurfaceVariant,
-                Modifier.size(20.dp),
-                null,
-            )
+            if (available) {
+                EssentialSymbol(EssentialSymbol.Arrow, MaterialTheme.colorScheme.onSurfaceVariant, Modifier.size(20.dp), null)
+            } else {
+                Text("準備中", color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelLarge.copy(fontSize = 11.sp),
+                    modifier = Modifier.background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.62f), CircleShape)
+                        .padding(horizontal = 9.dp, vertical = 6.dp))
+            }
         }
     }
 }
@@ -791,6 +850,8 @@ private fun SettingsScreen(
     onDarkThemeChange: (Boolean) -> Unit,
     motionFps: Int,
     onMotionFpsChange: (Int) -> Unit,
+    homeShortcut: FeatureRoute,
+    onHomeShortcutChange: (FeatureRoute) -> Unit,
 ) {
     val coreVersion = remember { EssentialCore.version() }
     LazyColumn(
@@ -867,12 +928,40 @@ private fun SettingsScreen(
             }
         }
         progressiveItem(3) {
+            Column(
+                Modifier.fillMaxWidth().glassSurface(28.dp).padding(19.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text("ホームのショートカット", style = MaterialTheme.typography.titleLarge)
+                Text("ホームのカードをタップしたときに開く機能", style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FeatureRoute.entries.forEach { route ->
+                        val selected = route == homeShortcut
+                        Row(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp))
+                                .background(if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface.copy(alpha = 0.62f))
+                                .selectable(selected = selected, role = Role.RadioButton, onClick = { onHomeShortcutChange(route) })
+                                .padding(horizontal = 14.dp, vertical = 11.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            EssentialSymbol(route.symbol(), if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                Modifier.size(24.dp), null)
+                            Spacer(Modifier.width(12.dp))
+                            Text(route.displayName(), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                            androidx.compose.material3.RadioButton(selected = selected, onClick = null)
+                        }
+                    }
+                }
+            }
+        }
+        progressiveItem(4) {
             YtDlpUpdateSettingsCard()
         }
         item(key = "app-updates") {
-            ProgressiveWidget(4) { jp.essential.app.update.AppUpdateSettingsCard() }
+            ProgressiveWidget(5) { jp.essential.app.update.AppUpdateSettingsCard() }
         }
-        progressiveItem(4) {
+        progressiveItem(6) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -886,7 +975,7 @@ private fun SettingsScreen(
                 SettingValue("状態", "3機能を搭載")
             }
         }
-        progressiveItem(5) {
+        progressiveItem(7) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.Center,
@@ -1252,6 +1341,21 @@ private fun EssentialSymbol(
                     cap = StrokeCap.Round,
                 )
             }
+            EssentialSymbol.Game -> {
+                drawRoundRect(tint, Offset(size.width * 0.10f, size.height * 0.30f),
+                    Size(size.width * 0.80f, size.height * 0.48f),
+                    androidx.compose.ui.geometry.CornerRadius(size.minDimension * 0.22f), style = stroke)
+                drawLine(tint, Offset(size.width * 0.25f, center.y), Offset(size.width * 0.43f, center.y), strokeWidth = stroke.width, cap = StrokeCap.Round)
+                drawLine(tint, Offset(size.width * 0.34f, size.height * 0.41f), Offset(size.width * 0.34f, size.height * 0.59f), strokeWidth = stroke.width, cap = StrokeCap.Round)
+                drawCircle(tint, size.minDimension * 0.045f, Offset(size.width * 0.66f, size.height * 0.47f))
+                drawCircle(tint, size.minDimension * 0.045f, Offset(size.width * 0.77f, size.height * 0.59f))
+            }
+            EssentialSymbol.Routine -> {
+                drawCircle(tint, size.minDimension * 0.38f, center, style = stroke)
+                drawLine(tint, center, Offset(center.x, size.height * 0.27f), strokeWidth = stroke.width, cap = StrokeCap.Round)
+                drawLine(tint, center, Offset(size.width * 0.68f, size.height * 0.60f), strokeWidth = stroke.width, cap = StrokeCap.Round)
+                drawLine(tint, Offset(size.width * 0.35f, size.height * 0.08f), Offset(size.width * 0.65f, size.height * 0.08f), strokeWidth = stroke.width, cap = StrokeCap.Round)
+            }
             EssentialSymbol.Arrow -> {
                 drawLine(tint, Offset(size.width * 0.16f, center.y), Offset(size.width * 0.82f, center.y), strokeWidth = stroke.width, cap = StrokeCap.Round)
                 drawLine(tint, Offset(size.width * 0.60f, size.height * 0.28f), Offset(size.width * 0.82f, center.y), strokeWidth = stroke.width, cap = StrokeCap.Round)
@@ -1265,6 +1369,22 @@ private fun EssentialSymbol(
     }
 }
 
+private fun FeatureRoute.displayName(): String = when (this) {
+    FeatureRoute.Downloader -> "ダウンローダー"
+    FeatureRoute.QrScanner -> "QRスキャナー"
+    FeatureRoute.Schedule -> "行程表ジェネレーター"
+    FeatureRoute.Files -> "ファイル参照"
+    FeatureRoute.MiniGame -> "ミニゲーム"
+}
+
+private fun FeatureRoute.symbol(): EssentialSymbol = when (this) {
+    FeatureRoute.Downloader -> EssentialSymbol.Download
+    FeatureRoute.QrScanner -> EssentialSymbol.Qr
+    FeatureRoute.Schedule -> EssentialSymbol.Calendar
+    FeatureRoute.Files -> EssentialSymbol.Media
+    FeatureRoute.MiniGame -> EssentialSymbol.Game
+}
+
 @Preview(showBackground = true, widthDp = 390, heightDp = 844)
 @Composable
 private fun EssentialHomePreview() {
@@ -1275,6 +1395,7 @@ private fun EssentialHomePreview() {
                 onOpenFeature = {},
                 onOpenAll = {},
                 onComingSoon = {},
+                shortcut = FeatureRoute.Downloader,
             )
         }
     }

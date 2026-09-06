@@ -1,0 +1,635 @@
+# Essential 作業履歴
+
+## 2026-09-02
+
+- 空の作業フォルダを確認し、新規Androidアプリとして作業を開始。
+- アプリ名は「Essential」。
+- UIおよびAndroid固有処理はKotlin、コアロジックおよび将来の重い処理はRustで実装する方針。
+- Material 3 Expressiveを基調に、liquid glass、マイクロインタラクション、アニメーションを含む統一UIを作成する。
+- 添付された参照画像をアプリアイコン素材として使用する。
+- 今回は将来の機能追加に対応できるホーム画面と、KotlinからRustを呼び出せる基盤を構築する。
+
+### 実装内容
+
+- Gradle Kotlin DSLによるAndroidプロジェクトを新規作成。
+- パッケージ名およびApplication IDを`jp.essential.app`に設定。
+- Kotlin 2.0.21、Jetpack Compose、Material 3 1.4.0でUIを実装。
+- Material 3 Expressiveの考え方に沿い、強いタイポグラフィ、非対称な配色、丸みの大きいシェイプ、状態に応じた動きを採用。
+- アプリ全体で黄緑・黄・オレンジ・赤のアイコン由来パレットを統一して使用。
+- 半透明グラデーションと境界線を使ったliquid glassカードを実装。
+- 背景光彩アニメーション、画面遷移、カード押下スケール、選択ナビゲーションのスプリング、Rust状態の脈動を実装。
+- タップ操作へハプティクスを追加。
+- ホーム、機能一覧、設定の3画面と共通ボトムナビゲーションを実装。
+- ホームへヒーローカード、将来機能のカテゴリカード、Rust Core接続状態を配置。
+- 未実装機能は動作を偽装せず「準備中」と明示し、タップ時に案内Snackbarを表示。
+- 設定画面へダークテーマ切り替え、アプリ/UI/Rustコアの状態表示を実装。
+- 添付画像を`app/src/main/res/drawable-nodpi/essential_icon.png`へ配置し、ランチャーとアプリ内表示に使用。
+- Rustを`core-rust`へ分離し、JNIでコアバージョンと決定的な演算をKotlinへ公開。
+- `arm64-v8a`、`armeabi-v7a`、`x86`、`x86_64`の4 ABI向けRustライブラリ生成スクリプトを追加。
+- Android 16の16 KBページサイズに対応するため、Rust ELFのLOADセグメントを16 KB境界へ整列。
+- READMEへ構成と再ビルド手順を記載。
+
+### 検証結果
+
+- `cargo test --manifest-path core-rust/Cargo.toml`: 2件成功、失敗0件。
+- `scripts/build-rust.ps1`: 4 ABIすべて成功。
+- `llvm-readelf`: 4 ABIのELF形式、対象Machine、2つのJNIシンボルを確認。
+- `llvm-readelf -l`: x86_64を含むRustライブラリのLOAD Alignが`0x4000`であることを確認。
+- `gradlew assembleDebug`: 成功。Debug APK生成を確認。
+- APK内に4 ABIすべての`libessential_core.so`が含まれることを確認。
+- `aapt dump badging`: `jp.essential.app`、Version 0.1.0、minSdk 26、targetSdk 35、アプリ名Essentialを確認。
+- Android 16相当のPixel_10aエミュレータへAPKをインストールし、コールドスタート成功。
+- エミュレータでホーム表示、縦スクロール、機能一覧/設定へのナビゲーション、Rust Core v1接続表示を確認。
+- 16 KB非互換警告はRust再整列後に再発せず、AndroidRuntimeのクラッシュログもなし。
+- `lintDebug`はアプリの指摘ではなく、AGP 8.7.3のLint解析APIと新しいLifecycle/Compose検出器のバイナリ不整合により異常終了。検査の無効化は残していない。
+
+### 生成物
+
+- Debug APK: `C:\Users\waki1\Downloads\Essential-debug.apk`
+- ホーム画面: `essential-home-16k.png`
+- ホーム下部とRust接続表示: `essential-home-bottom.png`
+- 設定画面: `essential-settings.png`
+
+### 未検証範囲
+
+- 物理Android端末での表示、性能、タッチ感、端末固有のランチャーアイコン表示は未検証。
+- 将来追加する各機能の実処理は、今回の依頼どおり未実装。
+
+## 2026-09-02 バージョン0.2.0 機能追加
+
+### アイコン更新
+
+- 新しく添付された透過PNGを確認し、`essential_icon.png`を差し替えた。
+- 素材は1255 x 1255ピクセルのRGBA画像で、四隅のアルファ値が0であることを確認した。
+- Android 17エミュレータのランチャーとホーム画面で、新アイコンが表示されることを確認した。
+
+### ダウンローダー
+
+- `youtubedl-android` 0.18.1を組み込み、Android端末内でyt-dlpとFFmpegを初期化して処理するエンジンを追加した。
+- 動画は480p、720p、1080p、4K、30fps、60fps、MP4、MOVを固定選択肢として実装した。
+- 音声は64、128、192、256、320kbpsとMP3、AACを固定選択肢として実装した。
+- 画像はFHD、WQHD、4K、8KとPNG、JPEGを実装した。yt-dlpのメタデータから最大50件の画像候補を取得し、複数選択して複数枚を保存できるようにした。
+- 解像度やフレームレートは利用可能な素材を超えて水増しせず、指定値以下の最良候補を選ぶ。
+- Android 10以降はMediaStore、Android 8/9は従来ストレージ権限を使い、`Download/Essential`へ保存する。
+- 実ファイルが生成され、サイズが0より大きい場合だけ完了として扱う。失敗や対象ファイルなしを成功表示しない。
+- `ACTION_SEND`の`text/plain`を受け取り、各アプリの共有画面から公開URLをダウンローダーへ渡せるようにした。
+- URLは公開されたHTTP/HTTPSだけを受け付け、認証情報付きURL、Cookie、ログイン、DRMなどの保護回避を実装しない。
+
+### QRスキャナー
+
+- CameraX 1.5.3のCamera2バックエンドで標準カメラ経路へ接続し、メーカーがAndroidへ公開するCamera HALとカメラ能力を利用する構成にした。
+- ML Kit Barcode Scanning 17.3.0の端末同梱型モデルをQRコード専用で組み込み、フレームを詰まらせない最新フレーム優先解析を実装した。
+- カメラが公開する実際の最小・最大ズーム比を使用し、スライダーとピンチ操作で倍率を変更できるようにした。
+- タップフォーカス、ライト切り替え、読み取り結果のコピー、HTTP/HTTPS結果を開く操作を追加した。
+- Android 13以降はアプリ内ボタンからQuick Settingsタイル追加要求を出せるようにし、タイルからQR画面を直接起動できる`TileService`を追加した。
+- Android 14以降のタイル起動は`PendingIntent`を使用する。
+
+### 予定表ジェネレーター
+
+- 題名、目的、場所、日付、時間、お金、移動手段、参加者、詳細・メモの入力画面を追加した。
+- Android Storage Access Frameworkで保存先を毎回選び、PDF、UTF-8テキスト、1600 x 2263ピクセルのPNG画像を端末内だけで生成できるようにした。
+- PDFと画像は共通レイアウトエンジンを使用し、Essentialの配色、カード、見出しを統一した。
+- テキスト整形の単体テストを追加した。
+
+### 対応端末と最適化
+
+- minSdk 26、targetSdk 35、4 ABIを維持し、一般Android端末を除外しない方針とした。
+- 最優先プロファイルとしてXiaomi 17 Ultra、LEITZ PHONE、Xiaomi 15 Ultra、Xiaomi 15T Proを定義した。
+- 優先プロファイルとしてXiaomi 17T Pro、Xiaomi 17T、Xiaomi 15T、OPPO Find X9、OPPO Find X9 Ultra、Galaxy S25/S26系、Google Pixel系を定義した。
+- 最優先・優先端末ではQR解析の希望解像度を1920 x 1080、一般端末では1280 x 720とし、端末が公開する能力へ自動フォールバックする。
+- 非公開のXiaomi固有APIや機種名だけで存在しないカメラ能力を捏造せず、CameraX/Camera2経由でOEM HALの公開能力を利用する。
+
+### UIと文書
+
+- ホームと機能一覧を、ダウンローダー、QRスキャナー、予定表ジェネレーターの実画面へ接続した。
+- 各画面で既存のMaterial 3 Expressive、liquid glass、角丸、配色、押下フィードバックを維持した。
+- `ENGINE_LIMITS.md`へダウンロードとカメラの技術的・安全上の境界を記録した。
+- `DEVICE_SUPPORT.md`へ端末対応階層と物理端末検証の扱いを記録した。
+- `THIRD_PARTY_NOTICES.md`へyt-dlp/FFmpeg同梱ライブラリを含む第三者ライセンスと、配布時にGPL条件へ従う必要を記録した。
+
+### 検証結果
+
+- ASCII文字だけのJunctionから`testDebugUnitTest`を実行し、成功した。元の日本語パスからの単体テストはGradle Test Executorのクラスパス文字化けにより起動できなかったが、テスト自体の失敗ではない。
+- `cargo test`: 2件成功、失敗0件。
+- `assembleDebug`: 成功し、バージョン0.2.0のDebug APKを生成した。
+- `zipalign -c -P 16 -v 4`: 成功した。
+- APK内の主要x86_64ネイティブライブラリについて、ELF LOAD Alignが`0x4000`であることを確認した。
+- `aapt dump badging`: Application ID `jp.essential.app`、versionCode 2、versionName 0.2.0、minSdk 26、targetSdk 35を確認した。
+- Android 17、16 KBページのPixel_10aエミュレータへ更新インストールし、コールドスタート、ホーム、新アイコンを確認した。
+- 共有IntentからURLが入力済みのダウンローダーへ直接遷移することを確認した。
+- QR画面でCameraXの仮想カメラプレビュー取得と解析UI表示を確認した。
+- 予定表ジェネレーターの入力UI表示を確認した。
+- 上記のエミュレータ確認中、Essential由来のFATAL EXCEPTIONは検出されなかった。
+- 検査用展開ディレクトリ、約1.7 GBの一時Gradleホーム、単体テスト用Junction、失敗した操作確認用スクリーンショットを検証後に削除した。Junctionはリンクだけを削除し、プロジェクト本体は保持した。
+
+### 生成物
+
+- Debug APK: `C:\Users\waki1\Downloads\Essential-0.2.0-debug.apk`
+- ホーム画面: `essential-home-020.png`
+- 共有URL受信後のダウンローダー: `essential-downloader-020.png`
+- QRスキャナー: `essential-qr-020.png`
+- 予定表ジェネレーター: `essential-schedule-020.png`
+
+### 未検証範囲
+
+- 権利のある実URLを用いたyt-dlp/FFmpegのネットワークダウンロード完走、各サイト固有挙動、MOV/AAC変換結果は未検証。
+- 物理端末でのQR読み取り速度、実際の最小・最大ズーム、複数レンズ切り替え、ライト、Quick Settingsタイル追加操作は未検証。
+- Xiaomi、LEITZ PHONE、OPPO、Galaxy、Pixelの各実機でのOEM Camera HAL挙動と性能は未検証。
+- 予定表の保存先ピッカーを経由したPDF・文章・画像の実ファイル生成はエミュレータでは未検証。生成ロジックとテキスト整形テスト、画面起動は確認済み。
+- Debug APKは開発用署名であり、一般配布用のRelease署名、GPLソース提供方法、ストア提出は未実施。
+
+## 2026-09-02 バージョン0.3.0 UI・予定表強化
+
+### ダウンローダーのモーション
+
+- 丸い選択肢、角丸の画像候補、円形の戻るボタン、設定カードで、それぞれの表示形状と押下モーションのクリップ形状が一致する共通`MotionSurface`を実装した。
+- 押下時は中心を基準に0.965倍へ縮小し、スプリングで復帰する。RippleはMaterial 3の新しいAPIを使用し、各Shapeの内側だけへ表示する。
+- ダウンローダー上部へ「yt-dlpのアップデート」カードを追加し、押下するとアプリの設定画面へ移動するようにした。
+
+### yt-dlpアップデート設定
+
+- 設定画面へyt-dlpの現在バージョン表示と「安定版へ更新」ボタンを追加した。
+- `youtubedl-android`公式APIの`updateYoutubeDL`と安定版チャンネルを使用し、端末内のyt-dlpを更新する。
+- バージョン確認中、更新中、更新成功、既に最新、失敗を別のUI状態として扱う。
+- 更新処理はIO Dispatcherで実行し、画面のメインスレッドを塞がない。
+- Android 17エミュレーターで現在バージョン`2026.08.19`を取得し、安定版更新を実行して「すでに最新です」となることを確認した。
+
+### 予定表ジェネレーター
+
+- 1枚目の参照資料から、発着時間、目的地、備考・体験内容という表構造を抽出した。
+- 2枚目の参照資料から、大きな題名、短い概要、繰り返し項目、広い余白、控えめな枠線という縦型出力の情報階層を抽出した。
+- 参照画像自体は出力へ埋め込まず、指示を含む文書としても扱わず、構造と見た目の参考資料としてのみ使用した。
+- 予定全体と行程表を分離し、各行程に出発、到着、目的地・場所、備考・体験内容を入力できるようにした。
+- 行程は最大20件まで動的に追加でき、2件以上の場合は個別に削除できる。
+- PDF出力は印刷向けの白黒罫線表とし、共通情報、3列の表、注意事項、ページ番号を自動配置する。
+- PDFは行程7件単位で自動改ページし、各ページへ表見出しを再描画する。
+- 画像出力は生成紙色の背景、細い外枠、番号付きアクセント、目的地、時刻、内容を縦に並べ、行程数に応じて画像の高さを自動調整する。
+- 文章出力へ全体情報と番号付き行程表を追加した。
+- 入力画面は既存のEssentialデザインを維持し、予定全体、行程表、出力の3セクションへ整理した。
+
+### テストとデザインQA
+
+- 文章出力の単体テストへ行程の時刻、目的地、内容の検証を追加した。
+- Android計測テストを追加し、エミュレーター内でPDF、UTF-8文章、1600px幅PNGを実ファイルへ生成した。
+- PDFは先頭`%PDF`と1,000バイト以上、文章は題名、PNGは幅1600pxと高さ2263px以上を検証した。
+- `testDebugUnitTest`: 成功。
+- `connectedDebugAndroidTest`: 1件成功、失敗0件。
+- `assembleDebug`: 成功。
+- 生成PDFをPopplerでPNGへレンダリングし、日本語文字、罫線、セル、ページ番号、注意事項に欠けや重なりがないことを確認した。
+- 初回比較でPDF共通情報のラベルが大きすぎるP2差分を発見し、本文に合うサイズへ修正して再生成・再確認した。
+- `design-qa.md`へ参照画像、実装画面、PDFレンダー、縦型画像の比較を記録し、最終結果を`passed`とした。
+
+### 生成物
+
+- Debug APK: `C:\Users\waki1\Downloads\Essential-0.3.0-debug.apk`
+- PDF出力例: `output/pdf/schedule-preview.pdf`
+- 縦型画像出力例: `output/image/schedule-preview.png`
+- 文章出力例: `output/schedule-preview.txt`
+- 予定表入力画面: `essential-schedule-030.png`
+- 行程入力画面: `essential-schedule-entry-030.png`
+- ダウンローダー画面: `essential-downloader-030.png`
+- yt-dlp設定画面: `essential-settings-ytdlp-result-030.png`
+- APK検証: `zipalign -c -P 16 -v 4`成功。packageNameは`jp.essential.app`、versionCodeは`3`、versionNameは`0.3.0`、minSdkは`26`、targetSdkは`35`。
+- APKサイズ: `226,398,248`バイト。
+- APK SHA-256: `63098A247C2150085CED508C57D35E4650B1F67D116570FC3C60C4DAC3855B61`。
+- ビルド用の一時Junction `C:\Users\waki1\Desktop\EssentialBuild`とPDF確認用の一時レンダーを検証後に削除した。Junctionはリンクだけを削除し、プロジェクト本体と正式な出力例は保持した。
+
+### 未検証範囲
+
+- 物理Android端末での押下アニメーションの触感、表示密度、フォント差は未検証。
+- yt-dlp更新APIの「新しいバージョンを実際にダウンロードして置換する」経路は、検証時点で既に最新版だったため未発生。バージョン確認、通信、既に最新の判定は確認済み。
+- 20件の行程を入力した場合の全ページ・長尺画像の目視確認は未実施。7件単位の改ページ処理と最大画像高の制限は実装済み。
+
+## 2026-09-02 バージョン0.4.0 メディア処理・QR高速化・行程表強化
+
+### ダウンローダー
+
+- 動画取得時にyt-dlpが生成した映像ストリームと音声ストリームを個別の一時ファイルとして受け取り、FFmpegでMP4またはMOVへ結合する処理を追加した。
+- 最初はストリームコピーで高速にマルチプレクスし、互換性問題時だけMPEG-4/AAC再エンコードへフォールバックする。
+- 結合後にMediaMetadataRetrieverで映像トラックと音声トラックの両方を確認し、確認できた最終ファイルだけを保存先へ公開する。
+- 分離した中間ファイルは成功・失敗にかかわらず一時領域から削除するようにした。
+- URL入力欄の「貼付」文字ボタンを、UIと役割が一致するMaterial風ペーストアイコンに変更した。
+
+### QRスキャナー
+
+- CameraX ImageAnalysisの`STRATEGY_KEEP_ONLY_LATEST`を明示的に使用し、解析中に到着した古いフレームを待ち行列に溜めない構成にした。
+- 最初のQR文字列を検出した時点でAtomicBooleanによる一回限りの成功状態へ移行し、`clearAnalyzer()`で後続解析を即時停止する。
+- QR専用フォーマット指定に絞り、全候補バーコード列挙の追加コストを除いた。
+- 最優先端末を含む解析希望解像度を1280 x 720に統一し、高画素化よりフレーム回転率を優先した。
+
+### 行程表ジェネレーター
+
+- 機能名を「予定表ジェネレーター」から「行程表ジェネレーター」へ変更し、ホーム、機能一覧、入力画面、出力内容の表記を統一した。
+- 全体のお金、全体時間、移動手段の入力項目を廃止した。
+- 参加者は最後の名前欄へ入力すると次の空欄が自動的に追加され、最大50名まで全員を個別入力できるようにした。
+- Material 3のDateRangePickerを組み込み、カレンダー上で開始日と終了日を選択して範囲表示できるようにした。
+- 各行程に出発時刻、到着時刻、所要時間、出発地、到着地、詳細を持たせた。
+- 出発と到着の間に最大8個の経由地を追加・削除できる経路検索風UIを実装した。
+- PDF、UTF-8文章、PNGの全出力モデルを新しい日付範囲、参加者一覧、経由地、所要時間に対応させた。
+
+### ファイル参照
+
+- 画像、動画、音声をAndroidのOpenDocumentから参照し、MIME種別、サイズ、再生時間、フレームレートを識別する新機能を追加した。
+- 共通圧縮UIに20MB以下、50MB以下、100MB以下、500MB以下のテンプレートと1〜500MBの自由選択スライダーを追加した。
+- 画像はJPEG再圧縮と段階的リサイズによる目標サイズ化、Google ML Kit Subject Segmentationによる被写体分離と透過PNG保存に対応した。
+- 動画は目標サイズに応じたMP4圧縮、再生時間スライダーとフレーム単位の微調整によるPNG書き出し、MP3音声化、GIF化に対応した。
+- GIFはコンパクト、標準、なめらかの3テンプレートを用意し、palettegen/paletteuseで色を最適化する。
+- 音声は開始点と終了点をスライダーで指定し、ストリームコピーで高速に切り出せるようにした。
+- 元ファイルは変更せず、処理結果をMediaStore経由で`Download/Essential`へ別名保存する。
+- arm64-v8aとx86_64では16KBページ対応の保守版FFmpegKit 8.1.7を使い、x86とarmeabi-v7aは既存の同梱FFmpeg経路へフォールバックする。
+- 1MB目標の動画圧縮計測でコンテナ・ビットレート変動による超過を発見したため、上限計算に18%の安全余裕を入れ、再テストで1MiB以内に収まることを確認した。
+
+### Androidナビゲーション
+
+- ComposeのBackHandlerを追加し、機能詳細でAndroidの戻る操作を行うと機能一覧へ、ホーム以外のルート画面で戻るとホームへ移動するようにした。
+- システムジェスチャ、3ボタンナビゲーション、ADBのBackキーの同一経路で動作する。
+
+### テストと確認
+
+- `compileDebugKotlin`、`testDebugUnitTest`、`assembleDebug`をASCIIパスのJunction経由で実行する構成を維持した。
+- Android 17、16KBページのx86_64 Pixel_10aエミュレータで計装テス6件を実行し、全件成功した。
+- 計装テスでは、別々の映像・音声から両トラック付きMP4への結合、動画の1MiB以内圧縮、フレームPNG、MP3、GIF、音声切り取り、AI背景透過、行程表のPDF/TXT/PNG生成を実データで確認した。
+- AI背景透過は初回テスト時にオプションモジュール準備待ちとなり、約20秒後の再実行でモデルを使った透過PNG生成が成功した。
+- 公開サイトの実URLによるyt-dlpダウンロードは実施せず、ネットワークに依存しない合成映像・音声で結合エンジンを検証した。
+
+### 未検証範囲
+
+- Xiaomi、LEITZ PHONE、OPPO、Galaxy、Pixel物理端末でのQR読み取り速度、カメラHAL、ズーム、ライト、フォーカスは未検証。
+- 公開サイトの権利を持つ実URLを用いたyt-dlpの取得から最終保存までの通しテストは未実施。
+- 非常に長い・大きいユーザー実ファイル、幅広いコーデック、物理端末での変換速度と発熱は未検証。
+- Subject Segmentationは被写体と背景の組み合わせで精度が変わるため、合成テス画像の処理成功は実写画像全般の完全な輪郭を保証しない。
+
+### 最終生成物
+
+- Debug APK: `C:\Users\waki1\Downloads\Essential-0.4.0-debug.apk`
+- APKサイズ: `264,898,056`バイト。
+- APK SHA-256: `7E185A7F22DE079F227609C563885F264BA615EB6F939449F48F8C410C65F87E`。
+- `aapt dump badging`でpackageName `jp.essential.app`、versionCode `4`、versionName `0.4.0`、minSdk `26`、targetSdk `35`を確認した。
+- `zipalign -c -P 16 -v 4`は`Verification successful`。
+- arm64-v8a/x86_64の`libffmpegkit.so`と`libavcodec.so`をNDK 27の`llvm-readelf -l`で検査し、全LOADセグメントのAlignが`0x4000`であることを確認した。
+- ホーム画面: `essential-home-040.png`
+- ダウンローダー: `essential-downloader-040-final.png`
+- 行程表入力: `essential-itinerary-040-final.png`
+- 日付範囲カレンダー: `essential-date-range-040-final.png`
+- ファイル参照: `essential-files-040-final.png`
+- Android 17エミュレータで最終APKを上書きインストールし、ホームの4機能、ペーストアイコン、行程表名、日付範囲ダイアログ、ファイル参照初期画面を目視確認した。
+- ファイル参照画面からADB Backキーを送り、ホームへ戻ることをUI階層で確認した。
+
+## 2026-09-04 バージョン0.4.1 下部ナビゲーションと段階的画面遷移
+
+- 添付画像は下部バーの対象領域を示す参考資料として使用した。作業前に既存の作業履歴とEssentialApp.ktを確認した。
+- 標準NavigationBarItemの選択演出と独自アイコン拡大の重複を解消し、下部バーを常設の背景、単一の移動ハイライト、常時不透明なアイコン・ラベルへ分離した。実機固有の消失原因を断定せず、重複演出を除去する構成にした。
+- liquid glass表現として角丸28dpの半透明面、縁の反射グラデーション、ライムとオレンジの選択レンズを追加した。背景の実像をぼかす処理ではなく、既存の光彩背景を透過する軽量なガラス表現としている。
+- 選択レンズは減衰スプリングで3項目の間を連続移動する。アイコンは押下時0.92倍、選択時1.04倍へ変化し、透明度は変化させない。
+- ホーム、機能一覧、設定のProgressive Motion UIを「押下反応→選択位置移動→次画面の出現」に整理した。退場110ms、入場フェード240msと小幅スライド・0.985倍からの復帰340msを50〜70ms遅延で連携する。
+- 画面のスクロールなどの保存可能な状態をSaveableStateHolderで各タブに保持する。ナビゲーションはRole.Tabと選択状態を公開し、48dp以上の操作領域とシステムナビゲーション領域を確保する。
+- ダークテーマ検証で見つかった画面本文の黒文字はScaffold.contentColorをonSurfaceに指定して修正した。
+- assembleDebug成功。既存エミュレーターへ更新インストールし、9回の連続切り替えを10秒動画に記録した。5fpsの40フレーム比較で3アイコンとラベルの欠落がないことを確認した。AndroidRuntimeエラーログなし。
+- ライトテーマとダークテーマの下部バー表示を確認。物理端末での描画不具合の再現・解消と全リフレッシュレートでのフレーム性能は未確認。既存のメディア処理テストは今回再実行していない。
+- 生成物: C:\Users\waki1\Downloads\Essential-0.4.1-debug.apk。画面: essential-nav-041.png / essential-nav-dark-041.png。動画: essential-motion-041.mp4。比較画像: essential-motion-contact-041.png。
+
+## 2026-09-04 バージョン0.4.2 モーションfps・ダークアイコン・紫青テーマ
+
+- 作業前にWork history.txtとMainActivity、テーマ、ホーム・設定の実装を確認した。添付PNGは加工せずessential_icon_dark.pngへコピーした。
+- 設定に30fps・60fps・120fpsを追加。初期値は60fps。選択時にSharedPreferencesへ保存し、次回起動時も復元する。
+- WindowManager.LayoutParams.preferredRefreshRateへ希望値を適用する。API 34未満では対応Hzから最も近い値を選び、API 34以降は希望fpsを直接指定する。API 35以降はComposeの描画ViewへもrequestedFrameRateを指定する。
+- このfps設定はAndroidへの希望値であり、全端末での厳密な30fps制限や120fps維持を保証するフレームリミッターではない。画面能力、省電力、OS、描画負荷により実fpsは異なる。UI内にも明記した。アニメーション時間を引き伸ばしてfps変更を偽装しない。
+- ダーク設定も永続化し、ホームヘッダー、ヒーローカード、設定フッターのEssentialロゴを添付の紫青アイコンへ500msクロスフェードで切り替える。操作の意味を持つ機能アイコンは保持する。
+- ダーク背景を紫から青のグラデーションへ変更し、ヒーローカード、選択面、アクセントも紫青系へ統一した。背景光彩、文字、カード配色は700msで補間し、ライトへの逆方向にも対応する。
+- ランチャーにLightLauncherとDarkLauncherの2エイリアスを追加し、テーマに応じて有効な起動口を切り替える。API 33以降は複数コンポーネントの状態を一括更新する。
+- 最初の検証で、実画面を直接指すエイリアスの無効化によりAndroidがタスクを終了する問題を再現した。空のtaskAffinity・noHistoryのLauncherActivityを経由してMainActivityを別タスクとして起動し、ランチャーアイコンと画面の生存期間を分離した。修正後は往復切り替え後もMainActivityが前面に残ることをdumpsysで確認した。
+- システムステータスバーとナビゲーションバーのアイコン明暗をテーマへ同期した。
+- assembleDebug成功。Android 17エミュレーターで初期値60、30の選択とpreferredRefreshRate=30.0、120の保存・再起動後preferredRefreshRate=120.0、60への復帰とpreferredRefreshRate=60.0を確認した。
+- ランチャーの解決先がLightLauncher/DarkLauncherへ切り替わり、DarkLauncherから再起動できることを確認した。ホームの2か所の新ロゴと設定UIを目視確認した。
+- ライト／ダーク往復の画面を動画へ記録し、背景が中間色を経由することを確認。実機の実fps測定、メーカー製ランチャーのキャッシュ反映時間、Android 8〜14のフォールバック経路は未検証。メディア処理の回帰テストは今回未実施。
+- 生成APK: C:\Users\waki1\Downloads\Essential-0.4.2-debug.apk。画面: essential-settings-042.png、essential-home-dark-042.png。動画: essential-theme-motion-042.mp4。
+
+【2026-09-04 起動リング・ウィジェットのProgressive Motion・軽量化 / 0.4.3】
+- 作業前に既存の作業履歴、MainActivity、EssentialApp、Gradle設定を確認し、既存機能を保持して変更した。
+- StartupMotion.ktを追加。新規起動では最初のComposeフレームを待った後、コルーチンのdelayで最低800ms起動画面を表示する。メインスレッドをsleepで停止しない。Activity再生成ではrememberSaveableで完了状態を復元し、回転などによる不要な再待機を避ける。
+- 直径156dp・線幅3dpの不定進捗リングの中央へ80dp角のEssentialアイコンを配置。アイコン対角線もリング内径を超えないため、四隅が重ならない。保存されたライト／ダークのロゴ・配色を使い、完了時は200msでクロスフェードする。
+- 0.8秒は最低表示時間であり、OS標準スプラッシュ、端末性能、UI初期化を含む起動時間の上限ではない。完了割合を装う数値は表示しない。
+- ホーム、機能一覧、設定のリスト項目とホームの機能カードへProgressiveWidgetを適用。45ms間隔・最大180ms遅延の後、320msでフェード、18dpの移動、0.985から1への拡大を行う。表示済み状態は保存し、スクロールでの不要な繰り返しを避ける。
+- フレームごとの状態読み取りはgraphicsLayerへ遅延させ、子ウィジェットの再コンポーズ・再計測を避ける。下部のliquid glassと画面切替モーション、fps設定は保持した。
+- 背景光彩の無限アニメーションを起動／テーマ切替時のみの1200msアニメーションへ変更。Rust状態表示の無限点滅を静的な状態色にし、待機中の継続描画を減らした。テーマのグラデーション補間は維持した。
+- Gradleでarm64-v8a、armeabi-v7a、x86、x86_64のCPU別APKとuniversal APKを同時生成するよう変更。機能や対応CPUをソースから削らず、必要なCPUのネイティブライブラリだけを配布可能にした。危険な一括依存削除や未検証のR8縮小は行っていない。
+- versionCode=7、versionName=0.4.3。assembleDebug成功。arm64 APKは90,243,823バイト、universalは261,347,019バイトで、同版のuniversal比約65.47%削減。これはCPU別配布による容量削減であり、全処理の実行速度改善率ではない。
+- Android 17・Pixel_10aエミュレーターへx86_64版をインストール成功。DarkLauncherからの起動を録画し、リングとアイコンの分離、0.8秒以上のリング表示、ホーム各カードの段階表示と表示完了を確認。録画はessential-startup-043.mp4、一覧はessential-startup-043-contact.png、リング画像はessential-startup-ring-043.png。
+- connectedDebugAndroidTest成功、既存の回帰テスト6件すべて成功。映像音声結合、音声切り取り、フレーム／MP3／GIF生成、AI背景透過、目標容量圧縮、行程表出力のテストを実施した。
+- arm64 APKのzipalign -c -P 16 4成功。aaptでversionName=0.4.3、native-code=arm64-v8aを確認した。
+- 配布用: C:\Users\waki1\Downloads\Essential-0.4.3-arm64-debug.apk、C:\Users\waki1\Downloads\Essential-0.4.3-universal-debug.apk。既存の旧版APKは削除していない。
+- 実機でのFPS・電力・メモリ測定、Xiaomi等のメーカー端末、全画面の視覚検証、実URLダウンロードは今回未検証。メディア処理アルゴリズムそのものは今回変更していない。
+
+【2026-09-04 起動時の白画面解消・Determinateリング / 0.4.4】
+- 作業前に履歴とManifest、ライト／ダークのXMLテーマ、LauncherActivity、MainActivity、StartupMotionを確認した。
+- 起動転送用LauncherActivityをTheme.NoDisplayに変更。MainActivityへの転送はNO_ANIMATIONを追加し、中継Activityの白い描画を抑制した。アイコン切替のための起動口分離は維持した。
+- 両XMLテーマに非白色のwindowBackgroundとwindowDisablePreviewを指定。プレビューを残した初回検証では別の大きなロゴが出たため、最終版ではこれも抑制し、前の画面からComposeのリングへ直接移ることを録画確認した。OSがプレビュー抑制を尊重しない場合のスプラッシュ背景も非白色に設定した。
+- MainActivityの描画前背景は保存済みテーマの起動グラデーションと一致させた。ライトはFFF9EBからD9F894、ダークは100B23から49307C。
+- CircularProgressIndicatorをDeterminateのprogressラムダへ変更し、線幅を3dpから8dpへ変更。156dpの直径と80dpの中央アイコンは維持し、重なりを防いだ。
+- 最初のフレーム後の実経過時間をelapsedRealtimeで測り、800msに対する比率を0から1へ更新。アニメーション倍率が0でも最低0.8秒の待機を維持する。これは起動待機の進捗であり、未実行の初期化処理の完了率を装うものではない。
+- versionCode=8、versionName=0.4.4。assembleDebug成功、arm64 APKの16KB zipalign確認成功。
+- Android 17エミュレーターへx86_64版を更新インストール。DarkLauncherからコールド起動し、白画面と別ロゴのプレビューなしで起動リングへ移り、太い線が一周してホームへ進むことを録画で確認した。記録: essential-startup-044-final.mp4、essential-startup-044-final.png。
+- 配布先: C:\Users\waki1\Downloads\Essential-0.4.4-arm64-debug.apk、C:\Users\waki1\Downloads\Essential-0.4.4-universal-debug.apk。旧版は保持。
+- メーカー実機・旧Android・ライト設定の起動動画は今回未検証。メディア処理は未変更で、前回の回帰テスト6件は今回は再実行していない。
+
+【2026-09-04 見出しの重なり修正・最低起動時間の撤廃 / 0.4.5】
+- 作業前に履歴とStartupMotion、機能一覧・設定画面を確認した。ユーザー添付画像は不具合の参考として扱った。
+- ProgressiveWidgetがBoxで複数の子を同じ位置に置いていたため、機能一覧／設定の見出し・Spacer・説明が重なっていた。progressiveItem内に幅いっぱいのColumnを追加し、縦積みの測定・配置を保証した。各項目のモーションは維持した。
+- ユーザーの最新指示によりMINIMUM_STARTUP_MILLISと800msの経過待ちループを削除。初回描画フレーム後に進捗を1へ更新し、直ちに画面遷移を開始する。200msのクロスフェード、8dpのDeterminateリング、中央アイコン、白画面対策は保持した。リングを見るための追加待機はない。
+- versionCode=9、versionName=0.4.5。assembleDebug成功。Android 17エミュレーターにx86_64版をインストールし、機能一覧と設定を開いて見出し・説明が重ならないことを画像で確認した。画像: essential-features-045.png、essential-settings-045.png。
+- 配布先: C:\Users\waki1\Downloads\Essential-0.4.5-arm64-debug.apk、C:\Users\waki1\Downloads\Essential-0.4.5-universal-debug.apk。旧版を保持した。
+- 実機・拡大フォント時の全画面検証は未実施。起動時間の定量測定とメディア回帰テストは今回未実施。
+
+【2026-09-04 QR連続検出・ズーム上限・URL削除 / 0.4.6】
+- 作業前に履歴、QR解析、URL入力欄、共有Manifestを確認。画像はYouTube側の独自共有画面の参考とした。
+- 最初の検出でclearAnalyzerと完了フラグにより停止していた処理を削除。KEEP_ONLY_LATESTと解析中ゲートを維持し、継続解析する。新しい文字列は即反映、同じ文字列は更新・振動を抑制。未検出350msで古い結果を消し、再出現も認識できる。
+- 複数QRでは回転補正後の画像中央に近い候補を選択。画面終了後のコールバックをactiveフラグで抑制し、未完了のCameraProvider取得で終了処理をブロックしないよう修正。同期解析例外でもImageProxyを解放する。
+- カメラ公開倍率と30倍の小さい方を上限とし、スライダーとピンチに反映。UIへ実上限と端末対応範囲の注意書きを追加。もともとカメラ公開値を使っており、ハードウェア上限を増やしたわけではない。非対応カメラで30倍を偽装する拡大やソフトウェアズームは未実装。
+- URL欄右側をIconButton2個のRowへ変更し、貼り付けを左、×を右へ配置。×はURL全消去、空欄と処理中は無効。貼り付けも処理中は無効、空クリップボードの件数を確認する。
+- Android公式のCameraControlと共有受信仕様を確認。ACTION_SEND/text/plainは既に登録済みで、エミュレーターのquery-activitiesでもMainActivityを確認。YouTube独自欄の上位表示は送信元側の制御であり、Essentialから固定する変更は行っていない。
+- versionCode=10、versionName=0.4.6。assembleDebug成功。最初の単体テストは既知の日本語パスによるClassNotFoundExceptionで失敗し、ASCII Junction経由のtestDebugUnitTestで成功。追加2テストは即切替・重複抑止・検出抜け・消失後の再認識を確認した。
+- x86_64 APKインストール成功。共有Intentで例示URLをダウンローダーへ受け渡し、貼り付けと×の配置を画像で確認、×タップ後の入力欄が空になることを確認した。実ダウンロードは実行していない。画像: essential-downloader-046.png。
+- 配布: C:\Users\waki1\Downloads\Essential-0.4.6-arm64-debug.apk、Essential-0.4.6-universal-debug.apk。テスト用Junctionは対象を確認したうえでリンクのみ削除し、プロジェクトと旧APKは保持した。
+- 実カメラでのA→B連続読取速度、30倍対応端末のズーム、YouTubeからの実共有操作は未検証。純粋な検出状態テストの成功を実機認識速度の保証として扱わない。
+
+【2026-09-04 GitHub Releasesアプリ内更新 / 0.5.0】
+- 作業前に履歴、Gradle全設定、Manifest、UI画面構成、Rustコア／生成スクリプト、JNIの4 ABI、各機能の責務とライセンス注意書きを確認。Git管理情報・既存Actions・配信先設定は存在しなかった。
+- 構成は単一appモジュール、Kotlin 2.0.21＋Compose/Material 3、Rust JNI、AGP 8.7.3、Gradle 8.10.2、JVM 17、minSdk 26、targetSdk/compileSdk 35、applicationId jp.essential.app。版はGradleの0.4.6/10から0.5.0/11へ変更。
+- update/UpdatePolicy.kt、GitHubUpdateRepository.kt、AppUpdateUi.kt、UpdateInstallActivity.ktを追加。Android連携と通信はKotlin側に分離し、既存のyt-dlp更新とは独立したアプリ更新として扱う。
+- UPDATE_REPOSITORYをGradleプロパティとして追加。公開owner/repoのみ受け付け、未設定時は起動通信なし・設定に未設定と表示。ユーザーに配信先を問い合わせたが本作業中は未提供。APKへTokenは保存しない。
+- GitHub latest APIからdraft/prerelease以外を取得しvX.Y.Zを数値比較、新版のみダイアログへ現在版・最新版・ノート・アップデート／後でを表示。起動時の非同期確認は保存可能なON/OFFとし、通信失敗は本体起動を妨げない。手動再試行も追加。
+- 対応ABI優先・universalフォールバックのrelease APK選択、配信元URLとHTTPSリダイレクト先の制限、接続15秒／読み取り30秒タイムアウト、応答JSON2MiB／APK1GiB上限、空き容量確認を実装。アプリ専用noBackup領域へストリーム保存する。
+- 進捗表示、サイズ一致、提供されていればGitHub digestのSHA-256、applicationId、versionNameとRelease一致、versionCode増分、minSdk、現在の署名証明書セット一致を検証。失敗時は部分ファイルを回収し再試行可能。署名ローテーション・privateリポジトリ・部分再開は対象外。
+- PackageInstaller Sessionへ検証済みAPKをコピー。不明なアプリの許可を設定画面へ誘導し復帰時再確認。非公開Activityと明示的なmutable PendingIntentでOS結果を受け、セッションIDを照合して確認要求・成功・キャンセル・失敗を処理。API 35以降の結果通知起動オプションも指定。
+- USER_ACTION_NOT_REQUIREDの公式条件（対象SDK、自己更新／更新所有者／インストーラー、専用権限）を確認したうえで、今回は確認を必須にするUSER_ACTION_REQUIREDを採用。軽量化方針からWorkManagerの定期確認や無確認インストールは追加していない。
+- .github/workflows/release.ymlを追加。vタグとversionName一致確認、SDK/NDK/Rust準備、Rust4 ABI再ビルド、単体テスト・lint、Secrets経由署名、APK署名・16KB zipalign検証、SHA256SUMS作成、draftに全添付後公開まで定義。未提供のSecretsを作成・アップロードせず、実公開もしていない。
+- app/build.gradle.kts、gradle.properties、AndroidManifest.xml、EssentialApp.kt、.gitignore、.gitattributes、README.mdを更新。APP_UPDATES.mdへアーキテクチャ、運用、必要Secrets、配信手順、制限、debug署名からの移行注意を記載。署名鍵・APK・個人添付・検証録画等はGit対象外に設定した。
+- コンパイル時のEssentialTheme引数不足と設定setterのJVM名衝突を修正して再実行した。
+- lint自体がLifecycle 2.9.0同梱検査とAGP 8.7.3解析APIの不一致でクラッシュしたため、公式方針に従ってlintのみ8.8.2を指定し復旧した。検査全体を無効化する対応はしていない。
+- 復旧したlintが既存エラー8件を検出。MediaMetadataCompat.ktのrelease/finallyでAPI 26のAutoCloseable非対応を解消し、MediaFileEngineとYtDlpDownloadEngineで使用。API 31スプラッシュ属性をvalues-v31とvalues-night-v31へ移動。QRのImageProxy opt-inを明記。TileServiceの旧API検査はAPI 34未満の明示分岐を確認し、該当検査だけ注釈で抑制した。
+- ASCII Junction経由でassembleDebug、assembleRelease、compileDebugKotlin、lintDebug、testDebugUnitTest、connectedDebugAndroidTest成功。その後Gradle build全体も成功。lintは0 errors / 23 warnings（依存更新提案・既存の表示等）。releaseは正式鍵未提供のためローカルではunsigned生成であり、署名付き公開の完了ではない。
+- 単体テストはdebug/releaseそれぞれ8件成功（更新ポリシー5、QR2、行程表1）。新規UpdatePolicyTestは版比較、不正形式、ABI選択、配信URL制限、ハッシュ拒否を検証。
+- Android 17エミュレーターの端末テスト9件成功（既存メディア／行程表6＋更新検証3）。UpdateValidationInstrumentedTestで同版APK・別applicationId・不正APKの拒否を確認。標準PackageInstallerで実更新を完了するE2Eではない。
+- 設定画面のレイアウト、配信先未設定時の手動確認エラー、本体画面が動作を続けることを確認。画像essential-update-settings.png。arm64 debug APKの16KB zipalign検査成功。
+- 配布確認用APK: C:\Users\waki1\Downloads\Essential-0.5.0-arm64-debug.apk、Essential-0.5.0-universal-debug.apk。配信先は空のため設定後に再ビルドが必要。正式署名鍵と現在のdebug鍵が異なる場合、そのまま上書き更新できない旨を説明。旧APKとユーザーデータを削除していない。
+- 残る検証: 公開GitHubリポジトリでの通信・ダウンロード、Actions実行、正式署名による正常更新／拒否・確認・再試行、プロセス終了や端末メーカー差の実機検証。配信先とSecretsはユーザー設定が必要。
+
+【2026-09-04 配信リポジトリ設定の確認】
+- ユーザー提供のGitHub設定ページURLから配信先をAikidoooo/Essential-for-Androidと確認。
+- 作業前に履歴とgradle.propertiesを確認したところ、UPDATE_REPOSITORYは既に同じ値に設定済みだった。既存の設定を保持し、重複変更は行っていない。
+- Secretsページへのアクセス、秘密情報の取得、GitHubへのpush・公開は実施していない。今回の確認で再ビルドは行っておらず、既存APKへの反映を確認したものではない。
+
+【2026-09-04 0.5.1の公開作業】
+- ユーザーの「0.5.1を公開して」という明示的な依頼に基づき開始。作業前に履歴、Git状態、バージョン、公開ワークフローを確認。
+- リモートmainとローカルHEADは0e026f8で一致。GitHubの最新公開版はv0.5.0、v0.5.1タグは存在しないことを確認。
+- app/build.gradle.ktsのversionNameを0.5.1、versionCodeを12へ更新。機能・UI・署名設定は変更せず、既存の未追跡ファイルは公開コミットに含めない。
+- 日本語パスによる検査障害を避けるため、DesktopのEssentialReleaseVerify JunctionからGradle buildを実行。署名鍵・パスワードを読み取らず、正式署名は既存のGitHub Actions Secretsに委ねる。
+- ローカルGradle build成功（1分47秒）。debug/releaseのコンパイル・APK生成・単体テスト各8件成功、lintは0 errors / 23 warnings。FFmpeg/Pythonのzip型ライブラリは従来通りstrip対象外で梱包される。今回は実機・エミュレーターの更新インストール検証を実施していない。
+- app/build.gradle.ktsのみコミットe8e8aba（Release Essential 0.5.1）を作成し、mainへpush。注釈付きタグv0.5.1を作成・pushし、既存のAndroid Releaseワークフローを起動した。
+- GitHub Actions実行33871479452のreleaseジョブ全工程成功を確認。Rust再ビルド、検査、正式署名、apksigner検証、16KB zipalign検証、SHA-256生成、Release公開が成功。
+- 2026-09-04 21:16:53 JSTにv0.5.1正式公開（draft=false、prerelease=false）。latest APIでもv0.5.1を確認。公開URL: https://github.com/Aikidoooo/Essential-for-Android/releases/tag/v0.5.1
+- Release Assetsにarm64-v8a、armeabi-v7a、x86、x86_64、universalの署名付きAPK5種類とSHA256SUMS.txtを確認。arm64版は84,188,525バイト、APIのSHA-256はa567eeafddbae5fdb5dacad4b16d00877985d373834ade0542ad01abde6e471a。
+- 作業用JunctionはLinkTypeと実ターゲットを確認してリンクのみ削除。元プロジェクトと既存未追跡ファイルを保持。mainはorigin/mainと一致。Work history.txtは従来通りローカル記録として保持し、公開コミットに含めていない。
+- 公開成功と端末上の更新成功は区別。ユーザー端末で0.5.0から0.5.1へダウンロード・インストールする実動作は今回未検証。
+
+【2026-09-04 アップデート検知の専用UI】
+- ユーザーから「指示があるまでアップロードしない」と指定。今回以降、明示的な公開指示なしにpush・タグ送信・Release公開を行わない。今回はローカル編集と検証のみ。作業前に履歴とGit状態を確認。
+- UpdateAvailableDialog.ktを追加。既存の簡易AlertDialogを、Essentialアイコン、新旧バージョン、APKサイズ、更新内容、検証案内をまとめた専用カードへ置換。ガラス調グラデーション、テーマ別アイコン、ProgressiveWidgetの登場演出、押下スケール、進捗補間を採用。
+- 長文は本文だけスクロールし操作欄を保持。ダウンロード中は進捗と操作無効、100%到達後は検証中、失敗時は再試行、検証成功後はインストールへ進む表示に切り替える。安全な既存ダウンロード・署名検証・PackageInstaller処理は維持。
+- AppUpdateModelへdownloadFailed状態を追加。プレビュー表示はネットワークとViewModelを必要としない。バージョン番号は0.5.1/12から変更していない。
+- UIテスト専用依存ui-test-junit4をandroidTestへ追加。長い更新内容と文字倍率1.5、ダウンロード中、エラー、インストール準備完了の4ケースを追加。アプリ本体の実行依存は増やしていない。
+- 初回コンパイルでプレビューの必須darkTheme引数漏れを検出し修正。編集途中のlint結果で行番号不整合を伴うインデントエラーが出たため、ソース確定後に再検査。
+- 再検査でGradle build・単体テスト成功、lintエラー0。Android 17上のUIテスト4件が旧EspressoのInputManager.getInstance内部API参照で停止。Android公式リリースノートで修正を確認し、androidTest限定でespresso-core:3.7.0を明示指定。既存端末テスト9件は成功していた。
+- 画像検査で半透明Surfaceの自動contentColorがダークテーマで黒になる問題を発見。外側カードとバージョン枠にonSurfaceを明示して修正。再撮影した画像で白文字とボタン配置を確認。
+- 最終検査: Gradle build connectedDebugAndroidTest成功（1分16秒）。debug/release単体テスト各8件、Android 17端末テスト13件（新規UI4件含む）成功。lintは0 errors / 24 warnings。git diff --check成功。
+- スクリーンショット: output/update-ui-dark-large.png。文字倍率1.5・長いテスト用ノート・ダークテーマの検査画像。画像内の0.5.2は架空のテストデータであり、公開版ではない。通常表示と通信を伴う実更新インストールの実機検証は今回の範囲外。
+- 作業用Junctionはターゲット確認後リンクのみ削除。ローカル履歴へ記録し、コミット・push・タグ送信・Release公開は一切実施していない。今回のUIは既に配布された0.5.1 APKには反映されない。
+
+【2026-09-04 専用更新UIを0.5.2として公開】
+- ユーザーの「ではこれを公開してください」という明示指示に基づき公開作業を開始。未指示のアップロード禁止方針は維持し、この公開のみ実施する。
+- 作業履歴・Git状態・リモートmain・既存Releaseを確認。mainはe8e8aba、最新公開版はv0.5.1、v0.5.2タグは未作成。既存のローカル未追跡ファイルを保持。
+- 専用更新UI、AppUpdateModelの失敗状態、UIテストとテスト限定依存を公開対象とし、versionNameを0.5.2、versionCodeを13へ変更。既存の署名鍵と公開ワークフローを利用する。
+- 0.5.1からの更新通知は旧UIであり、新UIは0.5.2導入後に次の新版を検知した時に表示される旨を説明。
+- 0.5.2でGradle build connectedDebugAndroidTest成功（2分8秒）。単体テストdebug/release各8件、端末テスト13件成功、lintは0 errors / 24 warnings。git diff --check成功。
+- 対象4ファイルだけをコミット947d8f2にまとめてmainへpushし、注釈付きv0.5.2タグを送信。履歴、検査画像、その他ローカル未追跡ファイルは送信していない。
+- GitHub Actions実行33874197636の全工程成功を確認。Rust再ビルド、検査、署名付きAPK生成、署名検証・16KB zipalign、ハッシュ作成、公開を完了。
+- 2026-09-04 21:49:13 JSTにv0.5.2正式公開。latest APIでv0.5.2、draft=false、prerelease=falseを確認。公開URL: https://github.com/Aikidoooo/Essential-for-Android/releases/tag/v0.5.2
+- arm64-v8a、armeabi-v7a、x86、x86_64、universalのAPK5種類とSHA256SUMS.txtを確認。arm64版84,196,305バイト、APIのSHA-256はca76e3d41ab8cfdbe458ade8ac4fe70a626dc5749da55e86048e469849c64baa。
+- 検査用Junctionはリンク・ターゲットを確認してリンクのみ削除。今回の公開は完了し、今後は再び明示的な指示なしにアップロードしない。ユーザー端末上での実更新完了は未検証。
+
+【2026-09-04 X動画の結合改善と画像プレビュー選択】
+- ユーザー報告: X/Twitter動画が1～2秒で静止する。画像モードは自動読み込み後に全候補を表示し選択保存したい。履歴とソースを確認してローカル修正を開始。再現投稿URLを非同期で依頼したが、現時点で未提供。
+- 既存64bit経路がbv*とbaを無条件に別取得し、音声付き動画にも別音声を結合していたこと、および-shortestが短い側で終了することを確認。これらは問題要因候補だが、報告された投稿での原因確定ではない。
+- VideoDownloadPolicyを追加。Xは設定範囲内の直接HTTPS MP4を優先、その他は高画質分離ストリーム優先を維持。bv*を厳密なbvへ変更し、映像＋音声済み・無音映像のフォールバックを用意。欠落フラグメントはスキップ成功扱いにせず中止し、断片再試行を明示。
+- 結合処理は音声付き同形式動画をそのまま保存、分離音声は音声専用トラックから選択し、無音動画も許容。-shortestを除去、タイムスタンプ生成・faststartと映像時間/トラック検査を追加。
+- ImageDiscoveryを追加。Xの公開埋め込みJSONから投稿写真を抽出（動画サムネイルを除外、元画像URLを使用）。通常ページはjsoup 1.18.3でimg/data-src/srcset/OG画像を解析。直接画像URLに対応。取得情報にない動的描画画像・ログイン必須コンテンツは取得保証しない。50件打ち切りを撤廃しURL単位で重複排除。
+- 画像モード・URL変更時に400msの入力待ち後自動解析。旧候補・選択を消去し、初期選択なし。キャンセル済み結果を適用せず、解析元URLが一致する時のみ選択保存可。画像プレビューをLazyColumnに表示、チェックボックスで独立した複数選択を実装。
+- プレビューは最大3並列、640px以下に縮小デコード、8MBのLRUキャッシュ。X一覧はsmall版、保存時はorig版を取得。画像転送上限64MB・ページ情報4MB、タイムアウト・接続解放・一時ファイル掃除を追加。
+- 回帰テストを追加: X形式選択、非Xの分離形式維持、6秒映像＋1秒音声の終盤フレーム変化、結合済み/無音動画、X写真の複数抽出、61枚のHTML画像、画像プレビューの独立複数選択。
+- PC側yt-dlp 2025.12.08の形式パーサーで結合済み動画フォールバックを確認。公開サンプル1689756310219247616のメタデータ確認でhttp-2176 / https / 16.933秒が選択された。これは報告投稿やAndroid実機ダウンロードの再現検査ではない。PCのyt-dlpは更新していない。
+- 最終Gradle build connectedDebugAndroidTest成功（2分4秒）。単体テストdebug/release各10件、Android 17端末テスト18件成功、lintは0 errors / 24 warnings。git diff --check成功。合成映像終盤の異なるフレームと画像複数選択を検証済み。実投稿の保存・再生および動的サイトの全画像取得は未検証。
+- 検査用Junctionを確認してリンクのみ削除。バージョンは0.5.2/13のまま、コミット・push・タグ送信・Release公開は実施していない。既存の未追跡ファイルと配布済みAPKを保持。
+
+【2026-09-04 指定されたX投稿2件の回帰確認】
+- ユーザー提供URL: https://x.com/nakiio7/status/2089651651284267022 と https://x.com/1paimonn/status/2089931573739008505。作業履歴と修正済み選択ポリシーを確認して検証。
+- PCのyt-dlp 2025.12.08で旧条件と新条件を比較。旧条件はhls-925/hls-5091と別HLS音声、新条件は直接HTTPSのhttp-2176/http-10368を選択。新条件で取得したMP4は1件目1280x720・映像5.505秒/329フレーム、2件目1920x1080・映像10.033秒/301フレームで、双方AAC音声あり。
+- PC FFmpegで新MP4全編を-xerror付きでデコードし双方終了コード0。1秒ごとのフレームハッシュが2秒以降も終盤まで変化。旧条件では2件目のHLS音声が9.009秒で、旧-shortest結合により映像が9秒/270フレームまで切られることを確認。PCでは1～2秒で静止する症状自体は再現しなかったため、原因を断定しない。
+- TwitterFixtureInstrumentedTestを追加。投稿ファイルは同梱せずtwitterFixtures=trueの明示実行時だけ使用。外部ストレージのアクセス制限により最初のfixture配置に失敗したため、アプリ専用files領域へ配置して再検査。
+- Android 17エミュレーター上で、修正済みmergeDownloadedStreams、アプリ内FFmpeg全編デコード、MediaMetadataRetrieverによる音声/長さ/2秒地点と終盤のフレーム変化の検査が2投稿とも成功（1テスト内で2件）。PC取得ファイルを端末へ転送した検証であり、端末からのURL取得・保存・ユーザー実機再生の完全E2Eではない。
+- assembleDebug/assembleDebugAndroidTest成功、追加後lintDebug成功。検証素材はoutput/twitter-reproにローカル保存し、リポジトリへ追加・アップロードしていない。アプリ本体の追加変更はなく、テストと履歴のみ追記。公開は実施していない。
+
+【2026-09-04 ダウンロード日時を保存メタデータに適用】
+- ユーザー依頼: ダウンロードしたファイルがフォトアプリで過去に並ばないよう日時情報をダウンロード時刻へ変更。作業履歴とpublishFile処理を確認して開始。既存ファイルの遡及書き換えは行わず、今後のダウンロード保存に適用。
+- DownloadTimestamp.ktを追加し、保存直前に取得した時刻を使用。JPEG/PNGのEXIF撮影・デジタル化・更新日時、UTCオフセット、ミリ秒を更新。AndroidX ExifInterface 1.4.1を明示依存。
+- MP4/MOV/M4A/MP3はFFmpegの-c copyで再エンコードせずに作成日時・ストリーム作成日時・日付を更新。動画のfaststartも設定。生AACなど標準撮影日時タグを持たない形式はファイル更新日時を設定。
+- MediaStoreのDATE_TAKENを埋め込み情報とそろえ、DATE_ADDED/DATE_MODIFIEDはシステム管理のため直接変更しない。新規コピーで保存時のファイル更新日時を生成。Android 8/9はコピー後にsetLastModifiedとメディアスキャンを実施。
+- テスト追加: 古いEXIFを持つJPEG/PNG、古いcreation_timeを持つMP4/MOVの更新と映像/音声/長さ保持、新規保存画像のMediaStore撮影/追加/更新日時。検査用MediaStore画像は一意名で作成しテスト後にその画像だけを削除。
+- 最終Gradle build connectedDebugAndroidTest成功（2分20秒）。単体テストdebug/release各10件、端末XMLは22件中21件成功・1件スキップ（明示fixture指定が必要なX投稿テスト）、失敗0。今回の日時テスト3件は全成功。lintは0 errors / 25 warnings、git diff --check成功。
+- 検査用Junctionをリンクとターゲット確認後、リンクのみ削除。バージョン変更・コミット・push・Release公開はしていない。ユーザーの既存ファイルは変更せず、フォトアプリ固有の並べ替えや実機表示は未検証。
+
+【2026-09-04 Android Studio用プロジェクトへの反映確認】
+- ユーザーの「Android Studioに適応させてください」に対し、履歴・settings.gradle.kts・SDK設定・変更状態を確認。最新の動画/画像/日時修正は元プロジェクトD:\#AI開発\Android\Essentialに保存済み。
+- 元のプロジェクトパスからgradlew.bat :app:assembleDebug --no-daemon --max-workers=1を実行し成功（10秒）。依存解決とdebug APK生成を確認。ファイルの移動や別プロジェクトの作成は不要。
+- Android Studioの画面上でのGradle Sync操作は実施していない。開いているIDEにはGradle同期が必要な場合があるため案内。端末へのインストール・コミット・push・公開は行っていない。
+
+【2026-09-04 アプリ一覧に見当たらない状態の解消】
+- ユーザーがスマホ/エミュレーターのアプリ一覧にEssentialがないと申告。履歴と接続先を確認。接続されていたのはemulator-5554のみで、jp.essential.appは未インストールだった。物理スマートフォンは未接続。
+- 最新のローカルapp-x86_64-debug.apkをadb install -rでエミュレーターへインストールしSuccessを確認。既存アプリの削除やデータ消去はしていない。
+- LAUNCHERの解決結果がjp.essential.app/.LightLauncherであることを確認し起動。MainActivityの起動がStatus: okで完了。実機へのインストールとGitHub公開は行っていない。
+
+【2026-09-04 TikTok Liteの投稿写真読み込み修正】
+- 指定された公開URL https://lite.tiktok.com/t/ZSq8hgqfA/ を確認。共有ページの一般的なimg要素を拾っていたため、投稿写真ではない黒い背景やTikTokロゴが混入していた。
+- TikTok専用の投稿データ抽出を追加。共有ページおよび通常ページの埋め込みJSONから、URLと一致する投稿のimagePost.imagesのみ取得。カバー・共有用サムネイル・ロゴ・おすすめ投稿は取得対象外。投稿データがない場合もHTML画像へのフォールバックはせず明確なエラーを表示する。
+- 写真ごとの署名付きURLを改変せず利用し、代替CDN URLを保持。プレビューと画像保存で同じ候補情報を利用し、取得失敗時に代替URLへ切り替える。TikTok CDNにはRefererを付与。認証・Cookie・アクセス制限の回避は実装していない。
+- 投稿データの二種類の構造、写真2枚のみの抽出、ロゴやカバーの除外、投稿ID不一致時の除外を検査するテストを追加。実URLを使う検査はtiktokLive=trueの場合だけ実行する。
+- Gradle build成功（compile、単体テスト、lintを含む）。lintは0 errors / 25 warnings。接続テストXMLは25件中23件成功・2件スキップ・失敗0。別途指定URLの実通信テストをAndroid 17エミュレーターで実行し3件全成功。1086×1448の投稿写真2枚の取得と両方のプレビュー画像デコードを確認した。
+- 最新debug APKをエミュレーターに再インストール。物理端末・TikTok全投稿・今回の写真のフォトアプリ保存表示は未検証。既存のダウンロード日時やX対応を保持。バージョン変更、コミット、push、Release公開はしていない。
+
+【2026-09-04 Instagram複数写真投稿の一覧取得】
+- 指定URL https://www.instagram.com/p/DcqT5raE6-9/ の公開埋め込みデータで写真10枚を確認。従来の汎用HTML画像抽出では表紙サムネイル1枚しか取得できなかった。
+- ImageDiscoveryにInstagram専用経路を追加。ホストと投稿コードを検証し、追跡クエリを外した公開embed/captionedページを読む。ログイン・Cookie・トークンは使用しない。
+- InstagramImageParserを追加。対象shortcodeに一致する投稿のedge_sidecar_to_childrenを順番どおり抽出。動画・プロフィール・表紙の重複を除外し、高解像度候補を優先、署名クエリと代替画像URLを保持。単一写真にも対応。取得できない複数投稿は表紙だけを成功扱いにしない。
+- 実通信テストの初回はServerJS内contextJSON形式を未処理のため失敗。JavaScriptを実行せずJSON文字列のみ復号する処理と回帰テストを追加して修正。通常application/json形式にも対応する。
+- Instagram CDN取得時のRefererを追加。既存の画像選択UI・保存・日時更新・TikTok/X対応を維持。認証必須・非公開・埋め込み禁止など公開情報から取得できない場合はエラー表示。
+- テスト: 20枚の順序と動画/表紙除外、投稿コード一致、単一画像、不完全カルーセル、ServerJS形式を検査。指定投稿の実通信テストをAndroid 17エミュレーターで再実行し4件成功。10枚全件の取得とプレビューの画像デコード成功を確認。
+- 最終Gradle build成功（debug/releaseコンパイル、単体テスト、lint）。lintは0 errors / 25 warnings。最終APKの端末テスト全体はOK (29 tests)、実通信/fixture指定が必要な3件は通常実行ではスキップ。Instagram実通信は前述の別実行で成功。git diff --check成功。
+- 最新debug APKをエミュレーターにインストール。実スマートフォンと今回の写真のフォトアプリ保存表示、Instagram全投稿の取得は未検証。検証用Junctionのみ後片付けし、元プロジェクトは維持。バージョン変更・コミット・push・Release公開はしていない。
+
+【2026-09-04 画像一覧の横並び操作と機能画面へのモーション】
+- DownloaderScreenの画像候補を168dp幅カードのLazyRowへ変更。横スワイプで全候補を確認でき、既存の複数選択・チェックボックス・画像取得処理を保持。
+- MotionSurfaceにcombinedClickableと長押しコールバックを追加。画像タップで選択を切り替え、長押しで角丸の拡大プレビューダイアログを開く。ダイアログの閉じる・戻る・外側タップで終了できる。プレビューは既存の軽量ビットマップを再利用し追加通信を避ける。
+- 長押しは選択を切り替えず、画像読み込み中・失敗時もダイアログ内に状態を表示。既存の押下縮小と形状に沿うリップルを維持し、操作説明を更新。
+- EssentialAppのactiveFeature切替をAnimatedContentで包み、ホーム/機能一覧からダウンローダー・QR・行程表・ファイル参照への移動と戻りに、既存タブ切替と同じ段階的フェード・スライド・縮尺モーションを追加。既存の画面内容、共有URL、戻る処理を保持。
+- ImageCandidateUiTestに画像タップ、長押しでの拡大プレビュー、閉じた後の選択状態維持を追加。Gradle build connectedDebugAndroidTest成功（1分48秒）。debug/releaseコンパイル・単体テスト・lintを含む。端末テスト29件、実通信など明示指定3件スキップ、失敗0。lintは0 errors / 25 warnings。
+- 最新debug APKをエミュレーターへ再反映。物理端末での遷移の滑らかさ・全画面サイズの視覚確認は未実施。作業用Junctionのみ後片付けし、公開・push・コミット・バージョン変更は行わない。
+
+【2026-09-06 将来機能「ミニゲーム」「日課」のウィジェット準備】
+- ユーザー指示どおり機能本体は作らず、EssentialAppのホームと機能一覧に「ミニゲーム」「日課」の準備中ウィジェットを追加。新しい画面ルート、データ保存、権限、バックグラウン処理は追加していない。
+- ホーは既存のFeatureGridに2枚を追加し、liquid glass、押下マイクロインタラクション、ProgressiveWidgetの段階的表示を継承。機能一覧は既存CategoryPanelに「準備中」表示を追加し、利用可能なカードのみ矢印を表示。
+- EssentialSymbolにゲームコントローラーと時計のCanvasアイコンを追加。既存テーマ色とダークモードに追従する。
+- 両ウィジェットの押下は既存のonComingSoonだけを呼び、「この機能は、これからEssentialに追加されます」と表示。未実装画面には遷移しない。
+- 元パスからのGradle buildで日本語パス由来のClassNotFoundExceptionが再発。コードのコンパイルとlintはその時点で成功。英数字の検証用JunctionからcleanTest test lint assembleDebugを再実行しBUILD SUCCESSFUL（17秒）。debug/release単体テスト各10件、合計20件成功、失敗0。lintは0 errors / 25 warnings。
+- 最新debug APKをAndroid 17エミュレータに上書き。UIツリーでミニゲーム・日課・準備中2件を確認し、ミニゲーム押下で準備中メッセージを確認。物理端末の視覚確認は未実施。バージョン変更・コミット・push・GitHub Release公開はしていない。
+
+【2026-09-06 機能画面の下方からの段階的Progressive Motion】
+- ホームまたは機能一覧から機能を開く際の画面全体の横スライドを廃止。入場側は短いフェードだけにし、内部のまとまり単位の動きを主役にした。
+- ProgressiveWidgetの入場を透明度0、下方34dp、縮小0.99から380msで最終位置へ変化するよう調整。まとまりごとに65msずつ開始を遅らせ、最大520msの段階表示とした。アニメーション中の値はgraphicsLayerで読み、子UIの再計測を避ける方針を維持。
+- ダウンローダーのTopBar、注意、設定導線、URL、種類、形式、画像一覧、状態、実行ボタンをprogressiveItem化。行程表は見出し・入力欄・参加者・行程・出力をまとまり化。ファイル参照は参照、圧縮、種別ごとの加工、結果をまとまり化。
+- QRスキャナーはカメラ表示、スキャンオーバーレイ、上下コントロールの3層を順番に入場。カメラ権限画面にも同じ下方からの入場を適用。カメラバインド・QR解析の実装は変更していない。
+- 英数字の検証用JunctionからcleanTest test lint assembleDebugを実行しBUILD SUCCESSFUL（1分）。debug/release単体テスト各10件、合計20件成功、失敗0。lintは0 errors / 25 warnings。git diff --checkは空白エラーなし（CRLF予告のみ）。
+- 最新debug APKをAndroid 17エミュレータに上書き。4機能すべてでプロセス稼働を確認し、ダウンローダーとファイル参照はUI表示も確認。QRはカメラ状態、行程表は画面状態により文字検出での確認はできなかったがクラッシュなし。物理端末で60/120fpsの滑らかさは未検証。バージョン変更・コミット・push・GitHub Release公開はしていない。
+
+【2026-09-06 ホームショートカットの初回設定】
+- ホームヒーローカードを固定のダウンローダー起動から設定済みFeatureRouteの起動へ変更。表示文言を「（選択機能）を開く」にし、タップ時は既存の機能画面遷移・Progressive Motionを利用する。
+- 設定画面に「ホームのショートカット」カードを追加。ダウンローダー、QRスキャナー、行程表ジェネレーター、ファイル参照をRadioButtonで選択できる。選択時にhome_shortcut_featureとhome_shortcut_configuredをappearance SharedPreferencesへ保存し、選択状態を即時反映する。
+- MainActivityが初回設定済みフラグを読み、共有URL・外部機能指定がない初回起動だけinitialSetupRequiredをEssentialRootへ渡す。EssentialAppは初期Destinationを設定画面にして、ホームの一瞬表示を避ける。外部共有やQRクイック設定起動は従来どおり優先する。既定値はダウンローダー。
+- 設定カード用の機能名・アイコン対応を追加。既存のテーマ、liquid glass、Progressive Motion、戻る操作を維持。新しい機能本体や権限は追加していない。
+- 初回のGradle検証では日本語パス由来のClassNotFoundExceptionが発生したため英数字Junctionへ切替。selectableの引数指定を修正後、compileDebugKotlin、testDebugUnitTest、lintDebug、assembleDebugがBUILD SUCCESSFUL。debug/release単体テスト合計20件成功、lintは0 errors / 25 warnings。
+- Android 17エミュレーターへdebug APKを反映し、初回設定カード・ダウンローダー選択肢をUIツリーで確認。QRスキャナーを選択してホームへ戻り、ヒーロー文言「QRスキャナーを開く」を確認。設定カードの再表示なしも確認。ユーザーの物理端末では未検証。バージョン変更・コミット・push・GitHub Release公開はしていない。
+
+【2026-09-06 ミニゲーム画面の準備枠】
+- ユーザー指示に合わせ、既存の「ミニゲーム」ホーム／機能一覧カードから開ける専用画面を追加。画面タイトルと説明を配置し、既存の戻る操作・liquid glassカード・Progressive Motionを継承した。
+- ミニゲーム画面内に「どすこい」「マインスイーパー」の2つの枠を作成。機能本体やゲームロジックはまだ実装せず、各カードは「準備中」表示と既存の準備中Snackbarだけを返す。
+- FeatureRoute.MiniGameを設定のホームショートカット候補にも含め、ホームショートカットに設定した場合も同じ画面へ遷移できるようにした。
+- 英数字の検証用JunctionからcleanTest test lint assembleDebugを実行しBUILD SUCCESSFUL（1分26秒）。debug／release単体テスト合計20件成功、失敗0、lintは0 errors。NDKのffmpeg／python zipライブラリstrip警告は従来どおりパッケージング継続で成功した。
+- Android 17エミュレーターへdebug APKを反映し、MainActivityのmini_gameルートで「ミニゲーム」「どすこい」「マインスイーパー」と準備中表示をUIツリー確認。どすこいカード押下で準備中Snackbarを確認。物理端末の視覚確認は未実施。バージョン変更・コミット・push・GitHub Release公開はしていない。
+
+【2026-09-06 Google Pixelの処理速度に関する切り分け】
+- 接続端末は物理Pixelではなく、Android 17のエミュレーター「sdk_gphone16k_x86_64」（AVD名Pixel_10a）だった。AVDは4 vCPU、RAM 2048MB、GPU mode=auto、hardware GPU enabled。スワップ総量377MBのほぼ全量が使用済み。
+- 現在インストールされたEssential 0.5.3（versionCode14）のメモリはPSS約97MB。コールド起動のWaitTimeは655msで、起動そのものは極端に遅くない。
+- 起動後の描画統計は59フレーム中Janky 9（15.25%）、50パーセンタイル19ms、90パーセンタイル93ms。モーション期間を含むエミュレーター結果であり、実Pixelの性能を証明する測定ではない。
+- Android Studioはアプリを起動中のエミュレーターの性能を消費するため間接的に影響するが、APKの実行速度を直接遅くするものではない。デバッグビルドはリリースビルドより遅くなる可能性があるため、正式配布版との比較が必要。
+- 対応策として、AVDのRAMを4GB以上、GraphicsをHardware、実機Pixelではデバッガーなしの配布APKを比較する。コード側はProgressive Motionを要求どおり維持し、無限アニメーションや重複処理は追加していない。次の調査には「どの画面のどの処理が、実機で何秒かかるか」の記録が必要。
+
+【2026-09-06 ミニゲーム本体とどすこいHTML統合】
+- ミニゲーム画面をメニュー階層から実装画面へ拡張。各カードを選択すると専用画面へ入り、戻るボタンとAndroidの戻る操作でメニューへ戻れるようにした。
+- マインスイーパーを端末内で実装。9×9・地雷10個、タップで開封、長押しで旗、空白セルの連鎖開封、地雷表示、クリア／ゲームオーバー、再スタートに対応。ゲーム状態は画面内で完結し、通信や権限を要求しない。
+- どすこいカードの説明を「言葉遊び」に変更。指定されたC:\\Users\\waki1\\Desktop\\sample\\sample-html\\Dosukoi.htmlをapp/src/main/assets/dosukoi.htmlへ同梱し、WebViewで起動する専用画面を追加した。HTML内のFirebase設定・匿名認証・Realtime Databaseルーム同期処理を保持し、JavaScript・DOM Storage・キャッシュ・ハードウェア描画を有効化、横スクロールを抑制するアプリ向け調整を注入した。
+- WebView上部にアプリの戻る導線とFirebase連携状態を表示。WebViewAssetLoaderで`https://appassets.androidplatform.net/assets/dosukoi.html`として配信し、HTMLの初期化完了後に最大約5秒間接続状態を再確認する。既存の外部Firebase SDKをHTTPS経由で利用し、エミュレーターで「Firebase接続済み」を確認した。GitHubなどのトークンは追加していない。
+- READMEにミニゲームとどすこいの構成を追記。新規Kotlin実装はfeature/minigame/MiniGameScreen.kt、HTMLはapp/src/main/assets/dosukoi.html。
+- `androidx.webkit:webkit:1.12.1`を追加してWebViewAssetLoaderを利用。英数字の検証用Junctionからtest lint assembleDebugを実行しBUILD SUCCESSFUL。debug／release単体テスト成功、lintエラー0。Android 17エミュレーターへdebug APKを反映し、ミニゲームメニュー、言葉遊び説明、マインスイーパー盤面・再スタート、どすこいHTML（Create Room等）とFirebase接続済み表示をUIツリーで確認した。物理端末でのFirebase実通信・複数端末ルーム同期は未検証。バージョン変更・コミット・push・GitHub Release公開はしていない。
+
+【2026-09-06 どすこいWebViewの真っ白表示対策】
+- 実機でWebView領域が空白になる端末差を想定し、ページ完了後にHTMLの高さ・透明度・メニュー画面の表示状態を補正するCSSを注入。`100vh`依存による高さ0、初期opacity 0の残留、最初のscreen-section未表示を同時に回避した。
+- 補正後のdebug APKをAndroid 17エミュレーターへ反映し、DOSUKOI、Create Room、Firebase接続済み表示をUIツリーで再確認。ビルド・単体テスト・lintは成功、バージョン変更・コミット・push・GitHub Release公開はしていない。
+
+【2026-09-06 どすこい読み込み中の白画面対策】
+- 外部Firebase／PeerJSスクリプトの読み込み中にWebView領域が空白に見えないよう、「どすこいを読み込み中…」「Firebaseへ接続しています」のComposeローディング表示を追加。
+- `onPageCommitVisible`でHTML本文の初回描画時点からローディング表示を解除し、外部スクリプト完了まで待たずにゲーム画面を見せるようにした。本文は`loadDataWithBaseURL`でアセット内容を直接渡す方式を維持。
+- 最終debug APKをAndroid 17エミュレーターへ反映し、DOSUKOI、Create Room、Firebase接続済み表示を確認。test lint assembleDebug成功、バージョン変更・コミット・push・GitHub Release公開はしていない。
+
+【2026-09-06 どすこい表示タイミングの再修正】
+- `onPageCommitVisible`で早期にローディングを解除すると、外部スクリプト待ちの端末で再び空白に見えるため、解除タイミングを`onPageFinished`へ変更。読み込み中は専用メッセージを維持する。
+- ユーザー提供サイトを優先読み込みし、通信エラー時は同梱HTMLへフォールバックする構成を追加。実サイトと同梱HTMLのどちらでもゲーム画面を表示できるようにした。
+- 最終APKをAndroid 17エミュレーターへ反映し、DOSUKOI、Create Room、Firebase接続済み表示を確認。test lint assembleDebug成功。バージョン変更・コミット・push・GitHub Release公開はしていない。
+
+【2026-09-06 実ゲームHTMLの動作確認】
+- ユーザー指定の`D:\\#AI開発\\#過去の産物\\Freedom\\Dosukoi\\Dosukoi.html`とアプリ内`app/src/main/assets/dosukoi.html`のSHA-256が一致することを確認。サイト版と同じFirebase設定・ゲーム処理を使用している。
+- 最終debug APKをAndroid 17エミュレーターへ反映し、どすこいメニューのCreate Roomをタップ。Firebase接続済み状態のままルーム待機画面へ遷移し、ルームコードとRoom ID表示を確認した。複数端末での対戦同期は未検証。
+
+【2026-09-06 どすこい通信タイムアウト時の表示保証】
+- サイトURLの読み込み完了通知が返らない端末でも画面が空白のままにならないよう、8秒経過後に同梱HTMLへ自動フォールバックするタイマーを追加。通常はユーザーサイトを優先し、通信ハング時はアプリ内HTMLでゲームUIを表示する。
+- フォールバック処理をWebViewのエラー通知とタイマーの両方から安全に呼び出せるラムダへ整理。`test`、`lint`、`assembleDebug`がBUILD SUCCESSFUL。
+- Android 17エミュレーターへ`app-x86_64-debug.apk`を再インストールし、機能一覧→ミニゲーム→どすこいを12秒後に確認。ヘッダー、言葉遊び、Firebase接続済み、ゲーム画面（Create Room等）の表示をUIツリーで確認。物理端末での視覚確認は未実施。バージョン変更・コミット・push・GitHub Release公開はしていない。
+
+【2026-09-06 Android Studio用AVDへの最新版APK再インストール】
+- Android Studioで使用するAVD `Pixel_10a` を起動し、Androidシステムの起動完了（`sys.boot_completed=1`）を待機。
+- `app/build/outputs/apk/debug/app-x86_64-debug.apk`をADB経由で再インストールし、インストール成功を確認。パッケージは`jp.essential.app`、versionCode=14、minSdk=26、targetSdk=35。
+- 再インストール後にEssentialを起動し、UIAutomatorでEssential画面とアプリパッケージの表示を確認。GitHubへの公開・pushはしていない。
+
+【2026-09-06 どすこいCreate Room・Join Room非表示の根本修正】
+- 端末スクリーンショットで、WebView内部が空白になる現象を再現。Chrome DevTools ProtocolでDOMを確認し、Create RoomとJoin Roomは生成済みだったが、Android WebView上で`html`と`body`の高さが0px、`.dosukoi-container`とメニュー画面が50pxになっていたため表示領域外へ配置されていたことを特定。
+- WebViewを透明な明示的Hardware Layerから通常レイヤーと暗色背景へ変更。添付された`dosukoi.html`を`WebViewAssetLoader`のアプリ内HTTPSオリジンから直接読み込む構成へ変更した。
+- JavaScriptで実Viewport高さをpxとしてhtml、body、dosukoi-container、全screen-sectionへ設定し、画面回転・サイズ変更時も再計算するリスナーを追加。コンテナの不要な50px下余白を除去した。
+- Create Room・Join Roomを含むメニューの高さがViewportの80%以上になった場合だけローディングを解除するよう表示成功判定を強化。
+- `test`、`lint`、`assembleDebug`がBUILD SUCCESSFUL。最新版をAndroid Studio用AVD `Pixel_10a`へ再インストールし、実スクリーンショットでDOSUKOI、Create Room、Join Room、参加ボタンを確認。Create Room押下後に名前未設定ダイアログが表示されることも確認した。GitHubへの公開・pushはしていない。
+
+【2026-09-06 どすこい起動モーションと遊ぶ遷移】
+- どすこい画面に専用イントロステージを追加。DOSUKOI文字を下方向から0.8秒でフィードインし、中央ユーザーアイコンを0.4秒後、左右アイコンを0.6秒後にそれぞれ0.5秒でフィードインするタイムラインをCSSアニメーションで実装した。
+- 左右アイコン開始から0.3秒後（起動開始から0.9秒）に「遊ぶ」ボタンを0.5秒でフィードイン。アイコンはタイトルの背面に配置し、押下時はボタン無効化、イントロのフェードアウト、ルーム選択画面のフィードインを行う。
+- Create Room・Join Roomは起動直後には操作できず、「遊ぶ」押下後にだけ表示・操作できるようDOMを分離。既存のルーム作成・参加イベントとFirebase処理は維持した。
+- `test`、`lint`、`assembleDebug`がBUILD SUCCESSFUL。Android Studio用AVDへ最新版を反映し、実スクリーンショットでDOSUKOI、3つのユーザーアイコン、遊ぶボタン、押下後のCreate Room・Join Roomを確認した。GitHubへの公開・pushはしていない。
+
+【2026-09-06 どすこいユーザーアイコンの縦長カード化】
+- 参考画像に合わせ、3つのユーザーアイコンを縦長のLiquid Glassカード上へ配置。カードは透明感のあるグラデーション、角丸、境界線、ぼかし、内側ハイライトを持ち、アイコンはカード中央の円形領域に表示する。
+- DOSUKOI文字との重なり順（カード背面、タイトル前面）と起動タイムライン（中央0.4秒、左右0.6秒、各0.5秒）を維持。「遊ぶ」ボタンとルーム選択への遷移も変更していない。
+- `test`、`lint`、`assembleDebug`がBUILD SUCCESSFUL。Android Studio用AVDへ最新版を反映し、実スクリーンショットで縦長カード3枚、DOSUKOI、遊ぶボタンを確認。遊ぶ押下後のCreate Room・Join Room表示も再確認した。GitHubへの公開・pushはしていない。
+
+【2026-09-06 どすこいフィードイン時間の2.5倍化】
+- 起動モーションの再生時間を約2.5倍へ延長。DOSUKOI文字を0.8秒から2.0秒、サブタイトルを0.5秒から1.25秒、各ユーザーカードを0.5秒から1.25秒、「遊ぶ」ボタンを0.5秒から1.25秒に変更した。
+- 表示開始の遅延（中央0.4秒、左右0.6秒、遊ぶ0.9秒）は維持し、表示順と重なりを変えずにゆっくりしたフィードインにした。
+- `test`、`lint`、`assembleDebug`がBUILD SUCCESSFUL。Android Studio用AVDへ最新版APKを再インストールして反映した。GitHubへの公開・pushはしていない。
+
+【2026-09-06 どすこいルーム選択のProgressive Motionと暗色背景】
+- 「遊ぶ」押下後のルーム選択画面に、ヒーロー、ルームカード、各カードの順で下からフィードインするProgressive Motion UIを追加。既存のCreate Room・Join Roomのイベント処理は維持した。
+- 起動イントロのDOSUKOI、サブタイトル、3枚のユーザーカード、「遊ぶ」ボタンを別領域に配置し、タイトル・カード・ボタンが重ならないように調整。ボタンは中央固定位置でアニメーション中もずれないようにした。
+- HTML、WebView注入CSSともに背景を単色の暗色（#0f0f1a）へ統一し、背景画像・オーバーレイを無効化。画面全体で同じ暗い背景が表示されるようにした。
+- `test`、`lint`、`assembleDebug`がBUILD SUCCESSFUL。Android Studio用AVDへ最新版APKを再インストールした。GitHubへの公開・pushはしていない。
+
+【2026-09-06 どすこいシステムバーとヘッダー配色の統一】
+- どすこい表示中はScaffoldのコンテンツをエッジ・ツー・エッジへ広げ、ステータスバー、Composeヘッダー、WebView、ナビゲーションバーを#0f0f1aで連続させた。
+- どすこい画面のシステムアイコンを明色へ切り替え、ヘッダーのタイトル、説明、Firebase状態、戻るボタンも暗色背景で読める配色へ変更。どすこいを離れると元のシステムバー設定へ復元する。
+- `test`、`lint`、`assembleDebug`がBUILD SUCCESSFUL。最新版APKをAndroid Studio用AVDへ再インストールし、どすこい画面と遊ぶ押下後のルーム選択画面で上下の暗色統一を確認した。GitHubへの公開・pushはしていない。
+- システムバー領域の拡張状態はどすこい選択中だけに限定し、ミニゲーム一覧とマインスイーパーのレイアウトへ影響しないよう選択状態を親画面へ連携した。
+
+【2026-09-06 どすこい操作モーション・Profile UI刷新・ルーム画面再設計】
+- どすこいの主要なボタンとルームカードへ、押下時の縮小・明度変化・境界線・影の変化を共通適用。ポインター操作とキーボード操作の両方で、形状に沿ったフィードバックが返るようにした。
+- 「遊ぶ」押下時にボタンを一時無効化し、イントロのDOSUKOIロゴが下方向へ移動して退場。ルーム画面側のDOSUKOIロゴが上方から入場する遷移を追加し、同じロゴが重なって見えないようにした。
+- ルーム画面をROOM PLAYのキッカー、グラスカード、ヒーローアイコン、説明文で再構成。Create Room／Join Roomの既存ID・入力・Firebase処理は維持し、カード単位の段階的フィードインを継続した。
+- 右下Profileショートカットをアイコン付きピル型に刷新。プロフィール作成を中央寄せのLiquid Glassボトムシートへ変更し、プレビュー名の入力連動、閉じる・保存ボタン、既存localStorage／profileManager保存処理を維持した。
+- WebViewでmax-heightのmin()が0pxになる端末互換問題を確認し、プロフィールシートの上限を620pxへ変更。Androidエミュレーターでキーボード表示／非表示の両方でシート全体が表示されることを確認した。
+- `test`、`lint`、`assembleDebug`がBUILD SUCCESSFUL。最新版APKをAndroid Studio用AVDへ再インストールし、Profileシートと「遊ぶ」後のルーム選択画面を実スクリーンショットで確認。GitHubへの公開・pushはしていない。
+
+【2026-09-06 DOSUKOI対戦待機場・Fluid Gradient・ゲームUI刷新】
+- Room作成後の画面を、近未来の対戦前ロビーを意識した「対戦待機場」へ刷新。レーダー状の待機演出、SYNC ONLINE状態、招待コードとコピー、参加者スロット、ホスト状態、退出／対戦開始操作を一画面に整理した。
+- Join RoomのID入力欄右端へ外部SVGのペーストアイコンを追加。Android側は`WebViewCompat.addWebMessageListener`を使用し、`https://appassets.androidplatform.net`のメインフレームだけに許可したClipboardブリッジから文字列を取得する。6文字の英数字へ正規化し、失敗時は画面内に日本語で状態を表示する。
+- DOSUKOIのルーム選択画面を左右約20 CSS pxの均等余白へ統一し、Create RoomとJoin Roomの幅を一致させた。画面背景へ暗い青・紫のFluid Gradient motionを追加し、transform中心のGPU合成と`prefers-reduced-motion`を併用した。
+- ゲーム中UIをMaterial 3 Expressiveで再構成。LIVE MATCH、ラウンド状態、ルームコード、MATCH SIGNAL、3つのゲームフェーズ、主要操作、対戦履歴をLiquid Glassカードと大きな非対称形状で整理し、既存のFirebase通信・ゲーム進行用IDとイベント処理は維持した。
+- 主要ボタン、ルームカード、コピー／ペースト操作、動的に生成される数字／投票ボタンへ押下縮小、明度、境界線、影のマイクロインタラクションを共通適用した。
+- Android 17 Pixel_10aエミュレーターでルーム選択、ルーム作成後の待機場、ゲーム中UIを実スクリーンショットで確認。初回確認で参加者カードと下部操作の重なりを検出し、要素のflex縮小を禁止し、待機場／ゲーム中のプロフィールショートカットを隠して解消した。
+- HTMLとJavaScriptの構文確認、Gradleの`test`、`lint`、`assembleDebug`を実行しBUILD SUCCESSFUL。最終`app-x86_64-debug.apk`をエミュレーターへ再インストールした。複数物理端末間の対戦同期と実クリップボード文字列の貼付は未検証。GitHubへの公開・pushはしていない。
+
+【2026-09-06 DOSUKOI中央揃え・マインスイーパー旗モード・QRタイル修正】
+- DOSUKOIのCreate Room／Join Roomカードを中央揃えへ修正。モバイル用の旧90%幅指定がカードを左寄せにしていたため、DOSUKOI専用ルールでカードを親幅100%・左右autoへ戻し、親グリッドも中央配置にした。
+- Join Roomのペーストボタン周囲からLiquid Glass背景、境界線、影、backdrop-filterを除去。アイコン単体のフラットな操作面と押下時の縮小フィードバックだけを残した。
+- DOSUKOIの上部基準色とWebView内基準色を`#0f0f1a`へ統一し、Fluid Gradientの暗色背景との境界をなくした。
+- マインスイーパーの視認性を改善。盤面カードとセルのコントラスト、セル境界線、数字ごとの色分け、状態情報の余白を調整した。状態カードに「旗モード ON／OFF」ボタンを追加し、ON時はタップで旗を立てる／外す、OFF時はタップで開示・長押しで旗の従来操作を維持する。再スタート時は旗モードをOFFへ戻す。
+- クイック設定のQRアイコン`ic_qr_tile.xml`をMaterial Icons QrCode2相当の塗りつぶしセルへ置換。stroke依存の小サイズ崩れを解消した。
+- 最終APKをAndroid 17 Pixel_10aエミュレーターへ再インストール。DOSUKOIカードの中央揃え、フラットなペーストアイコン、マインスイーパーの旗モードONと旗数増加をスクリーンショットおよびUIツリーで確認した。
+- 日本語パス由来のGradleテストキャッシュ問題を検証用Junction経由で回避し、`test`、`lint`、`assembleDebug`をBUILD SUCCESSFULで完了。既存のJNI strip警告は継続するがAPK生成を阻害しない。GitHubへの公開・pushはしていない。
+
+【2026-09-06 DOSUKOIゲームUIサイズ・退出ボタン・120fps対応・軽量化】
+- ユーザー提供のゲーム画面を基準に、ゲーム画面の上部ステータス、MATCH SIGNAL、フェーズカード、条件カード、入力／提出行、WORD LOGのサイズと余白を再調整した。`max-width:390px`または`max-height:760px`の小型端末では見出し、入力欄、条件値、履歴が重ならないレスポンシブ密度へ切り替える。
+- ゲーム画面のWORD LOG下部へ`leaveGameBtn`（退出する）を追加し、既存の`leaveDosukoiRoom`へ接続した。退出時はFirebase／P2Pのルーム状態、参加者、履歴、ルームコードを初期化し、起動演出へ戻らずCreate Room／Join Roomのルーム選択画面を表示する。
+- `MiniGameScreen`へ設定画面の`motionFps`（30／60／120、既定60）を伝播。Android 15以降はDOSUKOI WebViewの`requestedFrameRate`へ希望値を設定し、ページ完了後にも`data-motion-fps`とCSSカスタムプロパティを注入する。ブラウザ標準のtransform中心アニメーションを維持し、120Hz端末でのProgressive Motion描画に対応した。
+- WebViewの不要なズーム、多重ウィンドウ、file/contentアクセスを無効化し、同梱HTMLをHTTPSのWebViewAssetLoader経由だけで読み込むようにして、描画経路と不要なリソース消費を整理した。透明Hardware Layerは使用せず、Fluid Gradientの見た目を保持した。
+- `output/dosukoi-game-size-exit-final.png`、`output/dosukoi-game-comparison-final.png`、`output/dosukoi-room-after-exit-final.png`を生成し、Android 17 Pixel_10aエミュレーターでゲーム画面、120fps値、退出後のルーム選択復帰を確認した。
+- Junction経由で`test lint assembleDebug --no-daemon --max-workers=1`を実行しBUILD SUCCESSFUL。最終debug APKをエミュレーターへ再インストールした。既存のstatusBarColor/navigationBarColor非推奨警告とJNI strip警告は残るが、ビルドは成功している。GitHubへのpush・Release公開はしていない。
+
+【2026-09-07 DOSUKOI条件カード境界修正・モーション滑らかさ改善】
+- ユーザー提供の`codex-clipboard-8351a120-2045-419d-acf3-32907181392e.png`を視覚基準として、Phase 3「条件に合う言葉を入力」画面を確認した。条件カードの青い境界線が親フェーズカードの左右からはみ出す原因は、旧レイアウトの`.word-conditions { min-width: 400px; }`が小型画面でも残っていたことだった。
+- `app/src/main/assets/dosukoi.html`の後段レスポンシブルールで`.word-conditions`へ`min-width:0`、`max-width:100%`、`box-sizing:border-box`、`margin-inline:auto`を設定し、`#phaseWord`へ`box-sizing:border-box`と`overflow:hidden`を追加した。これにより条件カードの境界線はフェーズカードの内側に収束し、横方向オーバーフローを防止した。
+- モーションの滑らかさを高めるため、Phase／セクション入場アニメーションを`translate3d`へ統一し、`backface-visibility:hidden`と`will-change:transform, opacity`を付与した。イージングを`cubic-bezier(0.22, 1, 0.36, 1)`へ揃え、フェーズ0.70秒、セクション0.74秒の自然な減速へ調整した。既存の設定FPS（30／60／120）伝播と120fps WebView対応は維持した。
+- エミュレーター`emulator-5554`（Android 17 Pixel_10a、1080 x 2424）へ`app-x86_64-debug.apk`を再インストールし、WebViewへ接続してPhase 3を再現した。DevTools計測でフェーズカード`x=36.76..374.67`、条件カード`x=52.76..358.67`、`overflow:hidden`、`min-width:0px`、`max-width:100%`、`box-sizing:border-box`を確認した。
+- `output/dosukoi-game-smooth-final.png`と`output/dosukoi-game-smooth-comparison.png`を生成し、参照画像との左右比較で青い線のはみ出しが解消され、入力欄・提出ボタン・WORD LOG・退出ボタンの配置に切れや重なりがないことを確認した。
+- Junction`C:\Users\waki1\Desktop\EssentialDosukoiBattleUI`経由で`test lint assembleDebug --no-daemon --max-workers=1`を実行しBUILD SUCCESSFUL。既存のstatusBarColor/navigationBarColor非推奨警告とJNI strip警告は継続するが、今回の変更による新規エラーはない。GitHubへのpush・Release公開はしていない。
