@@ -633,3 +633,9 @@
 - エミュレーター`emulator-5554`（Android 17 Pixel_10a、1080 x 2424）へ`app-x86_64-debug.apk`を再インストールし、WebViewへ接続してPhase 3を再現した。DevTools計測でフェーズカード`x=36.76..374.67`、条件カード`x=52.76..358.67`、`overflow:hidden`、`min-width:0px`、`max-width:100%`、`box-sizing:border-box`を確認した。
 - `output/dosukoi-game-smooth-final.png`と`output/dosukoi-game-smooth-comparison.png`を生成し、参照画像との左右比較で青い線のはみ出しが解消され、入力欄・提出ボタン・WORD LOG・退出ボタンの配置に切れや重なりがないことを確認した。
 - Junction`C:\Users\waki1\Desktop\EssentialDosukoiBattleUI`経由で`test lint assembleDebug --no-daemon --max-workers=1`を実行しBUILD SUCCESSFUL。既存のstatusBarColor/navigationBarColor非推奨警告とJNI strip警告は継続するが、今回の変更による新規エラーはない。GitHubへのpush・Release公開はしていない。
+
+【2026-09-07 GitHubリポジトリ公開】
+- 公開前に秘密鍵、パスワード、GitHubトークンの実値が含まれていないことを確認した。APK、スクリーンショット、動画、Kotlin一時ログは`.gitignore`の`/output/`、`/.kotlin/`、`*.apk`で公開対象から除外した。
+- ソースコード、DOSUKOI同梱HTML／アイコン、Android設定、端末方針、機能境界、作業履歴、Design QAをstageし、コミット`f23c8d6b0d767e39f4d17593cbf115c292fc743d`（`Essentialの機能とDOSUKOI UIを更新`）を作成した。
+- `git push origin main`を実行し、GitHubリポジトリ`https://github.com/Aikidoooo/Essential-for-Android`の`main`へpushした。`git ls-remote`でリモートの`refs/heads/main`が同じコミットIDを指すことを確認した。
+- GitHub ActionsのRelease公開はタグpushで起動するため、今回はタグ作成・Release公開は行っていない。Releaseを公開する場合は、`app/build.gradle.kts`のversionNameと一致する`vX.Y.Z`タグを別途pushする。
