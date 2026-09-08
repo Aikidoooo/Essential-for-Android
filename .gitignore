@@ -21,3 +21,5 @@ keystore.properties
 # ローカル検証のスクリーンショット・変換ファイル・Gradle/Kotlinの一時ログは公開しない。
 /output/
 /.kotlin/
+# 廃止機能のローカル復元用バックアップは公開しない。
+/backups/

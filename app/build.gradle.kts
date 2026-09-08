@@ -9,14 +9,14 @@ require(updateRepository.isEmpty() || updateRepository.matches(Regex("[A-Za-z0-9
 
 android {
     namespace = "jp.essential.app"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "jp.essential.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 15
-        versionName = "0.5.4"
+        versionCode = 16
+        versionName = "0.5.5"
         buildConfigField("String", "UPDATE_REPOSITORY", "\"$updateRepository\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -92,7 +92,6 @@ dependencies {
     implementation("org.jsoup:jsoup:1.18.3")
     implementation("androidx.exifinterface:exifinterface:1.4.1")
     implementation("androidx.webkit:webkit:1.12.1")
-
     implementation("androidx.camera:camera-core:1.5.3")
     implementation("androidx.camera:camera-camera2:1.5.3")
     implementation("androidx.camera:camera-lifecycle:1.5.3")

@@ -91,7 +91,7 @@ internal fun MiniGameScreen(
             onBack = { selectedGame = GameSelection.Menu },
             motionFps = motionFps,
         )
-        GameSelection.Minesweeper -> MinesweeperScreen(onBack = { selectedGame = GameSelection.Menu })
+        GameSelection.Minesweeper -> MinesweeperFlow(onBack = { selectedGame = GameSelection.Menu })
     }
 }
 
@@ -207,9 +207,75 @@ private data class MineCell(
 
 private enum class MinesweeperStatus { Playing, Won, Lost }
 
+private enum class MineDifficulty(
+    val label: String,
+    val description: String,
+    val boardSize: Int,
+    val mineCount: Int,
+) {
+    Compact("8 × 8", "テンポよく遊べる・地雷10個", 8, 10),
+    Standard("9 × 9", "標準サイズ・地雷10個", 9, 10),
+    Wide("12 × 12", "じっくり挑戦・地雷22個", 12, 22),
+}
+
 @Composable
-private fun MinesweeperScreen(onBack: () -> Unit) {
-    var cells by remember { mutableStateOf(createMineBoard()) }
+private fun MinesweeperFlow(onBack: () -> Unit) {
+    var difficulty by remember { mutableStateOf<MineDifficulty?>(null) }
+    if (difficulty == null) {
+        MinesweeperSizeScreen(onBack = onBack, onSelect = { difficulty = it })
+    } else {
+        MinesweeperScreen(difficulty = difficulty!!, onBack = { difficulty = null })
+    }
+}
+
+@Composable
+private fun MinesweeperSizeScreen(
+    onBack: () -> Unit,
+    onSelect: (MineDifficulty) -> Unit,
+) {
+    BackHandler(onBack = onBack)
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(start = 20.dp, top = 22.dp, end = 20.dp, bottom = 28.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        progressiveItem(0) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                GameBackButton(onClick = onBack)
+                Spacer(Modifier.width(12.dp))
+                Column {
+                    Text("マス目を選択", style = MaterialTheme.typography.headlineLarge)
+                    Text("遊びやすい盤面サイズを選んでください", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        MineDifficulty.entries.forEachIndexed { index, option ->
+            progressiveItem(index + 1) {
+                GameMenuCard(
+                    title = option.label,
+                    description = option.description,
+                    icon = when (option) {
+                        MineDifficulty.Compact -> "🌱"
+                        MineDifficulty.Standard -> "💣"
+                        MineDifficulty.Wide -> "⚡"
+                    },
+                    accent = when (option) {
+                        MineDifficulty.Compact -> Color(0xFF27B99A)
+                        MineDifficulty.Standard -> Color(0xFF5A8DEE)
+                        MineDifficulty.Wide -> Color(0xFF9C6BFF)
+                    },
+                    onClick = { onSelect(option) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MinesweeperScreen(difficulty: MineDifficulty, onBack: () -> Unit) {
+    val boardSize = difficulty.boardSize
+    val mineCount = difficulty.mineCount
+    var cells by remember(difficulty) { mutableStateOf(createMineBoard(boardSize, mineCount)) }
     var status by remember { mutableStateOf(MinesweeperStatus.Playing) }
     var flagMode by remember { mutableStateOf(false) }
     val flags = cells.count { it.flagged }
@@ -217,7 +283,7 @@ private fun MinesweeperScreen(onBack: () -> Unit) {
     val safeCells = cells.count { !it.isMine }
 
     fun restart() {
-        cells = createMineBoard()
+        cells = createMineBoard(boardSize, mineCount)
         status = MinesweeperStatus.Playing
         flagMode = false
     }
@@ -239,7 +305,7 @@ private fun MinesweeperScreen(onBack: () -> Unit) {
             status = MinesweeperStatus.Lost
             return
         }
-        cells = revealSafeCells(cells, index)
+        cells = revealSafeCells(cells, index, boardSize)
         if (cells.count { it.revealed && !it.isMine } == safeCells) status = MinesweeperStatus.Won
     }
 
@@ -254,7 +320,7 @@ private fun MinesweeperScreen(onBack: () -> Unit) {
                 Spacer(Modifier.width(12.dp))
                 Column {
                     Text("マインスイーパー", style = MaterialTheme.typography.headlineLarge)
-                    Text("地雷を避けてすべてのマスを開こう", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("${difficulty.label}・地雷${mineCount}個", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -269,7 +335,7 @@ private fun MinesweeperScreen(onBack: () -> Unit) {
             ) {
                 Text(
                     when (status) {
-                        MinesweeperStatus.Playing -> "地雷 10個　・　旗 $flags　・　開いたマス $revealedSafe/$safeCells"
+                        MinesweeperStatus.Playing -> "地雷 ${mineCount}個　・　旗 $flags　・　開いたマス $revealedSafe/$safeCells"
                         MinesweeperStatus.Won -> "クリア！すべての安全なマスを開きました"
                         MinesweeperStatus.Lost -> "ゲームオーバー　地雷を踏みました"
                     },
@@ -309,10 +375,10 @@ private fun MinesweeperScreen(onBack: () -> Unit) {
                     .padding(10.dp),
                 verticalArrangement = Arrangement.spacedBy(3.dp),
             ) {
-                repeat(MINE_BOARD_SIZE) { row ->
+                repeat(boardSize) { row ->
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                        repeat(MINE_BOARD_SIZE) { column ->
-                            val index = row * MINE_BOARD_SIZE + column
+                        repeat(boardSize) { column ->
+                            val index = row * boardSize + column
                             MineCellView(cells[index], index, ::open, ::toggleFlag)
                         }
                     }
@@ -381,34 +447,33 @@ private fun RowScope.MineCellView(
     }
 }
 
-private const val MINE_BOARD_SIZE = 9
-private const val MINE_COUNT = 10
-
-private fun createMineBoard(): List<MineCell> {
-    val mineIndexes = (0 until MINE_BOARD_SIZE * MINE_BOARD_SIZE).shuffled().take(MINE_COUNT).toSet()
-    return (0 until MINE_BOARD_SIZE * MINE_BOARD_SIZE).map { index ->
-        MineCell(index in mineIndexes, adjacentMineCount(index, mineIndexes))
+private fun createMineBoard(boardSize: Int, mineCount: Int): List<MineCell> {
+    val cellCount = boardSize * boardSize
+    val mineIndexes = (0 until cellCount).shuffled().take(mineCount.coerceAtMost(cellCount - 1)).toSet()
+    return (0 until cellCount).map { index ->
+        MineCell(index in mineIndexes, adjacentMineCount(index, mineIndexes, boardSize))
     }
 }
 
-private fun adjacentMineCount(index: Int, mineIndexes: Set<Int>): Int = neighbors(index).count { it in mineIndexes }
+private fun adjacentMineCount(index: Int, mineIndexes: Set<Int>, boardSize: Int): Int =
+    neighbors(index, boardSize).count { it in mineIndexes }
 
-private fun neighbors(index: Int): List<Int> {
-    val row = index / MINE_BOARD_SIZE
-    val column = index % MINE_BOARD_SIZE
+private fun neighbors(index: Int, boardSize: Int): List<Int> {
+    val row = index / boardSize
+    val column = index % boardSize
     return buildList {
         for (rowOffset in -1..1) for (columnOffset in -1..1) {
             if (rowOffset == 0 && columnOffset == 0) continue
             val nextRow = row + rowOffset
             val nextColumn = column + columnOffset
-            if (nextRow in 0 until MINE_BOARD_SIZE && nextColumn in 0 until MINE_BOARD_SIZE) {
-                add(nextRow * MINE_BOARD_SIZE + nextColumn)
+            if (nextRow in 0 until boardSize && nextColumn in 0 until boardSize) {
+                add(nextRow * boardSize + nextColumn)
             }
         }
     }
 }
 
-private fun revealSafeCells(source: List<MineCell>, start: Int): List<MineCell> {
+private fun revealSafeCells(source: List<MineCell>, start: Int, boardSize: Int): List<MineCell> {
     val result = source.toMutableList()
     val pending = ArrayDeque<Int>()
     pending.add(start)
@@ -417,7 +482,7 @@ private fun revealSafeCells(source: List<MineCell>, start: Int): List<MineCell> 
         val cell = result[index]
         if (cell.revealed || cell.flagged || cell.isMine) continue
         result[index] = cell.copy(revealed = true)
-        if (cell.adjacentMines == 0) neighbors(index).forEach { pending.add(it) }
+        if (cell.adjacentMines == 0) neighbors(index, boardSize).forEach { pending.add(it) }
     }
     return result
 }
@@ -486,9 +551,15 @@ private fun DosukoiWebViewScreen(onBack: () -> Unit, motionFps: Int) {
                 var loadBundledPage: ((WebView) -> Unit)? = null
                 WebView(context).apply {
                     webViewRef = this
-                    // 透明なHardware Layerは一部WebViewでbackdrop-filterを全消去するため使用しない。
+                    // DOSUKOIのtransform/opacityモーションをWebViewのGPU合成レイヤーへ固定する。
+                    setLayerType(View.LAYER_TYPE_HARDWARE, null)
                     setBackgroundColor(AndroidColor.rgb(15, 15, 26))
                     overScrollMode = View.OVER_SCROLL_NEVER
+                    isVerticalScrollBarEnabled = false
+                    isHorizontalScrollBarEnabled = false
+                    if (Build.VERSION.SDK_INT >= 26) {
+                        setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
+                    }
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
                     settings.cacheMode = WebSettings.LOAD_DEFAULT

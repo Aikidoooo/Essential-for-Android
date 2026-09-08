@@ -2,6 +2,7 @@ package jp.essential.app.ui.theme
 
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
@@ -42,26 +43,27 @@ private val LightColors = lightColorScheme(
 val LocalEssentialDark = staticCompositionLocalOf { false }
 
 private val DarkColors = darkColorScheme(
-    primary = Color(0xFFD1BCFF),
-    onPrimary = Color(0xFF30105C),
-    primaryContainer = Color(0xFF49307C),
-    onPrimaryContainer = Color(0xFFEBDDFF),
-    secondary = Color(0xFFFFB86E),
-    onSecondary = Color(0xFF492900),
-    secondaryContainer = Color(0xFF263D82),
-    onSecondaryContainer = Color(0xFFDDE4FF),
+    // ライト配色から補間したときに紫へ寄らない、夜空の青と中性色を基準にする。
+    primary = Color(0xFFB9D7FF),
+    onPrimary = Color(0xFF0B2948),
+    primaryContainer = Color(0xFF1E3A5A),
+    onPrimaryContainer = Color(0xFFD3E7FF),
+    secondary = Color(0xFFB7C9E8),
+    onSecondary = Color(0xFF1B2B3F),
+    secondaryContainer = Color(0xFF293D5B),
+    onSecondaryContainer = Color(0xFFDCEBFF),
     tertiary = Color(0xFFFFB4A1),
     onTertiary = Color(0xFF611300),
     tertiaryContainer = Color(0xFF852000),
     onTertiaryContainer = Color(0xFFFFDAD1),
-    background = Color(0xFF100B23),
-    onBackground = Color(0xFFE5E4D8),
-    surface = Color(0xFF19152F),
-    onSurface = Color(0xFFF1EBFF),
-    surfaceVariant = Color(0xFF34304B),
-    onSurfaceVariant = Color(0xFFD0C7E1),
-    outline = Color(0xFF909487),
-    outlineVariant = Color(0xFF43483A),
+    background = Color(0xFF0D1522),
+    onBackground = Color(0xFFE7EEF7),
+    surface = Color(0xFF151F2D),
+    onSurface = Color(0xFFF0F5FC),
+    surfaceVariant = Color(0xFF2B384A),
+    onSurfaceVariant = Color(0xFFC7D2E2),
+    outline = Color(0xFF8D9AAD),
+    outlineVariant = Color(0xFF445263),
 )
 
 private val EssentialTypography = Typography(
@@ -158,4 +160,4 @@ fun EssentialTheme(
 
 @Composable
 private fun animateThemeColor(color: Color): Color =
-    animateColorAsState(color, tween(700), label = "テーマ配色の補間").value
+    animateColorAsState(color, tween(420, easing = FastOutSlowInEasing), label = "テーマ配色の補間").value

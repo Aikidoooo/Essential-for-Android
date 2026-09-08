@@ -648,3 +648,141 @@
 - 公開コミット`fe6b50449ef55c029bc9dbe041c9e58b3bcd1cf9`を`main`へpushし、注釈付きタグ`v0.5.4`を同コミットへ作成してpushした。GitHub Actions run `34042277663`のAndroid Releaseが`completed / success`で完了した。
 - GitHub Release `Essential v0.5.4`がdraft=false、prerelease=falseで正式公開されたことを公開APIで確認した。arm64-v8a、armeabi-v7a、x86、x86_64、universalの署名付きAPK 5種類と`SHA256SUMS.txt`がuploaded状態で添付されている。
 - 公開された`SHA256SUMS.txt`を取得し、5種類すべてのAPKに64桁のSHA-256値が記録されていることを確認した。Release URLは`https://github.com/Aikidoooo/Essential-for-Android/releases/tag/v0.5.4`。
+
+【2026-09-07 DOSUKOI 60／120fps描画経路の最適化】
+- DOSUKOIの低fps感を調査し、全画面Fluid Gradientへ毎フレーム適用される大きな`blur`、その上の複数`backdrop-filter`、ロゴ遷移と呼吸モーションの`filter`変更が再ラスタライズを起こす構造を特定した。
+- 60／120fpsプロファイルではFluid Gradientを3色の主レイヤー1枚へ集約し、blurと副レイヤーを停止した。Liquid Glassの透明感は既存の半透明グラデーション、境界線、内側ハイライトで維持し、背景・ロゴ・押下モーションをGPU合成しやすい`translate3d`、`scale`、`opacity`中心へ変更した。
+- WebViewを明示的なHardware Layerへ設定し、レンダラ優先度を`RENDERER_PRIORITY_IMPORTANT`へ指定。不要な縦横スクロールバーを無効化し、同梱HTMLの初期値を60fpsプロファイルにして、Android側の設定値注入前から軽量な描画経路を使うようにした。
+- Androidのfps設定時に希望値だけを渡す方式を改め、現在と同じ解像度を持つ実在のDisplay Modeから30／60／120fpsへ最も近いモードを選び、`preferredDisplayModeId`と`preferredRefreshRate`を同時に設定するようにした。120Hz端末では120Hzモードを選び、非対応端末では最も近い対応Hzへ安全にフォールバックする。
+- Junction`C:\Users\waki1\Desktop\EssentialDosukoiFps`経由で`test lint assembleDebug --no-daemon --max-workers=1`を実行しBUILD SUCCESSFUL。最終の追加最適化後も`assembleDebug`が成功した。既存のシステムバー色API非推奨警告とJNI strip警告以外に新規警告・エラーはない。
+- Android 17 Pixel_10aエミュレーターへ`app-x86_64-debug.apk`を再インストールし、設定値120fpsからDOSUKOIを起動して計測した。エミュレーター自体は物理60HzのみのためWindowは60.000004Hzへ正しくフォールバック。7秒間の`gfxinfo`で383フレーム、Janky frames 5／1.31%、Frame deadline missed 5を確認した。実120Hz表示の最終確認は120Hz対応物理端末で必要。GitHubへのpush・Release公開はしていない。
+
+【2026-09-07 日課実装・マインスイーパー盤面選択・DOSUKOI Profile軽量化】
+- ホームと機能一覧の「日課」を利用可能な機能へ変更し、端末内保存されるデイリー／ウィークリー目標を実装した。絵文字、目標名、デイリー1〜5pt、ウィークリー5〜15ptを設定でき、追加、編集、削除、期間ごとの達成表示に対応する。デイリーは日付、ウィークリーはISO週をキーに自動リセットし、同じ期間内のポイント二重獲得を防止した。
+- 合計ポイント、最大LV60、次レベルまでの進捗をMaterial 3 Expressiveのグラデーションカードで表示した。必要ポイントはLV1の20ptからレベルごとに10ptずつ増加する。確認ダイアログ付きのポイントリセットを追加し、合計ポイントとレベルだけを0へ戻し、作成した日課と達成状態は維持する仕様にした。
+- 日課カードを長い目標名でも操作が重ならない二段構成へ変更し、編集、削除、達成操作を下段へ整理した。編集時は絵文字、目標名、種別、ポイントを再設定でき、種別を変更した場合だけ旧期間の達成状態を解除する。すでに付与済みのポイントは編集によって遡及増減しない。
+- マインスイーパー開始前に盤面選択画面を追加し、8×8／地雷10個、9×9／地雷10個、12×12／地雷22個から選べるようにした。ゲームから戻る操作は盤面選択へ戻り、既存の旗モード、開示、勝敗処理を各盤面サイズで利用できる。
+- ホームのダウンローダーアイコンの矢印先端を複数の細い線から一体の塗りつぶしPathへ変更し、LazyColumnのProgressive Motion中やスクロール位置によって先端だけが消える描画不整合を解消した。Pixel_10aエミュレーターのホーム最上部で矢印全体が表示されることを確認した。
+- DOSUKOIのプロフィールシートから40pxのbackdrop blurと入力欄の自動フォーカスを除去し、表示中は背面のFluid Gradientと常時アニメーションを一時停止する。シートをGPU合成しやすいtranslate3d／opacity中心へ変更し、幅をborder-boxへ統一、横方向overflowを隠して不要な横スクロールと描画領域超過を解消した。
+- Android 17 Pixel_10aエミュレーターでプロフィールシートを3秒計測し、186フレーム中Janky 4（2.15%）、中央値18ms、90パーセンタイル25ms、Missed Vsync 0を確認した。エミュレーターは60Hz・SwiftShaderのため、120Hz物理端末での最終体感確認は別途必要。
+- `RoutineLevelTest`を追加し、レベルごとの必要ポイント増加、最大LV60、デイリー／ウィークリー期間キーを検証した。`test lint assembleDebug --no-daemon --max-workers=1`を実行してBUILD SUCCESSFUL。最終debug APKをエミュレーターへ再インストールし、盤面3種類、日課画面、追加、編集ダイアログ、ポイントリセット確認、プロフィールシート、ダウンローダーアイコンを実画面で確認した。GitHubへのpush・Release公開はしていない。
+
+【2026-09-07 アプリ内更新のストレージ増加防止】
+- 「本体約81MBに対して更新後約230MB」の内訳をAndroid 17 Pixel_10aエミュレーターで調査した。`no_backup`は153,544KBで、そのうち153,536KBが`youtubedl-android`の単一実行環境だった。内訳はFFmpeg約96MB、Python約54MB、yt-dlp約3MBで、過去3世代のAPKが並んでいる状態ではなかった。これはダウンローダーが端末内実行に必要な展開済みランタイムであり、削除すると再展開が必要になるため維持する。
+- 更新APKについては、PackageInstallerへの書き込みと`fsync`、Session commitが完了した直後に元の`update.apk`を削除するよう変更した。更新によってアプリプロセスが終了し、成功callbackを受け取れない場合でも約APK1本分が残り続けない。
+- ダウンロードしたReleaseバージョン、ダウンロード元versionCode、時刻をSharedPreferencesへ記録する。次回起動時に、現在のアプリへ反映済み、管理情報のない旧形式、24時間を超えた更新APK、中断した`.part`、更新ディレクトリ内の不要ファイルを自動回収する。
+- インストール確認をキャンセルしてアプリへ戻った場合は、UIを再ダウンロード可能な状態へ戻す。PackageInstaller Sessionへコピーした元APKは保持せず、再試行時だけ安全に取得し直すことでストレージと整合性を優先した。
+- `UpdateStoragePolicyTest`を追加し、有効な新バージョンAPKの一時保持、更新完了後の削除、管理情報なし、24時間期限切れを検証した。`test lint assembleDebug --no-daemon --max-workers=1`はBUILD SUCCESSFUL。
+- 最終debug APKをエミュレーターへ再インストールし、`no_backup/app-update/update.apk`と`update.part`を模擬配置して起動したところ、ディレクトリごと自動削除された。`no_backup/youtubedl-android`は起動前後とも153,536KBで変化せず、必要な実行環境を誤削除していないことを確認した。GitHubへのpush・Release公開はしていない。
+
+【2026-09-07 ホームClassi枠の追加】
+- ホームの「使える機能」グリッドへ、機能本体をまだ持たない準備枠として「Classi」を追加した。既存のFeatureCard、Liquid Glass、Progressive Motion、準備中バッジ、押下フィードバックをそのまま利用し、タップ時は既存の準備中Snackbarを表示する。
+- Classi用に、学習の循環を表す開いた円とアクセント点のCanvasアイコンを追加した。既存のEssentialSymbol体系とダーク／ライトテーマの色適応を維持した。
+
+【2026-09-07 日課レベル報酬・指定XP式】
+- 日課画面へLV16、20、25、30、40、50、55、60のレベル報酬カードを追加した。ユーザー提供の7枚のEssentialアイコン画像を256pxの`drawable-nodpi`へ最適化して取り込み、LV60にはアプリアイコン変更権のプレビューを表示する。
+- 報酬カードは未解放、解放済み、獲得済みを表示し、解放後の「報酬を受け取る」操作と獲得済みレベルの端末内保存に対応した。ポイントリセットを行っても獲得済み報酬は失わない。
+- レベル計算を指定式へ置換した。LV1〜15、16〜39、40〜49、50〜54、55〜59の区間ごとに必要XPを計算し、15で割った結果を四捨五入する。LV60以上の必要XPは0とし、既存の日課ポイントをXPとして最大LV60まで累積する。
+- レベルカードへ「次のレベルまでXP」と「必要XP」を表示し、旧20pt開始の計算を廃止した。`RoutineLevelTest`へ各区間境界、四捨五入、最大レベル、期間キーの検証を追加した。
+- 添付画像取り込み後に`test lint assembleDebug --no-daemon --max-workers=1`を実行しBUILD SUCCESSFUL。既存のシステムバー色API非推奨警告とyt-dlp由来JNI strip警告は継続するが、今回の変更による新規エラーはない。エミュレーターへdebug APKを再インストールし、日課画面で合計0pt、必要XP25、レベル報酬カードの表示をUIツリーで確認した。GitHubへのpush・Release公開はしていない。
+
+【2026-09-07 日課報酬折りたたみ・アプリアイコン設定】
+- レベル報酬一覧を見出しタップで展開／折りたたみできるカードへ変更し、展開状態は画面再生成後も保持する。報酬レベルをLV16、20、25、30、35、40、50、55、60へ組み替え、LV25にユーザー提供の紫色アイコン、旧LV25報酬をLV30、旧LV30報酬をLV35へ移動した。
+- 設定画面へ折りたたみ可能な「アプリアイコン」設定カードを追加した。現在のテーマアイコンと、解放済みの日課報酬アイコンを一覧表示し、LV条件を満たしたアイコンだけを選択できる。選択状態は`appearance`へ保存し、設定からいつでも変更できる。
+- Androidの`activity-alias`を報酬アイコンごとに追加し、ランチャー入口を一つだけ有効化する方式でアイコンを切り替える。LV25紫アイコンはダーク寄り、LV30緑・LV50水色などはライト寄りとして、選択時にアプリテーマと起動背景のグラデーションをアイコンの雰囲気へ合わせる。DOSUKOIのWebView背景は既存の暗色を維持する。
+- ダークテーマ標準アイコンをユーザー提供の黒いEssentialアイコンへ更新した。アイコン画像は必要表示サイズへ縮小し、APK容量の増加を抑えた。
+- `test lint assembleDebug --no-daemon --max-workers=1`を再実行してBUILD SUCCESSFUL。Android 17 Pixel_10aエミュレーターへ再インストールし、設定画面のアイコン一覧、LV25／LV30／LV35の解放表示、ダークアイコン選択後の`DarkLauncher`有効化を確認した。既存のシステムバー色API非推奨警告とJNI strip警告は継続する。GitHubへのpush・Release公開はしていない。
+
+【2026-09-07 テーマ切替・日課報酬アイコン配置・折りたたみモーション改善】
+- テーマ切替をMaterial 3 Expressiveの専用ピルへ置換した。ダーク時は右側の月と星、ライト時は左側の太陽を表示し、トラック色、サム位置、アイコン形状を520msの同一イージングで補間する。アクセシビリティ用のテーマ状態説明も付与した。
+- ダーク配色を紫系から夜空の青・中性色へ変更し、ライト配色との補間途中に紫が現れないようにした。`AnimatedBackdrop`は選択中のアプリアイコンのグラデーションだけを補間し、システムバーと起動背景も同じ色系統を使用する。
+- アプリアイコン設定カードと日課レベル報酬カードへ`animateContentSize`、縦方向のexpand／shrink、遅延付きfadeを組み合わせた。リスト全体が高さに追従して動くため、最下部での開閉時も途中要素が急に跳ねない。折りたたみ矢印は内角を広げたCanvas製V字にし、360msで回転する。
+- 日課報酬を指定どおり更新した。LV50は添付の月夜・青空アイコン、LV55は旧LV50のスカイアイコン、LV60は旧LV55のローズアイコン＋アイコン変更権とした。`routine_reward_lv50.png`、`routine_reward_lv55.png`、`routine_reward_lv60.png`を256pxへ最適化し、設定画面のランチャー別名とManifestも同じ画像へ同期した。
+- Junction`C:\Users\waki1\Desktop\EssentialThemeSmooth`経由で`test lint assembleDebug --no-daemon --max-workers=1`を実行しBUILD SUCCESSFUL。Pixel_10aエミュレーターへ再インストールし、テーマピルのライト／ダーク表示、設定カードの折りたたみ、日課レベル報酬の折りたたみ、LV50〜60の報酬テキストをUIツリーで確認した。既存のシステムバー色API非推奨警告とJNI strip警告は継続する。GitHubへのpush・Release公開はしていない。
+
+【2026-09-07 アイコン名称統一・設定開閉とテーマ背景の低遅延化】
+- 日課報酬とアプリアイコン設定の表示名を統一した。LV16から順に`Anemo Essential`、`Geo Essential`、`Electro Essential`、`Dendro Essential`、`Hydro Essential`、`Pyro Essential`、LV50を`Lunar Essential`、LV55を`Cryo Essential`へ変更した。保存済みアイコン設定を壊さないため内部IDとランチャー別名は維持した。
+- アプリアイコン設定カードの外側`animateContentSize`と内側`AnimatedVisibility`が同じ高さを二重補間していたため、外側補間を除去した。展開260ms、折りたたみ220msの上端固定expand／shrinkへ一本化し、fadeの開始遅延を廃止した。カード下の設定項目が開閉量と同じフレームで移動し、矢印も220msで同期する。
+- テーマ背景は`iconEnd`を700ms補間した後に下端色をさらに700ms補間する二段構造を廃止した。上端色と下端色を同じ360msの値から直接描画し、テーマ内の面・文字色も420msへ短縮して、グラデーション下部だけが遅れて切り替わる状態を解消した。
+- Junction`C:\Users\waki1\Desktop\EssentialMotionNames`経由で`test lint assembleDebug --no-daemon --max-workers=1`を実行しBUILD SUCCESSFUL。Pixel_10aエミュレーターへdebug APKを再インストールし、設定画面で新名称をUIツリー確認した。アプリアイコンカードを6回連続開閉した`gfxinfo`は143フレーム、Janky 4（2.80%）、中央値17ms、90パーセンタイル18ms、Missed Vsync 1だった。既存警告のみで、GitHubへのpush・Release公開はしていない。
+
+【2026-09-07 QR検出位置タップ・Classi GeckoView統合】
+- QRスキャナーの戻る／ライト操作を円形Surfaceと同じCircleShapeでclipし、押下中のspring縮小も同一形状へ統一した。PreviewViewのFILL_CENTERクロップを考慮してML Kitの検出矩形を画面座標へ変換し、認識したQRの実位置をタップした場合にHTTP／HTTPSだけを外部ブラウザーで開くようにした。検出外のタップは従来どおりフォーカス操作として扱う。
+- ホームと機能一覧のClassi枠を利用可能にし、Mozilla GeckoView 144を組み込んだClassi専用画面へ接続した。CookieはGeckoViewの永続プロファイルへ保持し、Firefox拡張機能を`resource://android/assets/classi_extension/`からbuilt-in WebExtensionとして読み込む構成にした。
+- デスクトップ版Firefox拡張機能のClassi問題検出、標準／高速モード、Auto回答をAndroid同梱版へ移植した。GeckoView Native Messagingで右側のEdge Sidebarと連携し、表示中の問題への回答、Auto切替、高速モード切替、Classiホームへの移動を操作できる。回答範囲は入力・選択までとし、提出、正誤確認、次の問題への移動は自動化しない。
+- Classi ID、パスワード、AI APIキーはAndroid KeystoreのAES/GCM鍵で暗号化して保存し、拡張機能へは接続セッション中だけ渡す。ClassiドメインのID／パスワード欄へ値を設定するがログイン確定は行わない。保存情報の削除操作も追加した。
+- Edge Sidebarは右端ハンドルから展開し、Liquid Glass、押下spring、スライド／フェードを使った操作面へした。Pixel_10aエミュレーターでClassiログイン画面の表示、Sidebar展開、`拡張機能 接続済み`、認証情報ダイアログの表示を確認した。実アカウントでのログイン・問題回答と物理カメラ上のQR位置タップは未検証。
+- GeckoView 133は16KBメモリページのAndroid 17エミュレーターで`libmozglue.so`が起動できなかったため、16KB対応のGeckoView 144へ更新した。必要条件に合わせてcompileSdk 36、Android Gradle Plugin 8.9.1、Gradle 8.11.1、Kotlin 2.2.10へ更新し、targetSdk 35は維持した。
+- 同梱JavaScriptの`node --check`、Junction`C:\Users\waki1\Desktop\EssentialClassiQr`経由の`clean test lint assembleDebug --no-daemon --max-workers=1`を実行しBUILD SUCCESSFUL。x86_64 debug APKをエミュレーターへ再インストールし、ActivityがクラッシュせずWebExtensionのNative Messaging接続が成立することをログで確認した。GitHubへのpush・Release公開はしていない。
+
+【2026-09-07 Classi外部アプリ遷移の抑止】
+- Classi画面の`GeckoSession.NavigationDelegate`へ`onLoadRequest`と`onNewSession`を追加し、ページ内の新規ウィンドウを現在のGeckoViewへ統合した。
+- `intent://`、`classi://`、`classiapp://`、`market://`などの非Webスキームは外部アプリへ渡さずGeckoViewで拒否する。`S.browser_fallback_url`が含まれるintent URIだけは安全なHTTP／HTTPSフォールバック先を同じ画面で読み込む。
+- Classi画面の起動経路は`GeckoSession.loadUri("https://platform.classi.jp/")`に限定し、Androidの`ACTION_VIEW`でClassiアプリを呼び出す処理は追加していない。
+- Gradleの`test lint assembleDebug --no-daemon --max-workers=1`がBUILD SUCCESSFUL。x86_64 debug APKをPixel_10aエミュレーターへ再インストールし、Classiログイン画面が`jp.essential.app`内のGeckoViewで表示されることを確認した。Classiアプリが実際にインストールされた端末でのユニバーサルリンク押下は未検証。GitHubへのpush・Release公開はしていない。
+
+【2026-09-07 Classi Edge Aurora・スワイプ・Auto回答改善】
+- Android側のClassi EdgeをAurora配色へ刷新した。夜空の青、シアン、紫の多層グラデーションを低速で移動させ、既存のLiquid Glassと組み合わせた。上部へ「CLASSI LEARNING SPACE」バナーを追加し、拡張機能のONLINE／SYNC状態と操作説明を常時表示する。
+- Edgeの縦幅を画面の82%（最大650dp）、幅を292dpへ縮小し、中央寄せのコンパクトな待機領域へ変更した。右端72dpの透明スワイプ受付とEdge本体へ左右スワイプを追加し、右へ払うと閉じ、左へ払うと開く。従来のタップ操作も維持する。
+- Auto回答の回答欄検出待ちを最大16回（約5秒）再試行し、Classiの遅延描画でも自動回答を開始できるようにした。回答処理の中断ボタンをAndroid Edgeへ追加し、中断時はAutoをオフ、進行中リクエストのUI反映を破棄、拡張機能側のAbortControllerでGemini通信を停止する。
+- 同一問題のAuto検知と手動操作が重なった場合にAPIへ二重送信しないインフライトキャッシュを追加した。従来の可視テキスト抽出、重複除去、共通文の分離、設問ごとの短縮、標準／高速の出力上限、最大6件の結果キャッシュは維持し、元のFirefox拡張機能と同じ低token設計を保つ。
+- 同梱拡張機能の`node --check content.js`、`node --check background.js`が成功。`clean test lint assembleDebug --no-daemon --max-workers=1`をJunction経由で実行しBUILD SUCCESSFUL。x86_64 debug APKをPixel_10aへ再インストールし、Aurora Edgeの表示、縦幅、ONLINEバナー、Autoオン時の「Auto回答をオフ」、中止操作、左右スワイプ開閉をUIツリーで確認した。実Classi問題でのAI回答結果と物理端末の高リフレッシュレート体感は未検証。GitHubへのpush・Release公開はしていない。
+
+【2026-09-07 Classi Edge Aurora風Material 3 Expressive調整】
+- Classi EdgeをMaterial 3 Expressiveのトーナル設計へ更新した。`MaterialTheme.colorScheme`のprimary／secondary／tertiaryとsurfaceContainerHigh／surfaceContainerHighestをAuroraグラデーションへ組み込み、テーマ変更時にも色相が破綻しない構成にした。
+- 上部バナーとEdge本体で同じ色スケールを共有し、バナーのステータスピル、接続ドット、説明文もonSurface／onSurfaceVariantへ統一した。固定された白文字・固定紫に依存せず、ライト／ダーク双方でMaterial 3のコントラストを維持する。
+- Edge本体の角丸を上下左右で変える表情のある形状へ変更し、操作カードはsurfaceContainerHighestと小さなtonalElevationを重ねた。主要操作ボタンはprimary／onPrimary、OutlinedButtonは22dp角丸として、Aurora背景を残しながら操作階層を明確にした。
+- `clean test lint assembleDebug --no-daemon --max-workers=1`をJunction経由で実行しBUILD SUCCESSFUL。x86_64 debug APKを`emulator-5554`へ再インストールし、Classiカードから画面を開いてAuroraバナー、短いEdge、`Classi Edge`、`表示中の問題を回答`、`Auto回答をオフ`、設定・ホーム操作をUIツリーで確認した。実Classi問題の回答結果、ライトテーマ実機コントラスト、物理端末の描画体感は未検証。GitHubへのpush・Release公開はしていない。
+
+【2026-09-07 Classi Liquid Glassバナー・DOSUKOI立体カード調整】
+- Classiの透過UIをLiquid Glassとして再調整した。半透明surface膜、Auroraの色膜、outline、tonalElevation、shadowElevationを重ね、白いClassiページ上でも背景の透過感と文字の可読性を両立させた。Edge本体は高さ74%へ縮小し、従来のコンパクト要件も維持した。
+- 参考画像に合わせ、Classi上部へ`Classi`、`学習アシスト`、接続状態、戻る／再読み込みを一体化したExpressiveバナーを追加した。既存の`CLASSI LEARNING SPACE`案内バナーとEdge操作は維持している。
+- DOSUKOI起動画面へperspectiveとpreserve-3dを追加した。中央ユーザーカードを前面・大型、左右カードを奥側へ回転配置し、カード背面の立体シャドウと異なる角丸で奥行きを表現した。既存の中央先行・左右遅延フィードインは新しい立体キーフレームへ引き継いだ。
+- `assembleDebug --no-daemon --max-workers=1`をJunction経由で実行しBUILD SUCCESSFUL。x86_64 debug APKを`emulator-5554`へ再インストールし、Classiの上部Liquid GlassバナーとEdge操作面、DOSUKOIの中央／左右カードの奥行き配置をスクリーンショットで確認した。実Classi問題の回答結果、ライトテーマ実機でのコントラスト、物理端末の描画体感は未検証。GitHubへのpush・Release公開はしていない。
+
+【2026-09-07 Classi上部バナー角丸対称化】
+- Classi上部のヘッダーバナーと案内バナーの角丸を四隅同一半径（28dp／30dp）へ変更し、上下左右の角が対称になるように修正した。Liquid Glassの透過膜、Auroraの色膜、境界線、トーナル階層、接続状態表示、戻る／再読み込み操作は維持している。
+- `assembleDebug --no-daemon --max-workers=1`をJunction経由で実行しBUILD SUCCESSFUL。生成したx86_64 debug APKを`emulator-5554`へ再インストールして、修正版を反映した。実Classiログイン後の画面遷移、物理端末での描画体感は未検証。GitHubへのpush・Release公開はしていない。
+
+【2026-09-07 CLASSI LEARNING SPACEバナー削除】
+- Classi画面の`CLASSI LEARNING SPACE`案内バナー本体と呼び出しを削除した。上部のClassiヘッダーバナー、Edgeサイドバー、ログイン情報、問題回答操作は維持している。
+- `assembleDebug --no-daemon --max-workers=1`をJunction経由で実行しBUILD SUCCESSFUL。生成したx86_64 debug APKを`emulator-5554`へ再インストールして修正版を反映した。実Classiログイン後の画面遷移、物理端末での描画体感は未検証。GitHubへのpush・Release公開はしていない。
+
+【2026-09-07 Classi Gemini優先・Webテスト自動回答修正】
+- ClassiのWebテスト（`/webtest/`）では既存の問題署名が空になり、Auto回答が開始前に停止する不具合を修正した。Webテスト本文を問題署名へ含め、①〜⑳などの選択肢行を設問単位で検出し、Geminiの0始まり回答位置を実際のクリック可能な選択行へ反映する専用アダプターを追加した。
+- 標準回答の第一候補をGemini 3.7 Flashへ更新し、利用不可時だけGemini 3.5 Flashへフォールバックする構成にした。高速回答と解説はGemini 3.5 Flash-Liteを優先する。通信はGemini APIだけを使用し、APIキー未設定・認証失敗では不要な再試行を行わない。
+- Auto回答が一時的な通信・解析失敗で停止した場合、同じ問題を1.2秒、2.4秒、4.8秒の段階的待機で最大3回再試行するようにした。全回答が未反映の場合を成功扱いしないよう判定も修正した。提出、正誤確認、次の問題への移動は引き続き自動化しない。
+- WebExtensionの状態通知へGeminiの処理状況と失敗理由を追加し、非表示のWebパネルだけでなくCompose製Classi Edgeにも表示するようにした。UI表記を`Gemini Auto回答`、`Gemini高速モード`、`Geminiで表示中の問題を回答`、`Gemini APIキー`へ統一した。
+- GeckoViewで古い同一version拡張機能が残る問題を避けるため、同梱WebExtensionを0.15.0へ更新した。Classiページは拡張機能のMessageDelegate設定後に読み込む順序へ変更し、初回読込時の接続競合を抑止した。
+- `node --check background.js`、`node --check content.js`、manifest JSON検証、`test assembleDebug --no-daemon --max-workers=1`を実行してBUILD SUCCESSFUL。x86_64 debug APKを`emulator-5554`へ再インストールし、拡張機能接続、Gemini優先UI、Edgeへの回答欄検出エラー通知を確認した。実Classi問題でのGemini回答取得・選択反映は、再インストール後にClassiの再ログインが必要なため未検証。GitHubへのpush・Release公開はしていない。
+
+【2026-09-07 Classi AndroidネイティブGemini通信への切替】
+- PC版Firefoxでは動作する一方、AndroidのGeckoView内蔵WebExtensionでは自動回答が完走しない差を調査した。問題検出、Classi専用DOMアダプター、回答反映はFirefox拡張側で動作していたため維持し、不安定要因となる拡張バックグラウンドからのGemini HTTPS通信だけをAndroidネイティブ側へ移した。
+- 拡張バックグラウンドは既存と同じSystem Prompt、JSON Schema、token上限、標準／高速モードからリクエスト定義だけを生成する。Content ScriptはNative Messagingでその定義をAndroidへ渡し、Android Keystoreから復号したAPIキーを使って`generativelanguage.googleapis.com`へ直接POSTする。APIキーをJavaScriptへ渡さない構成へ変更した。
+- Android側へ`ClassiGeminiClient`を追加し、15秒の接続timeout、45秒の読取timeout、モデルfallback、Geminiの回答本文とtoken使用量の解析、ユーザー中止時のHTTP切断を実装した。成功／失敗はNative Messagingで元のContent Scriptへ戻し、既存の回答選択・記入処理へ接続する。
+- PC版で実動している構成に合わせ、標準回答の第一候補をGemini 3.5 Flashへ揃えた。高速回答・解説はGemini 3.5 Flash-Liteを維持し、Gemini以外のAI Providerは使用しない。Autoの同一問題キャッシュと低token payload、提出・正誤確認・次の問題へ進まない安全境界も維持した。
+- Gemini APIキーがAndroid側へ未保存の場合は、Classi Edgeの認証情報画面から設定するよう明示する。PC Firefox拡張の保存領域とAndroid Keystoreは共有しないため、PC側のキーを自動転送しない。
+- GeckoViewが旧資産を保持しないようWebExtensionを0.15.1へ更新した。`node --check`でContent ScriptとBackground Scriptの構文が成功し、`compileDebugKotlin`と`assembleDebug`がBUILD SUCCESSFUL。APK内の拡張バージョン0.15.1を確認し、x86_64 Debug APKをデータ保持の上書き方式で`emulator-5554`へインストールした。Classiログイン画面、拡張機能接続、Classi Edge表示を確認したが、ログイン後の実問題によるGemini通信と回答反映は再ログインが必要なため未検証。GitHubへのpush・Release公開はしていない。
+
+【2026-09-07 Classi全回答未取得・二重検出修正】
+- 実画面で`1: AI回答を取得できませんでした`から複数件が連続表示される報告を確認した。これはGemini APIの通信エラーではなく、応答JSONを設問へ対応付ける互換判定で全回答が欠落した状態だった。
+- Android版だけに追加した汎用Webテスト選択肢アダプターが、PC版で動作しているClassi専用アダプターより先に実行されていた。既存の`.spen-ly-question-section`等を二重検出しないようPC版と同じ検出順へ戻し、汎用アダプターは専用検出結果が0件の場合だけ使うfallbackへ変更した。
+- Gemini応答の互換解析を拡張し、設問番号`q`が1始まりの連番、番号省略、回答配列が単一オブジェクト、選択値が単一値、丸数字、英字、選択肢本文で返った場合も元の0始まり設問・選択肢へ安全に対応付ける。JSON SchemaどおりのPC版応答は従来どおり処理する。
+- Classi Edgeへ全失敗件数を長文連結していた表示を、先頭3件と残件数へ短縮した。回答の選択・入力のみを行い、提出、採点、次の問題への移動は引き続き自動化しない。
+- GeckoViewへ確実に新資産を適用するため同梱WebExtensionを0.15.2へ更新した。GitHubへのpush・Release公開はしていない。
+
+【2026-09-08 Classi機能の完全撤去とバックアップ】
+- ユーザーの明示依頼に基づき、削除前のClassiソース、Firefox拡張資産、画面導線を持つ`EssentialApp.kt`、GeckoView依存設定、Manifest、作業履歴を`backups/Classi-source-backup-20260908-143859.zip`へ相対パス付きで保存した。ZIP内13エントリを再度開いて確認し、SHA-256は`DD5901E4F2707D684522C5EF937A9D99462DB3BFD7EF73F0725423D12D555EE7`。
+- ホームと機能一覧のClassi項目、`FeatureRoute.Classi`、`EssentialSymbol.Classi`、Classi画面遷移、専用アイコン描画を削除した。削除後はホームの機能グリッドと機能一覧にClassiが表示されない。
+- `app/src/main/java/jp/essential/app/feature/classi`の画面、GeckoRuntime、暗号化認証情報、Gemini通信実装を全削除し、`app/src/main/assets/classi_extension`のManifest、Content Script、Background Script、SVGを全削除した。空になった専用ディレクトリも削除した。
+- Classi専用だったGeckoView依存、Mozilla Mavenリポジトリ、POST_NOTIFICATIONS権限を削除した。クリーン生成したx86_64 Debug APKを検査し、Classi、Gecko、Mozilla、libxul、mozglue、omni.jaに一致するエントリが0件であることを確認した。最終APKサイズは95,443,220バイト。
+- 更新インストール後も旧版のID・パスワード・Gemini APIキー、Android Keystore鍵、Classi Cookie、GeckoViewプロファイルが残らないよう、起動時にClassi専用SharedPreferences、Keystore alias、`files/mozilla`、`cache/gecko_temp`だけを回収する廃止機能データ移行処理を追加した。日課、設定、ダウンロード等の他アプリデータは削除しない。検証時に`files/profileInstalled`はAndroidXの起動最適化用ファイルと判明したため撤去対象から外し、維持した。
+- `assembleDebug --no-daemon --max-workers=1`はBUILD SUCCESSFUL。単体テストはソースのコンパイル後、既知の日本語パス由来の`ClassNotFoundException`で全テストクラスの起動に失敗したため、テストロジックの合否は未確認。最初のclean実行ではGradle transform cacheの一時移動競合も1回発生したが、再実行でコンパイルとAPK生成は完了した。x86_64 Debug APKを`emulator-5554`へ上書きインストールし、ホームのUIツリーでClassi文字列0件、起動クラッシュなし、Classi認証情報ファイル・Mozillaプロファイル・Gecko一時キャッシュの削除を確認した。GitHubへのpush・Release公開はしていない。
+
+【2026-09-08 Essential 0.5.5公開準備】
+- 前回の正式版v0.5.4以降の変更を次のパッチ版として公開するため、`app/build.gradle.kts`をversionCode=16、versionName=0.5.5へ更新した。
+- `.github/release-notes/v0.5.5.md`を追加し、日課・レベル報酬、アプリアイコン／テーマ、DOSUKOI描画、マインスイーパー、QRスキャナー、更新ファイル回収、Classi完全撤去を利用者向けに整理した。
+- 削除前のClassiソースを含む`backups/`を`.gitignore`へ追加した。復元用ZIPはローカルに維持し、GitHubのコミット、Actions成果物、Release添付物には含めない。
+- GitHubへ公開する前に、現在の差分、バージョンとタグの一致、秘密情報の混入、ビルド結果、Release Workflowを確認する。公開コミット、タグ、Actions、Releaseの結果は完了後に追記する。
+- Windowsの日本語パスから直接実行した単体テストは既知の`ClassNotFoundException`を再現したため、同一プロジェクトをASCII名の一時Junction経由で`testDebugUnitTest lintDebug assembleRelease --no-daemon --max-workers=1`まで再実行し、BUILD SUCCESSFULを確認した。一時Junctionは検査後に削除した。既存のJNI strip警告と非推奨API警告は継続するが、テスト・Lint・APK生成を阻害していない。
+- 生成したx86_64 Release APKのZIPエントリを検査し、Classi、Gecko、Mozilla、libxul、mozglue、omni.jaに一致するファイルが0件であることを確認した。Firebase Web APIキーはDOSUKOIの既存公開設定としてv0.5.4以前から追跡済みであり、今回新たに追加した認証情報ではないことを確認した。

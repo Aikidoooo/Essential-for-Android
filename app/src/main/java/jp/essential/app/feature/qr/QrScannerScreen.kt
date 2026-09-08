@@ -11,6 +11,8 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.graphics.drawable.Icon
+import android.graphics.Rect
+import android.graphics.RectF
 import android.view.ScaleGestureDetector
 import android.view.ViewGroup
 import android.widget.Toast
@@ -32,6 +34,8 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -60,12 +64,15 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -82,6 +89,7 @@ import com.google.mlkit.vision.common.InputImage
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import jp.essential.app.device.DeviceOptimizer
 import jp.essential.app.R
 import jp.essential.app.ui.ProgressiveWidget
@@ -137,6 +145,7 @@ fun QrScannerScreen(onBack: () -> Unit) {
     }
     val analysisExecutor = remember { Executors.newSingleThreadExecutor() }
     val analysisGate = remember { AtomicBoolean(false) }
+    val qrHitTarget = remember { AtomicReference<QrHitTarget?>(null) }
 
     Box(modifier = Modifier.fillMaxSize()) {
         ProgressiveWidget(0, Modifier.fillMaxSize()) {
@@ -192,8 +201,9 @@ fun QrScannerScreen(onBack: () -> Unit) {
                                 scanner = scanner,
                                 gate = analysisGate,
                                 active = active,
-                                onDetected = { value ->
-                                    if (tracker.update(value, android.os.SystemClock.elapsedRealtime())) {
+                                onDetected = { target ->
+                                    qrHitTarget.set(target)
+                                    if (tracker.update(target?.value, android.os.SystemClock.elapsedRealtime())) {
                                         scannedValue = tracker.value
                                         if (tracker.value != null) haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
                                     }
@@ -228,11 +238,19 @@ fun QrScannerScreen(onBack: () -> Unit) {
                         view.setOnTouchListener { _, event ->
                             scaleDetector.onTouchEvent(event)
                             if (event.action == android.view.MotionEvent.ACTION_UP && !scaleDetector.isInProgress) {
-                                val point = view.meteringPointFactory.createPoint(event.x, event.y)
-                                val action = FocusMeteringAction.Builder(point)
-                                    .setAutoCancelDuration(3, TimeUnit.SECONDS)
-                                    .build()
-                                boundCamera.cameraControl.startFocusAndMetering(action)
+                                val target = qrHitTarget.get()
+                                val tappedQr = target?.let { qrTarget ->
+                                    mapQrBoundsToPreview(qrTarget, view).contains(event.x, event.y)
+                                } == true
+                                if (tappedQr && openRecognizedUrl(context, target?.value.orEmpty())) {
+                                    haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                                } else {
+                                    val point = view.meteringPointFactory.createPoint(event.x, event.y)
+                                    val action = FocusMeteringAction.Builder(point)
+                                        .setAutoCancelDuration(3, TimeUnit.SECONDS)
+                                        .build()
+                                    boundCamera.cameraControl.startFocusAndMetering(action)
+                                }
                             }
                             true
                         }
@@ -352,10 +370,7 @@ fun QrScannerScreen(onBack: () -> Unit) {
                         },
                         onOpen = {
                             val value = scannedValue.orEmpty()
-                            val uri = runCatching { Uri.parse(value) }.getOrNull()
-                            if (uri?.scheme in setOf("http", "https")) {
-                                context.startActivity(Intent(Intent.ACTION_VIEW, uri))
-                            }
+                            openRecognizedUrl(context, value)
                         },
                     )
                 }
@@ -392,7 +407,7 @@ private fun analyzeQrFrame(
     scanner: BarcodeScanner,
     gate: AtomicBoolean,
     active: AtomicBoolean,
-    onDetected: (String?) -> Unit,
+    onDetected: (QrHitTarget?) -> Unit,
 ) {
     val mediaImage = imageProxy.image
     if (mediaImage == null || !active.get() || !gate.compareAndSet(false, true)) {
@@ -404,7 +419,7 @@ private fun analyzeQrFrame(
     scanner.process(input)
         .addOnSuccessListener { barcodes ->
             // 複数コードがあるときも、画面中央に最も近いコードを優先する。
-            val value = barcodes.filter { it.rawValue != null }.minByOrNull { barcode ->
+            val barcode = barcodes.filter { it.rawValue != null }.minByOrNull { barcode ->
                 val bounds = barcode.boundingBox
                 if (bounds == null) Float.MAX_VALUE else {
                     val rotated = input.rotationDegrees % 180 != 0
@@ -412,8 +427,17 @@ private fun analyzeQrFrame(
                     val dy = bounds.exactCenterY() - (if (rotated) input.width else input.height) / 2f
                     dx * dx + dy * dy
                 }
-            }?.rawValue
-            if (active.get()) onDetected(value)
+            }
+            val rotated = input.rotationDegrees % 180 != 0
+            val target = barcode?.let {
+                QrHitTarget(
+                    value = it.rawValue.orEmpty(),
+                    bounds = Rect(it.boundingBox ?: return@let null),
+                    imageWidth = if (rotated) input.height else input.width,
+                    imageHeight = if (rotated) input.width else input.height,
+                )
+            }
+            if (active.get()) onDetected(target)
         }
         .addOnCompleteListener {
             gate.set(false)
@@ -423,6 +447,42 @@ private fun analyzeQrFrame(
         gate.set(false)
         imageProxy.close()
     }
+}
+
+private data class QrHitTarget(
+    val value: String,
+    val bounds: Rect,
+    val imageWidth: Int,
+    val imageHeight: Int,
+)
+
+/** FILL_CENTERで中央クロップされた解析画像の座標を、実際のPreviewView座標へ変換する。 */
+private fun mapQrBoundsToPreview(target: QrHitTarget, view: PreviewView): RectF {
+    if (target.imageWidth <= 0 || target.imageHeight <= 0 || view.width <= 0 || view.height <= 0) {
+        return RectF()
+    }
+    val scale = maxOf(
+        view.width.toFloat() / target.imageWidth,
+        view.height.toFloat() / target.imageHeight,
+    )
+    val offsetX = (view.width - target.imageWidth * scale) / 2f
+    val offsetY = (view.height - target.imageHeight * scale) / 2f
+    val touchPadding = 18f * view.resources.displayMetrics.density
+    return RectF(
+        target.bounds.left * scale + offsetX - touchPadding,
+        target.bounds.top * scale + offsetY - touchPadding,
+        target.bounds.right * scale + offsetX + touchPadding,
+        target.bounds.bottom * scale + offsetY + touchPadding,
+    )
+}
+
+private fun openRecognizedUrl(context: Context, value: String): Boolean {
+    val uri = runCatching { Uri.parse(value) }.getOrNull() ?: return false
+    if (uri.scheme?.lowercase() !in setOf("http", "https")) return false
+    return runCatching {
+        context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+        true
+    }.getOrDefault(false)
 }
 
 @Composable
@@ -457,13 +517,27 @@ private fun ScannerCircleButton(
     description: String,
     onClick: () -> Unit,
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.88f else 1f,
+        animationSpec = spring(dampingRatio = 0.72f, stiffness = 620f),
+        label = "QR操作ボタン押下",
+    )
     Surface(
+        onClick = onClick,
         color = Color.Black.copy(alpha = 0.58f),
         contentColor = Color.White,
         shape = CircleShape,
+        interactionSource = interactionSource,
         modifier = Modifier
             .size(48.dp)
-            .clickable(onClick = onClick),
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+                clip = true
+                shape = CircleShape
+            },
     ) {
         Box(contentAlignment = Alignment.Center) {
             Text(text, style = MaterialTheme.typography.titleLarge)

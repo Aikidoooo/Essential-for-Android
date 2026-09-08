@@ -19,7 +19,40 @@ internal data class AppRelease(val version: String, val notes: String, val url: 
 
 internal class GitHubUpdateRepository(private val context: Context) {
     private val directory get() = File(context.noBackupFilesDir, "app-update").apply { mkdirs() }
+    private val preferences get() = context.getSharedPreferences("app_update", Context.MODE_PRIVATE)
     val apk get() = File(directory, "update.apk")
+
+    /** 更新完了通知がプロセス終了で失われても、次回起動時に古いAPKを回収する。 */
+    fun cleanupAfterAppStart(nowMillis: Long = System.currentTimeMillis()): Long {
+        var reclaimedBytes = 0L
+        directory.listFiles().orEmpty().filter { it.name != apk.name }.forEach { file ->
+            reclaimedBytes += file.sizeRecursively()
+            file.deleteRecursively()
+        }
+        val shouldDelete = apk.exists() && UpdateStoragePolicy.shouldDeleteDownloadedApk(
+            targetVersion = preferences.getString(KEY_TARGET_VERSION, null),
+            sourceVersionCode = preferences.getLong(KEY_SOURCE_VERSION_CODE, -1L),
+            downloadedAtMillis = preferences.getLong(KEY_DOWNLOADED_AT, -1L),
+            currentVersionName = BuildConfig.VERSION_NAME,
+            currentVersionCode = BuildConfig.VERSION_CODE.toLong(),
+            nowMillis = nowMillis,
+        )
+        if (shouldDelete) reclaimedBytes += discardDownloadedApk()
+        return reclaimedBytes
+    }
+
+    /** PackageInstallerへコピー済みの元APKと管理情報を直ちに削除する。 */
+    fun discardDownloadedApk(): Long {
+        val bytes = apk.sizeRecursively()
+        apk.delete()
+        preferences.edit()
+            .remove(KEY_TARGET_VERSION)
+            .remove(KEY_SOURCE_VERSION_CODE)
+            .remove(KEY_DOWNLOADED_AT)
+            .apply()
+        if (directory.list().isNullOrEmpty()) directory.delete()
+        return bytes
+    }
 
     suspend fun latest(): AppRelease? = withContext(Dispatchers.IO) {
         val repository = BuildConfig.UPDATE_REPOSITORY
@@ -50,6 +83,7 @@ internal class GitHubUpdateRepository(private val context: Context) {
     suspend fun download(release: AppRelease, progress: (Float) -> Unit): File = withContext(Dispatchers.IO) {
         val part = File(directory, "update.part")
         try {
+            discardDownloadedApk()
             require(directory.usableSpace > release.size + 32L * 1024 * 1024) { "保存領域が不足しています" }
             val connection = connection(release.url)
             try {
@@ -79,6 +113,11 @@ internal class GitHubUpdateRepository(private val context: Context) {
                 validateApk(part, release.version)
                 apk.delete()
                 check(part.renameTo(apk)) { "APKを保存できませんでした" }
+                preferences.edit()
+                    .putString(KEY_TARGET_VERSION, release.version)
+                    .putLong(KEY_SOURCE_VERSION_CODE, BuildConfig.VERSION_CODE.toLong())
+                    .putLong(KEY_DOWNLOADED_AT, System.currentTimeMillis())
+                    .apply()
                 apk
             } finally { connection.disconnect() }
         } finally { part.delete() }
@@ -118,6 +157,18 @@ internal class GitHubUpdateRepository(private val context: Context) {
             url = URL(url, next)
         }
         error("配信先への転送回数が多すぎます")
+    }
+
+    private fun File.sizeRecursively(): Long = when {
+        !exists() -> 0L
+        isFile -> length()
+        else -> listFiles().orEmpty().sumOf { it.sizeRecursively() }
+    }
+
+    private companion object {
+        const val KEY_TARGET_VERSION = "download_target_version"
+        const val KEY_SOURCE_VERSION_CODE = "download_source_version_code"
+        const val KEY_DOWNLOADED_AT = "downloaded_at"
     }
 }
 

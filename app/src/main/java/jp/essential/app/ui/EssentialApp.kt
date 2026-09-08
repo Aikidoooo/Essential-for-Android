@@ -5,12 +5,15 @@ import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.scaleIn
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
@@ -37,6 +40,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.layout.size
@@ -51,8 +55,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -78,6 +80,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
@@ -89,6 +92,9 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import jp.essential.app.AppIconManager
+import jp.essential.app.AppIconOption
+import jp.essential.app.feature.routine.calculateRoutineLevel
 import jp.essential.app.BuildConfig
 import jp.essential.app.R
 import jp.essential.app.core.EssentialCore
@@ -97,6 +103,7 @@ import jp.essential.app.feature.downloader.YtDlpUpdateSettingsCard
 import jp.essential.app.feature.files.FileReferenceScreen
 import jp.essential.app.feature.minigame.MiniGameScreen
 import jp.essential.app.feature.qr.QrScannerScreen
+import jp.essential.app.feature.routine.RoutineScreen
 import jp.essential.app.feature.schedule.ScheduleGeneratorScreen
 import jp.essential.app.ui.theme.EssentialLime
 import jp.essential.app.ui.theme.EssentialOrange
@@ -135,6 +142,7 @@ private enum class FeatureRoute(val requestId: String) {
     Schedule("schedule"),
     Files("files"),
     MiniGame("mini_game"),
+    Routine("routine"),
 }
 
 private data class FeatureItem(
@@ -151,6 +159,8 @@ fun EssentialRoot(
     requestedFeature: String? = null,
     initialDarkTheme: Boolean? = null,
     onDarkThemeApplied: (Boolean) -> Unit = {},
+    initialAppIconId: String = AppIconManager.defaultLight.id,
+    onAppIconChange: (String) -> Unit = {},
     motionFps: Int = 60,
     onMotionFpsChange: (Int) -> Unit = {},
     initialHomeShortcut: String = FeatureRoute.Downloader.requestId,
@@ -172,6 +182,11 @@ fun EssentialRoot(
             EssentialApp(
                 darkTheme = darkTheme,
                 onDarkThemeChange = { darkTheme = it },
+                initialAppIconId = initialAppIconId,
+                onAppIconChange = { option ->
+                    onAppIconChange(option.id)
+                    darkTheme = option.prefersDarkTheme
+                },
                 sharedUrl = sharedUrl,
                 requestedFeature = requestedFeature,
                 motionFps = motionFps,
@@ -188,6 +203,8 @@ fun EssentialRoot(
 private fun EssentialApp(
     darkTheme: Boolean,
     onDarkThemeChange: (Boolean) -> Unit,
+    initialAppIconId: String,
+    onAppIconChange: (AppIconOption) -> Unit,
     sharedUrl: String?,
     requestedFeature: String?,
     motionFps: Int,
@@ -203,6 +220,12 @@ private fun EssentialApp(
     var dosukoiActive by rememberSaveable { mutableStateOf(false) }
     var homeShortcut by rememberSaveable {
         mutableStateOf(FeatureRoute.entries.firstOrNull { it.requestId == initialHomeShortcut } ?: FeatureRoute.Downloader)
+    }
+    var appIconId by rememberSaveable { mutableStateOf(initialAppIconId) }
+    LaunchedEffect(darkTheme) {
+        if (appIconId == AppIconManager.defaultLight.id || appIconId == AppIconManager.defaultDark.id) {
+            appIconId = if (darkTheme) AppIconManager.defaultDark.id else AppIconManager.defaultLight.id
+        }
     }
     val destinationState = rememberSaveableStateHolder()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -239,7 +262,7 @@ private fun EssentialApp(
             // DOSUKOIはWebView自身がFluid Gradientを描画するため、背面のCanvasを止めて二重描画を避ける。
             Box(Modifier.fillMaxSize().background(Color(0xFF0F0F1A)))
         } else {
-            AnimatedBackdrop()
+            AnimatedBackdrop(AppIconManager.optionForId(appIconId))
         }
         Scaffold(
             modifier = Modifier.fillMaxSize(),
@@ -289,6 +312,7 @@ private fun EssentialApp(
                         onDosukoiVisibilityChange = { dosukoiActive = it },
                         motionFps = motionFps,
                     )
+                    FeatureRoute.Routine -> RoutineScreen { activeFeature = null }
                     null -> AnimatedContent(
                         targetState = destination,
                         modifier = Modifier.fillMaxSize(),
@@ -318,6 +342,15 @@ private fun EssentialApp(
                             Destination.Settings -> SettingsScreen(
                                 darkTheme = darkTheme,
                                 onDarkThemeChange = onDarkThemeChange,
+                                appIcon = AppIconManager.optionForId(appIconId),
+                                routineLevel = calculateRoutineLevel(
+                                    LocalContext.current.getSharedPreferences("routine", android.content.Context.MODE_PRIVATE)
+                                        .getInt("total_points", 0),
+                                ),
+                                onAppIconChange = { option ->
+                                    appIconId = option.id
+                                    onAppIconChange(option)
+                                },
                                 motionFps = motionFps,
                                 onMotionFpsChange = onMotionFpsChange,
                                 homeShortcut = homeShortcut,
@@ -337,12 +370,15 @@ private fun EssentialApp(
 }
 
 @Composable
-private fun AnimatedBackdrop() {
+private fun AnimatedBackdrop(appIcon: AppIconOption = AppIconManager.defaultLight) {
     val dark = LocalEssentialDark.current
-    val background = MaterialTheme.colorScheme.background
-    val bottom by animateColorAsState(if (dark) Color(0xFF091C49) else jp.essential.app.ui.theme.EssentialCream, tween(700), label = "背景の青")
-    val firstGlow by animateColorAsState(if (dark) Color(0xFF843DFF) else EssentialLime, tween(700), label = "紫の光彩")
-    val secondGlow by animateColorAsState(if (dark) Color(0xFF205CFF) else EssentialOrange, tween(700), label = "青の光彩")
+    val backdropSpec = tween<Color>(360, easing = FastOutSlowInEasing)
+    val iconStart by animateColorAsState(Color(appIcon.backgroundStart), backdropSpec, label = "アイコン背景開始色")
+    val iconEnd by animateColorAsState(Color(appIcon.backgroundEnd), backdropSpec, label = "アイコン背景終了色")
+    // 下端色を二重に補間すると追従が遅れるため、同じ補間値を直接使用する。
+    val bottom = iconEnd
+    val firstGlow = iconEnd.copy(alpha = if (dark) 0.34f else 0.26f)
+    val secondGlow = iconStart.copy(alpha = if (dark) 0.24f else 0.18f)
     val horizontal = remember { androidx.compose.animation.core.Animatable(0.18f) }
     val vertical = remember { androidx.compose.animation.core.Animatable(0.16f) }
     LaunchedEffect(dark) {
@@ -352,7 +388,7 @@ private fun AnimatedBackdrop() {
     }
 
     Canvas(modifier = Modifier.fillMaxSize()) {
-        drawRect(Brush.verticalGradient(listOf(background, bottom)))
+        drawRect(Brush.verticalGradient(listOf(iconStart, bottom)))
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(firstGlow.copy(alpha = 0.28f), Color.Transparent),
@@ -397,7 +433,7 @@ private fun HomeScreen(
                     FeatureItem("行程表", "経由地を含めて3形式へ", EssentialSymbol.Calendar, EssentialYellow, FeatureRoute.Schedule),
                     FeatureItem("ファイル参照", "圧縮・変換・背景透過", EssentialSymbol.Media, EssentialRed, FeatureRoute.Files),
                     FeatureItem("ミニゲーム", "言葉遊び・マインスイーパー", EssentialSymbol.Game, Color(0xFF9C6BFF), FeatureRoute.MiniGame),
-                    FeatureItem("日課", "毎日の習慣をまとめる機能", EssentialSymbol.Routine, Color(0xFF27B99A), null),
+                    FeatureItem("日課", "毎日の目標をポイントに", EssentialSymbol.Routine, Color(0xFF27B99A), FeatureRoute.Routine),
                 ),
                 onClick = { feature ->
                     feature.route?.let(onOpenFeature) ?: onComingSoon()
@@ -766,11 +802,10 @@ private fun FeaturesScreen(onOpenFeature: (FeatureRoute) -> Unit, onComingSoon: 
         progressiveItem(6) {
             CategoryPanel(
                 title = "日課",
-                description = "毎日の習慣をまとめる機能を追加予定",
+                description = "デイリー・ウィークリー目標とポイントを管理",
                 symbol = EssentialSymbol.Routine,
                 accent = Color(0xFF27B99A),
-                available = false,
-                onClick = onComingSoon,
+                onClick = { onOpenFeature(FeatureRoute.Routine) },
             )
         }
         progressiveItem(7) {
@@ -848,6 +883,9 @@ private fun CategoryPanel(
 private fun SettingsScreen(
     darkTheme: Boolean,
     onDarkThemeChange: (Boolean) -> Unit,
+    appIcon: AppIconOption,
+    routineLevel: jp.essential.app.feature.routine.RoutineLevel,
+    onAppIconChange: (AppIconOption) -> Unit,
     motionFps: Int,
     onMotionFpsChange: (Int) -> Unit,
     homeShortcut: FeatureRoute,
@@ -898,18 +936,18 @@ private fun SettingsScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    Switch(
-                        checked = darkTheme,
-                        onCheckedChange = onDarkThemeChange,
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
-                            checkedTrackColor = MaterialTheme.colorScheme.primary,
-                        ),
-                    )
+                    ThemeToggle(dark = darkTheme, onToggle = { onDarkThemeChange(!darkTheme) })
                 }
             }
         }
         progressiveItem(2) {
+            AppIconSettingsCard(
+                selected = appIcon,
+                currentLevel = routineLevel.level,
+                onSelect = onAppIconChange,
+            )
+        }
+        progressiveItem(3) {
             Column(Modifier.fillMaxWidth().glassSurface(28.dp).padding(19.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("モーションfps", style = MaterialTheme.typography.titleLarge)
                 Text("初期値60fps・選択すると適用されます", style = MaterialTheme.typography.bodyMedium)
@@ -927,7 +965,7 @@ private fun SettingsScreen(
                 Text("端末へ希望fpsを要求します。実際のfpsは対応Hz・省電力設定・OSに依存します。アニメーションの所要時間は変わりません。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-        progressiveItem(3) {
+        progressiveItem(4) {
             Column(
                 Modifier.fillMaxWidth().glassSurface(28.dp).padding(19.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -955,13 +993,13 @@ private fun SettingsScreen(
                 }
             }
         }
-        progressiveItem(4) {
+        progressiveItem(5) {
             YtDlpUpdateSettingsCard()
         }
         item(key = "app-updates") {
-            ProgressiveWidget(5) { jp.essential.app.update.AppUpdateSettingsCard() }
+            ProgressiveWidget(6) { jp.essential.app.update.AppUpdateSettingsCard() }
         }
-        progressiveItem(6) {
+        progressiveItem(7) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -975,7 +1013,7 @@ private fun SettingsScreen(
                 SettingValue("状態", "3機能を搭載")
             }
         }
-        progressiveItem(7) {
+        progressiveItem(8) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.Center,
@@ -996,6 +1034,210 @@ private fun SettingsScreen(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun AppIconSettingsCard(
+    selected: AppIconOption,
+    currentLevel: Int,
+    onSelect: (AppIconOption) -> Unit,
+) {
+    var expanded by rememberSaveable { mutableStateOf(true) }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .glassSurface(28.dp)
+            .padding(19.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).clickable { expanded = !expanded }
+                .padding(vertical = 3.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Image(
+                painter = painterResource(selected.iconRes),
+                contentDescription = selected.label,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.size(48.dp).clip(RoundedCornerShape(15.dp)),
+            )
+            Spacer(Modifier.width(13.dp))
+            Column(Modifier.weight(1f)) {
+                Text("アプリアイコン", style = MaterialTheme.typography.titleLarge)
+                Text("${selected.label}・設定からいつでも変更", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+            }
+            ChevronIndicator(expanded = expanded)
+        }
+        AnimatedVisibility(
+            visible = expanded,
+            enter = expandVertically(
+                animationSpec = tween(260, easing = FastOutSlowInEasing),
+                expandFrom = Alignment.Top,
+            ) + fadeIn(animationSpec = tween(150)),
+            exit = shrinkVertically(
+                animationSpec = tween(220, easing = FastOutSlowInEasing),
+                shrinkTowards = Alignment.Top,
+            ) + fadeOut(animationSpec = tween(110)),
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "報酬で解放されたアイコンを選ぶと、アイコンの雰囲気に合わせて背景とテーマを調整します。DOSUKOIの画面色は変更しません。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                AppIconManager.options.forEach { option ->
+                    val available = option.unlockLevel == 0 || currentLevel >= option.unlockLevel
+                    val isSelected = option.id == selected.id
+                    Row(
+                        modifier = Modifier.fillMaxWidth()
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(
+                                if (isSelected) MaterialTheme.colorScheme.primaryContainer
+                                else MaterialTheme.colorScheme.surface.copy(alpha = if (available) 0.62f else 0.30f),
+                            )
+                            .clickable(enabled = available) { onSelect(option) }
+                            .padding(horizontal = 12.dp, vertical = 10.dp)
+                            .graphicsLayer(alpha = if (available) 1f else 0.48f),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Image(
+                            painter = painterResource(option.iconRes),
+                            contentDescription = option.label,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.size(42.dp).clip(RoundedCornerShape(13.dp)),
+                        )
+                        Spacer(Modifier.width(11.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(option.label, fontWeight = FontWeight.Bold)
+                            Text(
+                                if (available) option.description else "LV${option.unlockLevel}で解放",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        androidx.compose.material3.RadioButton(selected = isSelected, onClick = null)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** テーマ切替用のMaterial 3 Expressiveピル。月と太陽を同じ軌道で滑らかに移動させる。 */
+@Composable
+private fun ThemeToggle(
+    dark: Boolean,
+    onToggle: () -> Unit,
+) {
+    val trackColor by animateColorAsState(
+        targetValue = if (dark) Color(0xFF272D4D) else Color(0xFFE8C995),
+        animationSpec = tween(520, easing = FastOutSlowInEasing),
+        label = "テーマ切替トラック",
+    )
+    val thumbColor by animateColorAsState(
+        targetValue = if (dark) Color(0xFFE8EEFF) else Color(0xFFFFF1C9),
+        animationSpec = tween(520, easing = FastOutSlowInEasing),
+        label = "テーマ切替サム",
+    )
+    val thumbOffset by animateDpAsState(
+        targetValue = if (dark) 38.dp else 4.dp,
+        animationSpec = tween(520, easing = FastOutSlowInEasing),
+        label = "テーマ切替位置",
+    )
+    val rotation by animateFloatAsState(
+        targetValue = if (dark) 180f else 0f,
+        animationSpec = tween(520, easing = FastOutSlowInEasing),
+        label = "テーマ切替回転",
+    )
+    Box(
+        modifier = Modifier
+            .size(width = 74.dp, height = 38.dp)
+            .clip(RoundedCornerShape(50))
+            .background(trackColor)
+            .clickable(role = Role.Switch, onClick = onToggle)
+            .semantics { contentDescription = if (dark) "ダークテーマ" else "ライトテーマ" },
+    ) {
+        Canvas(Modifier.fillMaxSize()) {
+            if (dark) {
+                listOf(
+                    Offset(size.width * 0.20f, size.height * 0.32f),
+                    Offset(size.width * 0.38f, size.height * 0.66f),
+                    Offset(size.width * 0.52f, size.height * 0.25f),
+                ).forEach { center ->
+                    drawCircle(Color.White.copy(alpha = 0.82f), radius = 1.35.dp.toPx(), center = center)
+                }
+            } else {
+                val center = Offset(size.width * 0.26f, size.height * 0.5f)
+                val rayRadius = 11.dp.toPx()
+                repeat(8) { index ->
+                    val angle = Math.toRadians(index * 45.0)
+                    val start = Offset(
+                        center.x + kotlin.math.cos(angle).toFloat() * (rayRadius - 3.dp.toPx()),
+                        center.y + kotlin.math.sin(angle).toFloat() * (rayRadius - 3.dp.toPx()),
+                    )
+                    val end = Offset(
+                        center.x + kotlin.math.cos(angle).toFloat() * rayRadius,
+                        center.y + kotlin.math.sin(angle).toFloat() * rayRadius,
+                    )
+                    drawLine(Color(0xFFFFF1C9).copy(alpha = 0.76f), start, end, 1.4.dp.toPx(), StrokeCap.Round)
+                }
+                drawCircle(Color(0xFFFFF1C9).copy(alpha = 0.48f), radius = 8.dp.toPx(), center = center)
+            }
+        }
+        Box(
+            modifier = Modifier
+                .offset(x = thumbOffset)
+                .size(30.dp)
+                .align(Alignment.CenterStart)
+                .clip(CircleShape)
+                .background(thumbColor)
+                .graphicsLayer { rotationZ = rotation },
+            contentAlignment = Alignment.Center,
+        ) {
+            Canvas(Modifier.fillMaxSize()) {
+                val center = Offset(size.width / 2f, size.height / 2f)
+                val radius = size.minDimension * 0.31f
+                if (dark) {
+                    drawCircle(Color(0xFFF6F8FF), radius = radius, center = center)
+                    drawCircle(trackColor, radius = radius, center = Offset(center.x + radius * 0.52f, center.y - radius * 0.38f))
+                } else {
+                    drawCircle(Color(0xFFFFC94A), radius = radius * 0.72f, center = center)
+                    repeat(8) { index ->
+                        val angle = Math.toRadians(index * 45.0)
+                        val inner = radius * 1.05f
+                        val outer = radius * 1.48f
+                        drawLine(
+                            Color(0xFFFFB52E),
+                            Offset(center.x + kotlin.math.cos(angle).toFloat() * inner, center.y + kotlin.math.sin(angle).toFloat() * inner),
+                            Offset(center.x + kotlin.math.cos(angle).toFloat() * outer, center.y + kotlin.math.sin(angle).toFloat() * outer),
+                            1.35.dp.toPx(),
+                            StrokeCap.Round,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** 折りたたみ状態を広いV字で示すインジケーター。 */
+@Composable
+private fun ChevronIndicator(expanded: Boolean) {
+    val rotation by animateFloatAsState(
+        targetValue = if (expanded) 180f else 0f,
+        animationSpec = tween(220, easing = FastOutSlowInEasing),
+        label = "折りたたみ矢印",
+    )
+    val color = MaterialTheme.colorScheme.primary
+    Canvas(
+        modifier = Modifier
+            .size(28.dp)
+            .graphicsLayer { rotationZ = rotation },
+    ) {
+        val stroke = 3.6.dp.toPx()
+        drawLine(color, Offset(size.width * 0.12f, size.height * 0.35f), Offset(size.width * 0.5f, size.height * 0.65f), stroke, StrokeCap.Round)
+        drawLine(color, Offset(size.width * 0.5f, size.height * 0.65f), Offset(size.width * 0.88f, size.height * 0.35f), stroke, StrokeCap.Round)
     }
 }
 
@@ -1269,20 +1511,17 @@ private fun EssentialSymbol(
                     strokeWidth = stroke.width,
                     cap = StrokeCap.Round,
                 )
-                drawLine(
-                    tint,
-                    Offset(size.width * 0.28f, size.height * 0.46f),
-                    Offset(center.x, size.height * 0.68f),
-                    strokeWidth = stroke.width,
-                    cap = StrokeCap.Round,
-                )
-                drawLine(
-                    tint,
-                    Offset(size.width * 0.72f, size.height * 0.46f),
-                    Offset(center.x, size.height * 0.68f),
-                    strokeWidth = stroke.width,
-                    cap = StrokeCap.Round,
-                )
+                // 矢印先端を一体の面として描き、スクロール中の縮小レイヤーでも欠けないようにする。
+                val arrowHead = Path().apply {
+                    moveTo(size.width * 0.23f, size.height * 0.47f)
+                    lineTo(center.x, size.height * 0.73f)
+                    lineTo(size.width * 0.77f, size.height * 0.47f)
+                    lineTo(size.width * 0.69f, size.height * 0.40f)
+                    lineTo(center.x, size.height * 0.59f)
+                    lineTo(size.width * 0.31f, size.height * 0.40f)
+                    close()
+                }
+                drawPath(arrowHead, tint)
                 drawLine(
                     tint,
                     Offset(size.width * 0.18f, size.height * 0.84f),
@@ -1375,6 +1614,7 @@ private fun FeatureRoute.displayName(): String = when (this) {
     FeatureRoute.Schedule -> "行程表ジェネレーター"
     FeatureRoute.Files -> "ファイル参照"
     FeatureRoute.MiniGame -> "ミニゲーム"
+    FeatureRoute.Routine -> "日課"
 }
 
 private fun FeatureRoute.symbol(): EssentialSymbol = when (this) {
@@ -1383,6 +1623,7 @@ private fun FeatureRoute.symbol(): EssentialSymbol = when (this) {
     FeatureRoute.Schedule -> EssentialSymbol.Calendar
     FeatureRoute.Files -> EssentialSymbol.Media
     FeatureRoute.MiniGame -> EssentialSymbol.Game
+    FeatureRoute.Routine -> EssentialSymbol.Routine
 }
 
 @Preview(showBackground = true, widthDp = 390, heightDp = 844)

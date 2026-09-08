@@ -74,6 +74,18 @@ internal class AppUpdateModel(application: Application) : AndroidViewModel(appli
             } finally { busy = false; progress = null }
         }
     }
+
+    fun beginInstallation(): Boolean {
+        if (!repository.apk.isFile) {
+            downloaded = false
+            downloadFailed = true
+            message = "更新APKを再取得してください"
+            return false
+        }
+        // PackageInstallerへ渡した後に元APKを削除するため、戻った場合は再取得できる状態にする。
+        downloaded = false
+        return true
+    }
 }
 
 @Composable
@@ -92,7 +104,7 @@ internal fun AppUpdateHost(model: AppUpdateModel = viewModel()) {
             message = model.message,
             onDismiss = { model.showDialog = false },
             onUpdate = {
-                if (model.downloaded) context.startActivity(Intent(context, UpdateInstallActivity::class.java))
+                if (model.downloaded && model.beginInstallation()) context.startActivity(Intent(context, UpdateInstallActivity::class.java))
                 else model.download()
             },
         )

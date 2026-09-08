@@ -105,6 +105,8 @@ class UpdateInstallActivity : ComponentActivity() {
                                 options.setPendingIntentCreatorBackgroundActivityStartMode(android.app.ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED)
                             }
                             session.commit(PendingIntent.getActivity(this@UpdateInstallActivity, id, callback, flags, options.toBundle()).intentSender)
+                            // Session側へ同期済みなので、確認画面の結果を待たず元APKを回収する。
+                            repository.discardDownloadedApk()
                         }
                     } catch (error: Exception) { installer.abandonSession(id); throw error }
                 }
@@ -128,11 +130,12 @@ class UpdateInstallActivity : ComponentActivity() {
                 } else message = "確認要求が不正です。再試行してください"
             }
             PackageInstaller.STATUS_SUCCESS -> {
-                GitHubUpdateRepository(this).apk.delete()
+                GitHubUpdateRepository(this).discardDownloadedApk()
                 preferences.edit().remove("install_session").apply()
                 message = "更新が完了しました"
             }
             else -> {
+                GitHubUpdateRepository(this).discardDownloadedApk()
                 preferences.edit().remove("install_session").apply()
                 message = "更新が中止または失敗しました。再試行できます（${intent.getIntExtra(PackageInstaller.EXTRA_STATUS, -1)}）"
             }
