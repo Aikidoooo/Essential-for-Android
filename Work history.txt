@@ -786,3 +786,9 @@
 - GitHubへ公開する前に、現在の差分、バージョンとタグの一致、秘密情報の混入、ビルド結果、Release Workflowを確認する。公開コミット、タグ、Actions、Releaseの結果は完了後に追記する。
 - Windowsの日本語パスから直接実行した単体テストは既知の`ClassNotFoundException`を再現したため、同一プロジェクトをASCII名の一時Junction経由で`testDebugUnitTest lintDebug assembleRelease --no-daemon --max-workers=1`まで再実行し、BUILD SUCCESSFULを確認した。一時Junctionは検査後に削除した。既存のJNI strip警告と非推奨API警告は継続するが、テスト・Lint・APK生成を阻害していない。
 - 生成したx86_64 Release APKのZIPエントリを検査し、Classi、Gecko、Mozilla、libxul、mozglue、omni.jaに一致するファイルが0件であることを確認した。Firebase Web APIキーはDOSUKOIの既存公開設定としてv0.5.4以前から追跡済みであり、今回新たに追加した認証情報ではないことを確認した。
+
+【2026-09-08 Essential 0.5.5 GitHub正式公開】
+- 公開コミット`fd0708ba1c4a4640ebc2e39303d6fe0410c1624a`（`Classiを撤去しEssential 0.5.5を公開`）をGitHubリポジトリ`https://github.com/Aikidoooo/Essential-for-Android`の`main`へpushした。
+- 注釈付きタグ`v0.5.5`を同コミットへ作成してpushし、GitHub Actions run `34196374400`のAndroid Releaseを起動した。タグとversionNameの一致、Android／Rust準備、4 ABIのRust JNI再ビルド、単体テスト、Lint、署名付きRelease APK生成、apksigner検証、16KiB page対応zipalign検証が`completed / success`で完了した。
+- GitHub Release `Essential v0.5.5`がdraft=false、prerelease=falseで正式公開されたことを公開APIで確認した。arm64-v8a、armeabi-v7a、x86、x86_64、universalの署名付きAPK 5種類と`SHA256SUMS.txt`がuploaded状態で添付されている。
+- 公開された`SHA256SUMS.txt`をUTF-8として取得し、5行すべてが64桁SHA-256と対応APK名の形式であることを確認した。Release URLは`https://github.com/Aikidoooo/Essential-for-Android/releases/tag/v0.5.5`。Classi削除前バックアップZIPは`.gitignore`によりGitHubへ送信していない。
