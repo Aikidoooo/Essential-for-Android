@@ -792,3 +792,8 @@
 - 注釈付きタグ`v0.5.5`を同コミットへ作成してpushし、GitHub Actions run `34196374400`のAndroid Releaseを起動した。タグとversionNameの一致、Android／Rust準備、4 ABIのRust JNI再ビルド、単体テスト、Lint、署名付きRelease APK生成、apksigner検証、16KiB page対応zipalign検証が`completed / success`で完了した。
 - GitHub Release `Essential v0.5.5`がdraft=false、prerelease=falseで正式公開されたことを公開APIで確認した。arm64-v8a、armeabi-v7a、x86、x86_64、universalの署名付きAPK 5種類と`SHA256SUMS.txt`がuploaded状態で添付されている。
 - 公開された`SHA256SUMS.txt`をUTF-8として取得し、5行すべてが64桁SHA-256と対応APK名の形式であることを確認した。Release URLは`https://github.com/Aikidoooo/Essential-for-Android/releases/tag/v0.5.5`。Classi削除前バックアップZIPは`.gitignore`によりGitHubへ送信していない。
+
+【2026-09-09 Android Studioエミュレーターへv0.5.5を再インストール】
+- Android Studio接続先`emulator-5554`のインストール状態を確認したところ、旧Debug APKのversionCode=15、versionName=0.5.4だった。
+- 現在のソースから`assembleDebug --no-daemon --max-workers=1`を再実行してBUILD SUCCESSFULを確認し、`app-x86_64-debug.apk`を`adb install -r -d`でアプリデータを保持したまま上書きインストールした。
+- 再インストール後の端末情報がversionCode=16、versionName=0.5.5となり、`monkey`による起動も成功した。正式版v0.5.5 Releaseの署名付きAPKとは署名が異なるため、今回は既存Debug環境を維持できるDebug APKを使用した。
