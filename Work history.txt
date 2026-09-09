@@ -797,3 +797,15 @@
 - Android Studio接続先`emulator-5554`のインストール状態を確認したところ、旧Debug APKのversionCode=15、versionName=0.5.4だった。
 - 現在のソースから`assembleDebug --no-daemon --max-workers=1`を再実行してBUILD SUCCESSFULを確認し、`app-x86_64-debug.apk`を`adb install -r -d`でアプリデータを保持したまま上書きインストールした。
 - 再インストール後の端末情報がversionCode=16、versionName=0.5.5となり、`monkey`による起動も成功した。正式版v0.5.5 Releaseの署名付きAPKとは署名が異なるため、今回は既存Debug環境を維持できるDebug APKを使用した。
+
+【2026-09-09 Block Blast追加】
+- ミニゲーム一覧にBlock Blastを追加し、Compose製の8×8ブロックパズルを実装した。手持ちの3個から選択し、配置先をタップする操作。3個を使うと次の手札を生成する。
+- 縦横の完成列を同時判定して消去し、配置数と同時消去数に応じた得点を付与する。配置不能の終了判定、やり直し確認、ベストスコアの端末保存、画面再生成時の状態保持、マス色アニメーションと押下フィードバックを追加した。
+- assembleDebug成功。ASCII Junction経由のBlockBlastRulesTestで交差列の同時消去、盤面外・重複・使用済みブロックの拒否、残った手札の配置可能性を検証し、3テストが成功した。
+- emulator-5554へDebug APKをデータ保持でインストールした。実画面での操作・見た目の確認は未実施。GitHub公開は行っていない。
+
+【2026-09-09 Block Blastドラッグ配置対応】
+- Block Blastの手札カードへドラッグジェスチャーを追加した。手札を長押しして盤面へ移動し、指を離した位置のマスへブロックを配置できる。タップ選択による従来操作も維持している。
+- ドラッグ中は盤面上のドロップ候補セルを強調表示し、盤面外・重複・未配置ブロックでは配置を確定しない。ドラッグ中の手札カードには「盤面へドロップ」と表示し、配置成功時は既存の列消去・スコア更新処理へ接続した。
+- `assembleDebug --no-daemon --max-workers=1`と、ASCII Junction経由の`BlockBlastRulesTest`（交差列、境界・重複、配置可能性の3テスト）がBUILD SUCCESSFUL。emulator-5554へDebug APKを再インストールした。実端末での指操作の体感確認は未実施。GitHub公開は行っていない。
+- ドラッグ状態の最新値を参照するCompose経路を補強し、クリーンビルド後の再ビルドもBUILD SUCCESSFUL。x86_64 Debug APKを再インストールし、端末のversionCode=16、versionName=0.5.5を確認した。

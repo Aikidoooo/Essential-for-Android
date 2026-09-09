@@ -86,22 +86,25 @@ internal fun MiniGameScreen(
             onBack = onBack,
             onDosukoi = { selectedGame = GameSelection.Dosukoi },
             onMinesweeper = { selectedGame = GameSelection.Minesweeper },
+            onBlockBlast = { selectedGame = GameSelection.BlockBlast },
         )
         GameSelection.Dosukoi -> DosukoiWebViewScreen(
             onBack = { selectedGame = GameSelection.Menu },
             motionFps = motionFps,
         )
         GameSelection.Minesweeper -> MinesweeperFlow(onBack = { selectedGame = GameSelection.Menu })
+        GameSelection.BlockBlast -> BlockBlastScreen(onBack = { selectedGame = GameSelection.Menu })
     }
 }
 
-private enum class GameSelection { Menu, Dosukoi, Minesweeper }
+private enum class GameSelection { Menu, Dosukoi, Minesweeper, BlockBlast }
 
 @Composable
 private fun MiniGameMenu(
     onBack: () -> Unit,
     onDosukoi: () -> Unit,
     onMinesweeper: () -> Unit,
+    onBlockBlast: () -> Unit,
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -125,6 +128,15 @@ private fun MiniGameMenu(
                 icon = "🌀",
                 accent = Color(0xFFFF8A3D),
                 onClick = onDosukoi,
+            )
+        }
+        progressiveItem(3) {
+            GameMenuCard(
+                title = "Block Blast",
+                description = "ブロックを置いて縦横の列を消そう",
+                icon = "🧩",
+                accent = Color(0xFF22BFA0),
+                onClick = onBlockBlast,
             )
         }
         progressiveItem(2) {
