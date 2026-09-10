@@ -1,5 +1,29 @@
 # Essential 作業履歴
 
+## 2026-09-10 Essential v0.5.6公開準備
+
+- ユーザーの明示的な依頼により、Block Blast継続状態・吸着・ゲーム終了・倍率、動画フレーム切り取り専用画面と縦横比追従、Pro Film、Android Studio Debug共存対応をGitHubへ公開する準備を開始した。
+- `versionCode`を16から17、`versionName`を0.5.5から0.5.6へ更新し、`.github/release-notes/v0.5.6.md`を追加した。Release版のApplication IDは`jp.essential.app`のまま維持した。
+- `ESSENTIAL_HANDOFF.md`をv0.5.6の機能・検証状態へ更新した。ローカル検証用の`build-*.png`と`build-*.xml`をGitHubへ送らないよう`.gitignore`へ追加した。検証ファイル自体は削除していない。
+- 公開前Lintで`Class.getPackageName`がAPI 31以上を要求するエラーを検出したため、namespace取得をAPI 26でも使用できるクラス完全名の解析へ変更した。minSdk 26は引き上げていない。
+- 修正後に`:app:testDebugUnitTest :app:lintDebug :app:assembleDebug`を再実行し、BUILD SUCCESSFULを確認した。Lintはエラー0で、既存の非推奨API等の警告だけが残る。公開対象へ検証用画像やUIツリーが混入していないことをGit状態で確認する。
+
+## 2026-09-10 Pro Film新規追加
+
+- ホーム、機能一覧、ホームショートカット設定へPro Filmを追加した。既存の各機能は保持した。
+- Leica M9、Leica M3、Leica (Xiaomi Original)、Hasselblad (OPPO Original)、Huawei (Huaweiスマートフォン)、ZEISS (Vivo Original)、Sony (Xperia Original)、FUJIFILM (PROVIA)の計8種類を用意した。富士フイルムは幅広い被写体向けの標準Film SimulationであるPROVIAを採用した。
+- XiaomiのLeica Authentic、OPPOのHasselblad Natural Colour、HuaweiのXMAGE Original、vivoのZEISS Natural Color、SonyのCreative Look ST、FUJIFILMのPROVIAについて各社公式説明を確認し、色づくりの方向性へ反映した。
+- 単純な彩度、コントラスト、色温度だけのColorMatrix処理を廃止し、画素単位の色チャンネル補正、選択色強調、露出、階調、黒レベル、ハイライト圧縮、決定的粒状感、周辺減光を組み合わせた独自レンダラーへ変更した。設定変更時の古い処理は協調キャンセルし、反映待ちはProgress表示と保存無効化で示す。
+- すべてのプロファイルは100%を基準に作成し、ユーザーの強度0〜100%を最終段で元画像との線形合成に使う。M3はボディ自体に固有の発色がないためモノクロ銀塩の表現例とした。実機の測色、メーカーの公式LUT、RAW現像や端末ISPは利用できないため、完全再現を断定せず独立した近似であることを画面へ明記した。
+- OpenDocumentによる写真参照、EXIF回転・反転補正、角丸プレビュー、元画像比較、初期100%の0〜100%強度調整、CreateDocumentによるPNG保存を実装した。長辺最大2560pxの縮小読み込みを行い、その解像度で保存することを画面へ表示した。処理は端末内で行う。
+- Material 3の色と角丸、半透明Surface、progressiveItemの段階的表示、標準押下フィードバックを使用した。強度変更の反映が終わるまで保存を無効にする整合性チェックを追加した。
+- ASCII Junction経由で`:app:testDebugUnitTest :app:assembleDebug`を実行し、単体テストとDebugビルドに成功した。エミュレーターへの導入は、既存インストール版と今回のDebug署名が異なる`INSTALL_FAILED_UPDATE_INCOMPATIBLE`で停止し、既存アプリデータ保護のためアンインストールは行っていない。実際の写真による表示とPNG保存、実機との色一致検証は未実施。GitHub公開は行っていない。
+- Android Studio 2026.1.3の`lastOpenedProject`が`D:/#AI開発/Android/Essential`であることを確認した。`.idea/gradle.xml`も同じ`$PROJECT_DIR$`と`app`モジュールを参照しているため、Pro Filmを含む変更はAndroid Studioで開いている本体プロジェクトへ直接反映済み。`local.properties`のAndroid SDKパス、Java/Kotlin 17、`android.overridePathCheck=true`も維持した。
+- Pro Filmが見えないとの報告を調査し、ソースのホーム、機能一覧、ナビゲーション登録は正しい一方、エミュレーターでは11:01更新の旧APKが起動していたことを確認した。配布署名済みアプリとAndroid StudioのDebug署名が異なり、上書きが拒否されていたことが原因。
+- 既存Essentialのデータを消さずAndroid Studioから確認できるよう、Debugビルドだけ`applicationIdSuffix = ".debug"`、`versionNameSuffix = "-debug"`とし、表示名を`Essential Debug`へ分離した。Release版のApplication ID `jp.essential.app`は変更していない。
+- Debug接尾辞付きApplication IDでアプリアイコン別名のクラス名まで誤って変化し、起動時に`Component class jp.essential.app.debug.LightLauncher does not exist`で落ちる問題を確認した。`AppIconManager`でApplication IDとソースnamespaceを分離してComponentNameを構築するよう修正した。
+- 修正後に単体テストとDebugビルドへ成功し、`jp.essential.app.debug`をエミュレーターへ共存インストールした。ホームをスクロールした位置と機能一覧の両方でPro Filmを確認し、Pro Film専用画面へ遷移して`Leica M9`と写真参照UIが表示されることまで実機操作した。
+
 ## 2026-09-02
 
 - 空の作業フォルダを確認し、新規Androidアプリとして作業を開始。
@@ -809,3 +833,77 @@
 - ドラッグ中は盤面上のドロップ候補セルを強調表示し、盤面外・重複・未配置ブロックでは配置を確定しない。ドラッグ中の手札カードには「盤面へドロップ」と表示し、配置成功時は既存の列消去・スコア更新処理へ接続した。
 - `assembleDebug --no-daemon --max-workers=1`と、ASCII Junction経由の`BlockBlastRulesTest`（交差列、境界・重複、配置可能性の3テスト）がBUILD SUCCESSFUL。emulator-5554へDebug APKを再インストールした。実端末での指操作の体感確認は未実施。GitHub公開は行っていない。
 - ドラッグ状態の最新値を参照するCompose経路を補強し、クリーンビルド後の再ビルドもBUILD SUCCESSFUL。x86_64 Debug APKを再インストールし、端末のversionCode=16、versionName=0.5.5を確認した。
+
+【2026-09-09 Block Blast UI刷新・ドラッグ安定化】
+- 添付されたBlock Blast参考画像に合わせ、`BlockBlastScreen.kt`を専用の淡いアクア配色へ刷新した。上部の戻るボタン、薄いレベル表示、ベストスコア（王冠）、設定（歯車）、中央スコア、8×8盤面、横並びの3手札、リセット操作を同じ画面に配置した。
+- 盤面の空きセルと配置済みセルを角丸・グラデーション・上辺ハイライト・影で描画し、参考画像の立体ブロック感を再現した。手札にも4×4プレビューを表示し、選択中／配置済み／ドラッグ中の状態を境界線と文言で明示する。
+- 手札操作は従来のタップ選択に加え、通常のドラッグジェスチャーで盤面へ直接配置できるようにした。ドラッグ中は指の近くに浮遊プレビューを表示し、盤面上の配置候補を色で示す。無効な位置や盤面外では配置せず、メッセージで案内する。
+- ドラッグ開始時に手札カードのレイアウトサイズを変えないようにして、Composeの`pointerInput`がジェスチャー途中で再起動する問題を回避した。ゲーム画面に不要な親スクロールを置かず、上方向へのドラッグでも親がジェスチャーを奪わない構成にした。
+- 参考画像とエミュレーター画面（1080×2424 px、density 420 dpi）を幅540 pxへ正規化した比較画像`design-qa-comparison.png`で確認し、QAレポートを`design-qa.md`へ保存した。ゲーム領域のP0〜P2差分はなく、Essential統合上のシステムバーと動的盤面状態の差はP3許容と判定した。
+- `:app:testDebugUnitTest --no-daemon --max-workers=1`と`:app:assembleDebug --no-daemon --max-workers=1`をASCII Junction経由で実行し、いずれもBUILD SUCCESSFUL。既存の`BlockBlastRulesTest`を含む単体テストを実行した。x86_64 Debug APKを`emulator-5554`へ`adb install -r -d`で再インストールし、Block Blast画面を表示して、手札を盤面へドラッグした際にカードが解放され、スコアと盤面が更新されることを確認した。APKはGitHubへ公開していない。
+
+【2026-09-09 FilmSims v2.0.11 APK静的解析】
+- 解析対象を`C:\Users\waki1\Downloads\filmsims_v2.0.11.apk`として確認した。ファイルサイズは275,663,196バイト（約275.7MB／262.9MiB）、SHA-256は`4EEA3AA31FFA06DA0B1FFAA0726EC809FB0A33F123140F5CBEB6DFF108B8F39C`。
+- `aapt`でパッケージ`com.tqmane.filmsim`、versionCode=40、versionName=2.0.11、compileSdk=35、minSdk=26、targetSdk=36、FilmSimsラベル、MainActivityのランチャー／共有／画像VIEW入口、arm64-v8a・armeabi-v7a・x86・x86_64の4 ABIを確認した。DEXはclasses.dex 1本。
+- Manifest権限はINTERNET、旧OS向けストレージ読み書き、ACCESS_NETWORK_STATE、WAKE_LOCK、Google/Firebase・広告計測・App Check関連。allowBackup=false、usesCleartextTraffic=false、システム証明書のみを信頼するnetwork_security_config、Applicationのdebuggable明示なし（既定false）を確認した。Android 12以降のdata-extraction-rulesでもroot/sharedpref/database/file/externalをバックアップ・端末転送から除外している。
+- `apksigner`でRSA 2048の単一署名、APK Signature Scheme v2のみ有効（v1/v3/v4・SourceStampなし）を確認した。証明書DNは`C=JP, L=Tokyo, CN=tqmane`、証明書SHA-256は`d3b0fa3e3d7df444f45d57f6f948bf641faf78b1cc3e987598bccc59201e5bfc`。APK内のビルドメタデータはAndroid Gradle Plugin 9.0.1、Git revisionは`8907021a5db9570885b6f509394b9f1438c790e1`。
+- Jetpack Compose UI（Compose UI/Foundation 1.8.2、Material3 1.3.2、Activity Compose 1.9.0）、Hilt 2.59.1、Coroutines 1.8.0、ExifInterface 1.3.7、Security Crypto 1.1.0-alpha06、OkHttp、Firebase Auth 23.1.0／Analytics 22.1.2／Firestore・Remote Config、Google Sign-In、Play Integrity App Checkを依存ライブラリとリソース・DEXから確認した。
+- 難読化後も主要クラスとして`MainActivity`、`FilmSimsApplication`、`EditorViewModel`、`AuthViewModel`、`LutViewModel`、`FilmSimRenderer`、`GpuExportRenderer`、`CubeLUT`、`ReleaseInfo`、`WatermarkProcessor`設定、`NativeGuard`を確認した。EditorViewModelはSharedPreferencesへ強度・オーバーレイ・グレイン・露出・コントラスト・ハイライト・シャドウ・色温度・ティント・色相・彩度・輝度・ビネット・保存先URI・ヒント表示状態を保存する。MainActivityはSEND／SEND_MULTIPLE／VIEWで画像共有・画像URL入力を受け、Patreon OAuth callbackと分析イベント`image_opened`を処理する。
+- OpenGL ES 3.0系の描画処理を確認した。FilmSimRendererはinput texture、3D LUT／overlay LUT、グレイン、ズーム・パン、比較スプリット、各種色調整をGPUで適用し、GpuExportRendererはタイル出力・GPU readback上限・全体画像に対するグレイン／ビネット整合を扱う。Fragment shaderには露出、コントラスト、ハイライト、シャドウ、色温度、ティント、HSV色相・彩度、輝度、3D LUT、ビネット、時間変化グレイン、縦／横before-after比較が実装されている。背景shaderは高精度uTimeによるamber／cyan／purpleのaurora風グラデーションを描画する。
+- サイズの大半は`assets/pro/filmsims_pro_v1.fspack`（240,414,739バイト）で、ほかに暗号化されたLUTが854個（assets/luts配下、計約22MB）、グレインテクスチャ、端末メーカー別ウォーターマーク、4 ABIの`libfilmsim_guard.so`と`libandroidx.graphics.path.so`を含む。FSPACK1ヘッダー、`filmsims-fspack-file-v1`／`filmsims-fspack-index-v1`、`filmsims_pro_asset_key_v1`、AES/GCM・AndroidKeyStore・RSA/ECB・MessageDigestの参照を確認したため、Proアセットは独自パック＋鍵管理で保護されていると判断した（鍵の復号や保護回避は行っていない）。
+- GitHub更新確認用URL`https://api.github.com/repos/tqmane/film_sims/releases/latest`と、version・tagName・htmlUrl・releaseNotes・mandatoryを持つReleaseInfo、Patreon API（patreon-config／patreon-token）、Google／Firebase関連URLを確認した。`FilmSimsApplication`は起動時にPlay Integrity App Checkを登録し、NativeGuardはbootstrap、application/provider、鍵要求・鍵展開、LUT復号、watchdog用のチェックポイントとネイティブJNI関数を持つ。native guardの文字列に`/proc/`、`maps`、`xposed`、DEX側にroot／emulator／frida／tamper等があるため、改変・フック・環境検査を示唆するが、判定条件の完全復元はネイティブ逆解析が必要。
+- 解析はAPK単体の静的範囲で実施し、実端末での全画面操作、ログイン・課金・Firebase／Patreonサーバー応答、GPU性能、ネイティブ保護の判定結果、難読化前の完全なKotlinソース・コメント・ビルド再現性は未検証。APK単体から「完全・完璧」と断定できない範囲を明記した。プロジェクトのソース・APK・バックエンド権限をユーザーが所有／許諾している前提で、必要に応じて追加の実機検証や特定機能の深掘りを行う。
+
+【2026-09-10 Block Blast手札ブロック専用UI】
+- 添付された手札領域の参考画像に合わせ、3枚の手札カード内から「タップで選ぶ」「選択中」「配置済み」「ドロップ」の文言を削除し、ブロック形状だけを表示するUIへ変更した。カードの枠線と透明度は残し、選択中・ドラッグ中・配置済みを視覚的に判別できるようにした。
+- タップによる手札選択、盤面タップ配置、通常ドラッグ配置、ドラッグ中の浮遊プレビューは維持した。カード内の表示を簡素化しても、無効位置の拒否、列消去、スコア更新、使用済み手札の切り替えは従来どおり動作する。
+- `:app:testDebugUnitTest --no-daemon --max-workers=1`と`:app:assembleDebug --no-daemon --max-workers=1`をASCII Junction経由で実行し、BUILD SUCCESSFULを確認した。別署名の旧パッケージが残っていたため、開発用`emulator-5554`の対象アプリをアンインストールしてDebug APKを再インストールし、Block Blastのカード内にブロックだけが表示されること、ドラッグ配置後にカード解放・盤面反映・スコア更新されることを確認した。
+- 参考画像と実装の手札領域を正規化した比較画像`design-qa-comparison.png`、未配置状態`build-blockblast-hands-only.png`、ドラッグ配置後`build-blockblast-hands-only-drag.png`を保存し、`design-qa.md`へQA結果を追記した。物理端末での確認とGitHub公開は行っていない。
+
+【2026-09-10 Block Blast手札の枠・文言撤去と中央グリップ】
+- ユーザー指定に合わせ、`app/src/main/java/jp/essential/app/feature/minigame/BlockBlastScreen.kt`の手札表示からカードの外枠、背景面、選択・配置済み・ドラッグ中の状態文言をすべて削除した。手札は不可視のタップ／ドラッグ領域を維持し、画面にはブロック形状だけを外接矩形で表示する。これにより空の4×4セルを含む余白も表示されず、各ブロックが手札領域の中央に見える。
+- `BlockShapeMetrics`で各形状の最小／最大座標と中心を共通計算し、`blockPreviewOffset`でドラッグ中の浮遊ブロックの実表示中心を指位置へ合わせた。盤面のドロップ原点も同じ中心基準で算出する`blockOriginForPointer`へ統一し、持った位置に関係なくブロック中央をつかんで移動・配置できるようにした。
+- 浮遊プレビューは`Box`の枠・背景・案内文を描画せず、`ShapePreviewGrid`のブロックだけを表示する。無効位置の候補色、盤面外／重複配置の拒否、タップ選択、列消去、スコア更新、使用済み手札の再生成は従来どおり維持した。
+- ASCII Junction（`C:\Users\waki1\Desktop\essential-build`）経由で`:app:testDebugUnitTest :app:assembleDebug --no-daemon --max-workers=1`を実行し、Kotlin daemonのアクセス拒否後のfallbackコンパイラーを含めて`BUILD SUCCESSFUL`を確認した。既存の非推奨API・注釈警告は継続するが失敗はない。
+- x86_64 Debug APKを`emulator-5554`へ`adb install -r -d`で再インストールし、設定→機能一覧→ミニゲーム→Block Blastを開いた。未配置画面`build-blockblast-hand-only-latest.png`で手札に枠・状態文言がないことを確認し、最初のブロックを盤面中央へドラッグして`build-blockblast-hand-only-latest-drag.png`を取得した。ドラッグ後はスコア1、盤面への配置、使用済み手札の解放を確認し、UIツリーで「タップで選ぶ」「選択中」「配置済み」「ドロップ」がすべて0件だった。
+- 参考画像と最新実装手札領域の比較画像を`design-qa-comparison.png`へ再生成し、`design-qa.md`のBlock Blast QAを枠・文言撤去、不可視タッチ領域、中央グリップ、最新キャプチャへ更新した。旧キャプチャは過去の検証履歴として残している。別署名パッケージとの入れ替え時に開発用アプリを完全アンインストールしたため、エミュレーター内の開発用アプリデータは一度初期化されている。物理端末での確認とGitHub公開は行っていない。
+
+【2026-09-10 Block Blastドラッグ専用UI】
+- ユーザー指定に合わせ、Block Blast画面右上の設定ボタン、画面下部の「ゲームをリセット」ボタンと確認ダイアログ、タップ選択／盤面タップ配置の処理を削除した。手札選択用のクリック処理と盤面セルのクリック処理を外し、操作経路を手札から盤面へのドラッグ配置だけに整理した。
+- タップ操作の説明文も削除し、中央メッセージを「ブロックをドラッグして盤面へ置こう」へ変更した。配置不能時と配置成功後の状態メッセージもドラッグ操作を案内する文面へ統一し、候補セル表示、列消去、スコア更新、手札再生成は維持した。
+- 待機ブロックは手札行を132dpへ拡大し、プレビューセルを17dpから25dpへ拡大した。形状の外接矩形だけを描画する既存仕様と組み合わせ、枠・背景・文字なしでブロックを大きく見せるレイアウトにした。手札の不可視タッチ領域とドラッグ中の浮遊表示も維持した。
+- ASCII Junction（`C:\Users\waki1\Desktop\essential-build`）経由で`:app:testDebugUnitTest :app:assembleDebug --no-daemon --max-workers=1`を実行し、Kotlin daemonのアクセス拒否後にfallbackコンパイラーで完走、`BUILD SUCCESSFUL`を確認した。
+- x86_64 Debug APKを`emulator-5554`へ`adb install -r -d`で再インストールし、設定→機能一覧→ミニゲーム→Block Blastを開いた。最新画面`build-blockblast-drag-only-latest.png`で右上設定、リセットボタン、タップ選択案内が表示されないことと、手札ブロックが拡大されたことを確認した。手札をドラッグして配置し、`build-blockblast-drag-only-latest-drag.png`でスコア4、盤面反映、使用済み手札の解放を確認した。UIツリー上でも`ゲームをリセット`、`⚙`、`タップで選択`、`手札をドラッグ`の各旧表示は0件だった。物理端末での確認とGitHub公開は行っていない。
+
+【2026-09-10 Essential開発引き継ぎメモ作成】
+- 次のチャットから開発を再開できるよう、現行のAndroid構成、FeatureRoute、各機能の仕様、Block Blastの最新操作仕様、日課レベル報酬、テーマ／アイコン、更新処理、Classi撤去状態、Rust/JNI、ビルド・エミュレーター検証手順、GitHub公開状態、未確認事項を`ESSENTIAL_HANDOFF.md`へ整理した。
+- 現行ソースを優先すること、`Work history.txt`を変更前に読み変更後に追記すること、ユーザーが明示するまで公開・アップロード・破壊的変更を行わないことを引き継ぎ条件として明記した。
+- `ESSENTIAL_HANDOFF.md`自体は作業引き継ぎ用であり、秘密鍵・Token・個人認証情報は記載していない。Classi削除前のローカルバックアップは従来どおり`backups/`へ保持し、公開対象外とした。
+- 重要な過去要件として、TikTokのロゴ／黒画像除外、X動画の同期、画像の横並び選択・長押しプレビュー、ダウンロード時刻、アップデート一時ファイル回収、初回設定遷移を引き継ぎメモへ追記した。
+
+【2026-09-10 Block Blast継続状態・吸着配置・ゲーム終了・連続消去倍率】
+- `BlockBlastScreen.kt`で盤面64マス、手札3個、現在スコア、連続消去回数、倍率、倍率終了時刻を`block_blast` SharedPreferencesへ保存するようにした。ホームへ戻った場合だけでなく、アプリプロセスが終了した場合もゲーム途中の盤面・手札・スコアを復元する。ベストスコアの従来保存も維持した。
+- ドラッグ位置がそのままでは配置不能でも、約1.65マス以内に有効な置き場所があれば、距離が最も近い位置へ吸着する配置補助を追加した。ドラッグ中の候補セルと指を離した後の確定位置は同じ補助計算を使用し、盤面外からの配置や遠い場所への意図しない移動は許可しない。
+- 残っている手札を一つも配置できなくなった場合、現在スコアを大きく表示するLiquid Glass調のゲーム終了面を重ね、「次へ」で盤面・手札・現在スコア・倍率状態だけを新しいゲームへリセットするようにした。ベストスコアはリセットしない。
+- 列消去が配置ごとに連続した場合、2回目で10秒間2倍、3回目で10秒間3倍というように倍率を上げる処理を追加した。発動中は配置点と列消去点の合計へ倍率を適用し、消去しない配置では連続回数だけを0へ戻す。すでに発動した倍率は残り10秒が尽きるまで維持し、画面上へ倍率と残り秒数を脈動するピルで表示する。
+- `BlockBlastRulesTest.kt`へ、近傍の隙間への吸着、吸着距離外の拒否、2連続で2倍、3連続で3倍、発動中倍率が通常配置へ適用されることのテストを追加した。
+- ASCII Junction経由で`:app:testDebugUnitTest :app:assembleDebug --no-daemon --max-workers=1`を実行し、BUILD SUCCESSFULを確認した。Kotlin daemonのアクセス拒否後にfallbackコンパイラーへ切り替わる既知警告と既存の非推奨API警告は継続するが、テスト失敗とビルド失敗はない。
+- x86_64 Debug APKを`emulator-5554`へデータ保持でインストールし、ブロック配置後の現在スコア4、盤面、残り手札がSharedPreferencesへ書き込まれることを確認した。その後アプリを強制終了して再起動し、Block Blastへ戻って同じスコア4と盤面が復元されることをUIと保存データの両方で確認した。ゲーム終了面と倍率の時間表示はルールテストとビルドで確認し、実プレイで条件を作る操作確認は未実施。物理端末での吸着感と10秒表示の体感は未確認。
+
+【2026-09-10 動画フレーム切り取り専用プレビュー画面】
+- `FileReferenceScreen.kt`の動画用フレーム切り取りをインライン操作から専用画面への入口へ変更した。専用画面には戻る操作、16:9プレビュー、再生／一時停止、現在時刻、推定フレーム番号、全体時間、時間スライダー、前後1フレーム移動、PNG保存を配置した。
+- 専用画面のSurface、角丸、半透明面、状態色補間、段階表示、処理中表示へMaterial 3 Expressive、Liquid Glass、Progressive Motion UIの表現を適用した。元の圧縮、MP3変換、GIF化は削除せず、ファイル参照画面に維持した。
+- Android標準`VideoView`で動画を再生しながら選択できるようにし、端末のデコーダーが再生を拒否した動画でもシステムエラーダイアログを出さず、`MediaMetadataRetriever`で選択時刻の実フレームを最大1280pxへ縮小してプレビューするフォールバックを追加した。フレーム移動とPNG保存はフォールバック中も使用できる。
+- エミュレーター上で作成した約3秒の`EssentialPreview.mp4`をStorage Access Frameworkから選択し、ファイル参照画面の専用画面入口、専用画面のプレビュー領域、前後1フレーム、PNG保存操作が表示されることをUIツリーで確認した。この検証動画は標準プレイヤーで再生非対応だったため、エラーダイアログが抑止され「フレーム画像でプレビューしています」と表示されるフォールバック経路を確認した。実動画の連続再生、物理端末のコーデック差、PNGのMediaStore保存完走は未確認。
+
+【2026-09-10 フレーム切り取り縦横動画・角丸対応】
+- `ReferencedFile`へ動画の表示幅と表示高さを追加した。`MediaMetadataRetriever`から動画幅、高さ、回転角を読み、90度または270度回転のメタデータを持つ動画は幅と高さを入れ替えるため、撮影方向どおりの縦横比で判定できる。
+- フレーム切り取り専用画面の固定16:9表示を廃止し、動画固有の縦横比へ自動適応させた。縦動画は画面中央へ幅66%の縦長プレビューとして配置し、横動画は利用可能な横幅全体を使う横長プレビューとして配置する。極端または壊れたメタデータでは縦横比を0.45〜2.4へ制限してレイアウト崩れを防ぐ。
+- プレビュー外側のLiquid Glass Surface、内側コンテナ、Android標準`VideoView`、再生非対応時の実フレーム画像のすべてへ角丸クリップを適用した。`VideoView`自体にも角丸背景、`ViewOutlineProvider.BACKGROUND`、`clipToOutline`を設定し、動画Surfaceだけが角からはみ出さないようにした。
+- `FileReferenceModelsTest.kt`を追加し、1080×1920を縦動画、1920×1080を横動画として判定することと、異常な寸法の縦横比制限を検証した。ASCII Junction経由の`:app:testDebugUnitTest :app:assembleDebug --no-daemon --max-workers=1`はBUILD SUCCESSFUL。Kotlin daemonアクセス拒否後のfallbackと既存警告は継続するが、テスト・ビルド失敗はない。
+- x86_64 Debug APKを`emulator-5554`へ更新インストールした。縦動画`EssentialPreview.mp4`は1080×2424として中央の角丸縦長プレビュー、横動画`EssentialLandscape.mp4`は1920×1080として全幅の角丸横長プレビューになることをUIツリーで確認した。両画面でEssential由来のFATAL EXCEPTIONは検出されなかった。物理端末固有の動画Surfaceクリップと多様な回転メタデータは未確認。
+
+【2026-09-10 フレーム実寸優先の縦横比追従】
+- ユーザー提示画面では縦動画が横長の16:9枠内へ縮小され、左右に大きな黒帯が残っていたため、プレビュー枠の縦横比判定を追加調整した。動画メタデータだけでなく、`MediaMetadataRetriever`で実際に取得したプレビューフレームの幅・高さを最優先してSurface自体の縦横比へ反映する。
+- メタデータ読み取り直後から実フレーム取得後へ表示寸法が切り替わる際、枠の縦横比と幅を360msで補間し、急に跳ねず縦長または横長へ変形するProgressive Motionを追加した。回転角0度、90度、270度の表示寸法変換テストも追加した。
+- ASCII Junction経由で`:app:testDebugUnitTest :app:assembleDebug --no-daemon --max-workers=1`を実行してBUILD SUCCESSFUL。x86_64 Debug APKを`emulator-5554`へ更新インストールし、縦動画の実フレーム寸法570×1280に合わせ、プレビュー外枠が`[219,382][862,1811]`の縦長・角丸表示になることをUIツリーと`build-frame-portrait-adaptive.png`で確認した。添付画面にあった横長外枠の左右余白は解消されている。物理端末確認とGitHub公開は行っていない。

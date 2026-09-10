@@ -17,6 +17,9 @@ keystore.properties
 /essential-*.png
 /essential-*.mp4
 /essential-*.xml
+/build-*.png
+/build-*.xml
+/design-qa-comparison.png
 *.apk
 # ローカル検証のスクリーンショット・変換ファイル・Gradle/Kotlinの一時ログは公開しない。
 /output/

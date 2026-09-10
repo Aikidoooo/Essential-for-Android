@@ -15,8 +15,8 @@ android {
         applicationId = "jp.essential.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 16
-        versionName = "0.5.5"
+        versionCode = 17
+        versionName = "0.5.6"
         buildConfigField("String", "UPDATE_REPOSITORY", "\"$updateRepository\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -44,6 +44,11 @@ android {
         }
     }
     buildTypes {
+        debug {
+            // 配布署名済みアプリを消さず、Android Studioから共存実行できるようにする。
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+        }
         release {
             if (System.getenv("RELEASE_STORE_FILE") != null) signingConfig = signingConfigs.getByName("distribution")
             isMinifyEnabled = false

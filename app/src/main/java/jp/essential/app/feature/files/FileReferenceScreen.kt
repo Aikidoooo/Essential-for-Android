@@ -1,10 +1,15 @@
 package jp.essential.app.feature.files
 
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,6 +21,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -30,22 +36,38 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import java.util.Locale
+import kotlin.math.abs
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import jp.essential.app.ui.progressiveItem
+import android.widget.VideoView
+import android.graphics.Bitmap
+import android.graphics.drawable.GradientDrawable
+import android.view.ViewOutlineProvider
 
 @Composable
 fun FileReferenceScreen(onBack: () -> Unit) {
@@ -53,13 +75,22 @@ fun FileReferenceScreen(onBack: () -> Unit) {
     val engine = remember(context) { MediaFileEngine(context.applicationContext) }
     val scope = rememberCoroutineScope()
     var referencedFile by remember { mutableStateOf<ReferencedFile?>(null) }
+    var frameEditorFile by remember { mutableStateOf<ReferencedFile?>(null) }
     var targetMegabytes by remember { mutableIntStateOf(20) }
-    var framePosition by remember { mutableFloatStateOf(0f) }
     var trimStart by remember { mutableFloatStateOf(0f) }
     var trimEnd by remember { mutableFloatStateOf(1f) }
     var gifPreset by remember { mutableStateOf(GifPreset.Standard) }
     var processingLabel by remember { mutableStateOf<String?>(null) }
     var resultMessage by remember { mutableStateOf<String?>(null) }
+
+    frameEditorFile?.let { file ->
+        FrameExtractionScreen(
+            file = file,
+            engine = engine,
+            onBack = { frameEditorFile = null },
+        )
+        return
+    }
 
     fun process(label: String, action: suspend () -> String) {
         if (processingLabel != null) return
@@ -80,7 +111,6 @@ fun FileReferenceScreen(onBack: () -> Unit) {
                 engine.inspect(uri)
             }.onSuccess {
                 referencedFile = it
-                framePosition = 0f
                 trimStart = 0f
                 trimEnd = 1f
                 resultMessage = null
@@ -169,23 +199,13 @@ fun FileReferenceScreen(onBack: () -> Unit) {
                 ReferencedMediaType.Video -> {
                     progressiveItem(motionIndex++) {
                         ToolCard {
-                            SectionTitle("フレーム切り取り", "時刻または1フレーム単位でPNGへ")
-                            val positionMillis = (file.durationMillis * framePosition).toLong()
-                            val fps = file.frameRate.takeIf { it > 0f } ?: 30f
-                            Text("${formatTime(positionMillis)}　約${(positionMillis / 1000f * fps).toLong()}フレーム")
-                            Slider(value = framePosition, onValueChange = { framePosition = it }, valueRange = 0f..1f)
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                OutlinedButton(
-                                    onClick = { framePosition = (framePosition - (1000f / fps) / file.durationMillis.coerceAtLeast(1)).coerceAtLeast(0f) },
-                                    modifier = Modifier.weight(1f),
-                                ) { Text("−1フレーム") }
-                                OutlinedButton(
-                                    onClick = { framePosition = (framePosition + (1000f / fps) / file.durationMillis.coerceAtLeast(1)).coerceAtMost(1f) },
-                                    modifier = Modifier.weight(1f),
-                                ) { Text("＋1フレーム") }
-                            }
-                            ActionButton("このフレームを写真にする", processingLabel) {
-                                process("フレーム切り取り") { engine.extractFrame(file, positionMillis) }
+                            SectionTitle("フレーム切り取り", "動画を見ながら専用画面で時刻を選択")
+                            Text(
+                                "プレビュー、再生、一コマ送りを一つの画面で操作できます。",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            ActionButton("フレーム切り取りを開く", processingLabel) {
+                                frameEditorFile = file
                             }
                         }
                     }
@@ -246,6 +266,279 @@ fun FileReferenceScreen(onBack: () -> Unit) {
                     }
                 }
             }
+        }
+    }
+}
+
+/** 動画を確認しながら、保存する一瞬を選べる専用画面。 */
+@Composable
+private fun FrameExtractionScreen(
+    file: ReferencedFile,
+    engine: MediaFileEngine,
+    onBack: () -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    var videoView by remember { mutableStateOf<VideoView?>(null) }
+    var positionMillis by rememberSaveable(file.uri.toString()) { mutableLongStateOf(0L) }
+    var prepared by remember { mutableStateOf(false) }
+    var playbackError by remember { mutableStateOf(false) }
+    var previewBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var playing by remember { mutableStateOf(false) }
+    var processing by remember { mutableStateOf(false) }
+    var resultMessage by remember { mutableStateOf<String?>(null) }
+    val durationMillis = file.durationMillis.coerceAtLeast(1L)
+    val fps = file.frameRate.takeIf { it > 0f } ?: 30f
+    val frameDurationMillis = (1000f / fps).toLong().coerceAtLeast(1L)
+
+    BackHandler(onBack = onBack)
+    DisposableEffect(Unit) {
+        onDispose {
+            videoView?.stopPlayback()
+            previewBitmap?.recycle()
+        }
+    }
+    LaunchedEffect(playing, prepared) {
+        while (playing && prepared) {
+            videoView?.let { view ->
+                positionMillis = view.currentPosition.toLong().coerceIn(0L, durationMillis)
+                if (!view.isPlaying) playing = false
+            }
+            delay(50L)
+        }
+    }
+    LaunchedEffect(positionMillis, playing) {
+        if (playing) return@LaunchedEffect
+        delay(90L)
+        runCatching { engine.previewFrame(file, positionMillis) }
+            .onSuccess { frame ->
+                val previous = previewBitmap
+                previewBitmap = frame
+                delay(20L)
+                previous?.takeIf { it !== frame }?.recycle()
+            }
+    }
+
+    fun seekTo(targetMillis: Long) {
+        val target = targetMillis.coerceIn(0L, durationMillis)
+        positionMillis = target
+        videoView?.seekTo(target.toInt())
+    }
+
+    val controlsReady = prepared || previewBitmap != null
+    // 実際に描画したフレーム寸法を優先し、メタデータと表示方向が異なる動画にも追従する。
+    val previewWidth = previewBitmap?.width?.takeIf { it > 0 } ?: file.widthPixels.takeIf { it > 0 } ?: 16
+    val previewHeight = previewBitmap?.height?.takeIf { it > 0 } ?: file.heightPixels.takeIf { it > 0 } ?: 9
+    val targetPreviewAspectRatio = adaptivePreviewAspectRatio(previewWidth, previewHeight)
+    val previewAspectRatio by animateFloatAsState(
+        targetValue = targetPreviewAspectRatio,
+        animationSpec = tween(360),
+        label = "動画縦横比",
+    )
+    val portraitVideo = isPortraitPreview(targetPreviewAspectRatio)
+    val previewShape = RoundedCornerShape(if (portraitVideo) 34.dp else 28.dp)
+    val mediaShape = RoundedCornerShape(if (portraitVideo) 28.dp else 21.dp)
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(start = 20.dp, top = 18.dp, end = 20.dp, bottom = 30.dp),
+        verticalArrangement = Arrangement.spacedBy(15.dp),
+    ) {
+        var motionIndex = 0
+        progressiveItem(motionIndex++) { FrameTopBar(onBack) }
+        progressiveItem(motionIndex++) {
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.Center,
+            ) {
+                val widthFraction by animateFloatAsState(
+                    targetValue = if (portraitVideo) 0.66f else 1f,
+                    animationSpec = tween(360),
+                    label = "動画プレビュー幅",
+                )
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth(widthFraction)
+                        .aspectRatio(previewAspectRatio)
+                        .clip(previewShape)
+                        .semantics {
+                            contentDescription = if (portraitVideo) {
+                                "角丸の縦動画プレビュー ${previewWidth}×${previewHeight}"
+                            } else {
+                                "角丸の横動画プレビュー ${previewWidth}×${previewHeight}"
+                            }
+                        },
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+                    shape = previewShape,
+                    shadowElevation = 8.dp,
+                ) {
+                    Box(
+                        modifier = Modifier.fillMaxSize().padding(8.dp).clip(mediaShape),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        AndroidView(
+                            factory = { context ->
+                                VideoView(context).apply {
+                                    videoView = this
+                                    background = GradientDrawable().apply {
+                                        setColor(android.graphics.Color.BLACK)
+                                        cornerRadius = 28f * context.resources.displayMetrics.density
+                                    }
+                                    outlineProvider = ViewOutlineProvider.BACKGROUND
+                                    clipToOutline = true
+                                    setVideoURI(file.uri)
+                                    setOnPreparedListener { player ->
+                                        player.isLooping = false
+                                        prepared = true
+                                        playbackError = false
+                                        seekTo(positionMillis.toInt())
+                                    }
+                                    setOnErrorListener { _, _, _ ->
+                                        playbackError = true
+                                        prepared = false
+                                        playing = false
+                                        true
+                                    }
+                                    setOnCompletionListener {
+                                        playing = false
+                                        positionMillis = durationMillis
+                                    }
+                                }
+                            },
+                            update = { view ->
+                                if (!playing && abs(view.currentPosition.toLong() - positionMillis) > 80L) {
+                                    view.seekTo(positionMillis.toInt())
+                                }
+                            },
+                            modifier = Modifier.fillMaxSize().clip(mediaShape),
+                        )
+                        if (!playing) {
+                            previewBitmap?.let { frame ->
+                                Image(
+                                    bitmap = frame.asImageBitmap(),
+                                    contentDescription = "選択中の動画フレーム",
+                                    modifier = Modifier.fillMaxSize().clip(mediaShape),
+                                    contentScale = ContentScale.Fit,
+                                )
+                            }
+                        }
+                        if (!controlsReady) CircularProgressIndicator()
+                    }
+                }
+            }
+        }
+        progressiveItem(motionIndex++) {
+            ToolCard {
+                val playColor by animateColorAsState(
+                    targetValue = if (playing) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.primaryContainer,
+                    animationSpec = tween(320),
+                    label = "再生ボタン色",
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Column {
+                        Text(formatTime(positionMillis), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                        Text(
+                            "約${(positionMillis / 1000f * fps).toLong()}フレーム / ${formatTime(durationMillis)}",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Surface(
+                        modifier = Modifier.size(58.dp).clickable(enabled = prepared) {
+                            videoView?.let { view ->
+                                if (playing) view.pause() else view.start()
+                                playing = !playing
+                            }
+                        },
+                        color = playColor.copy(alpha = 0.9f),
+                        shape = CircleShape,
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(if (playing) "Ⅱ" else "▶", fontWeight = FontWeight.Black)
+                        }
+                    }
+                }
+                Slider(
+                    value = positionMillis.toFloat(),
+                    onValueChange = { seekTo(it.toLong()) },
+                    valueRange = 0f..durationMillis.toFloat(),
+                    enabled = controlsReady,
+                )
+                AnimatedVisibility(playbackError) {
+                    Text(
+                        "この動画は端末の標準再生に非対応です。フレーム画像でプレビューしています。",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedButton(
+                        onClick = { seekTo(positionMillis - frameDurationMillis) },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(18.dp),
+                        enabled = controlsReady,
+                    ) { Text("−1フレーム") }
+                    OutlinedButton(
+                        onClick = { seekTo(positionMillis + frameDurationMillis) },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(18.dp),
+                        enabled = controlsReady,
+                    ) { Text("＋1フレーム") }
+                }
+            }
+        }
+        progressiveItem(motionIndex++) {
+            ToolCard {
+                SectionTitle("この瞬間を保存", "選択中の時刻を高品質PNGとして書き出します")
+                Button(
+                    onClick = {
+                        if (processing) return@Button
+                        videoView?.pause()
+                        playing = false
+                        scope.launch {
+                            processing = true
+                            resultMessage = null
+                            runCatching { engine.extractFrame(file, positionMillis) }
+                                .onSuccess { resultMessage = "$it をDownload/Essentialへ保存しました" }
+                                .onFailure { resultMessage = it.message ?: "フレーム切り取りに失敗しました" }
+                            processing = false
+                        }
+                    },
+                    enabled = controlsReady && !processing,
+                    modifier = Modifier.fillMaxWidth().height(56.dp),
+                    shape = RoundedCornerShape(20.dp),
+                ) {
+                    if (processing) {
+                        CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(10.dp))
+                    }
+                    Text(if (processing) "PNGを作成中" else "このフレームを写真にする")
+                }
+                AnimatedVisibility(resultMessage != null) {
+                    Text(
+                        resultMessage.orEmpty(),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FrameTopBar(onBack: () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Surface(
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.78f),
+            modifier = Modifier.size(46.dp).clickable(onClick = onBack),
+        ) { Box(contentAlignment = Alignment.Center) { Text("‹", style = MaterialTheme.typography.headlineMedium) } }
+        Spacer(Modifier.width(12.dp))
+        Column {
+            Text("フレーム切り取り", style = MaterialTheme.typography.headlineMedium)
+            Text("動画を見ながら一瞬を選択", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

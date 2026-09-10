@@ -77,8 +77,10 @@ internal object AppIconManager {
     /** 選択した別名を有効化し、同時に他のランチャー入口を無効化する。 */
     fun apply(context: Context, option: AppIconOption) {
         val manager = context.packageManager
-        val components = options.map { ComponentName(context, context.packageName + it.aliasName) }
-        val target = ComponentName(context, context.packageName + option.aliasName)
+        // Application IDへ接尾辞が付くDebug版でも、別名クラスはソースのnamespace内に存在する。
+        val namespace = AppIconManager::class.java.name.substringBeforeLast('.')
+        val components = options.map { ComponentName(context, namespace + it.aliasName) }
+        val target = ComponentName(context, namespace + option.aliasName)
         if (android.os.Build.VERSION.SDK_INT >= 33) {
             manager.setComponentEnabledSettings(
                 components.map { component ->

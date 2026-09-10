@@ -42,16 +42,24 @@ class MediaFileEngine(private val context: Context) {
         }
         var duration = 0L
         var frameRate = 0f
+        var widthPixels = 0
+        var heightPixels = 0
         if (type != ReferencedMediaType.Image) {
             jp.essential.app.core.withMetadataRetriever { retriever ->
                 retriever.setDataSource(context, uri)
                 duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
                 if (type == ReferencedMediaType.Video) {
                     frameRate = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_CAPTURE_FRAMERATE)?.toFloatOrNull() ?: 0f
+                    val encodedWidth = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 0
+                    val encodedHeight = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 0
+                    val rotation = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0
+                    val displayDimensions = displayVideoDimensions(encodedWidth, encodedHeight, rotation)
+                    widthPixels = displayDimensions.first
+                    heightPixels = displayDimensions.second
                 }
             }
         }
-        return ReferencedFile(uri, name, mime, type, size, duration, frameRate)
+        return ReferencedFile(uri, name, mime, type, size, duration, frameRate, widthPixels, heightPixels)
     }
 
     suspend fun compress(file: ReferencedFile, targetMegabytes: Int): String = withContext(Dispatchers.IO) {
@@ -107,6 +115,29 @@ class MediaFileEngine(private val context: Context) {
             source.delete()
             output.delete()
         }
+    }
+
+    /** プレイヤーの対応状況に依存せず、選択時刻の確認用フレームを小さく読み出す。 */
+    suspend fun previewFrame(file: ReferencedFile, positionMillis: Long): Bitmap = withContext(Dispatchers.IO) {
+        require(file.type == ReferencedMediaType.Video) { "プレビューは動画だけで使用できます" }
+        val frame = jp.essential.app.core.withMetadataRetriever { retriever ->
+            retriever.setDataSource(context, file.uri)
+            retriever.getFrameAtTime(
+                positionMillis.coerceAtLeast(0L) * 1_000L,
+                MediaMetadataRetriever.OPTION_CLOSEST,
+            )
+        } ?: error("この時刻の映像を読み取れませんでした")
+        val maxDimension = maxOf(frame.width, frame.height)
+        if (maxDimension <= 1_280) return@withContext frame
+        val scale = 1_280f / maxDimension
+        val scaled = Bitmap.createScaledBitmap(
+            frame,
+            (frame.width * scale).toInt().coerceAtLeast(1),
+            (frame.height * scale).toInt().coerceAtLeast(1),
+            true,
+        )
+        frame.recycle()
+        scaled
     }
 
     suspend fun convertVideoToMp3(file: ReferencedFile): String = withContext(Dispatchers.IO) {

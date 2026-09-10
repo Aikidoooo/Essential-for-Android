@@ -104,6 +104,7 @@ import jp.essential.app.feature.files.FileReferenceScreen
 import jp.essential.app.feature.minigame.MiniGameScreen
 import jp.essential.app.feature.qr.QrScannerScreen
 import jp.essential.app.feature.routine.RoutineScreen
+import jp.essential.app.feature.profilm.ProFilmScreen
 import jp.essential.app.feature.schedule.ScheduleGeneratorScreen
 import jp.essential.app.ui.theme.EssentialLime
 import jp.essential.app.ui.theme.EssentialOrange
@@ -143,6 +144,7 @@ private enum class FeatureRoute(val requestId: String) {
     Files("files"),
     MiniGame("mini_game"),
     Routine("routine"),
+    ProFilm("pro_film"),
 }
 
 private data class FeatureItem(
@@ -313,6 +315,7 @@ private fun EssentialApp(
                         motionFps = motionFps,
                     )
                     FeatureRoute.Routine -> RoutineScreen { activeFeature = null }
+                    FeatureRoute.ProFilm -> ProFilmScreen { activeFeature = null }
                     null -> AnimatedContent(
                         targetState = destination,
                         modifier = Modifier.fillMaxSize(),
@@ -434,6 +437,7 @@ private fun HomeScreen(
                     FeatureItem("ファイル参照", "圧縮・変換・背景透過", EssentialSymbol.Media, EssentialRed, FeatureRoute.Files),
                     FeatureItem("ミニゲーム", "言葉遊び・マインスイーパー", EssentialSymbol.Game, Color(0xFF9C6BFF), FeatureRoute.MiniGame),
                     FeatureItem("日課", "毎日の目標をポイントに", EssentialSymbol.Routine, Color(0xFF27B99A), FeatureRoute.Routine),
+                    FeatureItem("Pro Film", "写真にカメラの色彩を", EssentialSymbol.Media, EssentialOrange, FeatureRoute.ProFilm),
                 ),
                 onClick = { feature ->
                     feature.route?.let(onOpenFeature) ?: onComingSoon()
@@ -809,6 +813,9 @@ private fun FeaturesScreen(onOpenFeature: (FeatureRoute) -> Unit, onComingSoon: 
             )
         }
         progressiveItem(7) {
+            CategoryPanel("Pro Film", "写真を参照して色調・強度を調整", EssentialSymbol.Media, EssentialOrange) { onOpenFeature(FeatureRoute.ProFilm) }
+        }
+        progressiveItem(8) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1615,6 +1622,7 @@ private fun FeatureRoute.displayName(): String = when (this) {
     FeatureRoute.Files -> "ファイル参照"
     FeatureRoute.MiniGame -> "ミニゲーム"
     FeatureRoute.Routine -> "日課"
+    FeatureRoute.ProFilm -> "Pro Film"
 }
 
 private fun FeatureRoute.symbol(): EssentialSymbol = when (this) {
@@ -1624,6 +1632,7 @@ private fun FeatureRoute.symbol(): EssentialSymbol = when (this) {
     FeatureRoute.Files -> EssentialSymbol.Media
     FeatureRoute.MiniGame -> EssentialSymbol.Game
     FeatureRoute.Routine -> EssentialSymbol.Routine
+    FeatureRoute.ProFilm -> EssentialSymbol.Media
 }
 
 @Preview(showBackground = true, widthDp = 390, heightDp = 844)
