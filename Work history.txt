@@ -1,12 +1,16 @@
 # Essential 作業履歴
 
-## 2026-09-10 Essential v0.5.6公開準備
+## 2026-09-10 Essential v0.5.6公開
 
 - ユーザーの明示的な依頼により、Block Blast継続状態・吸着・ゲーム終了・倍率、動画フレーム切り取り専用画面と縦横比追従、Pro Film、Android Studio Debug共存対応をGitHubへ公開する準備を開始した。
 - `versionCode`を16から17、`versionName`を0.5.5から0.5.6へ更新し、`.github/release-notes/v0.5.6.md`を追加した。Release版のApplication IDは`jp.essential.app`のまま維持した。
 - `ESSENTIAL_HANDOFF.md`をv0.5.6の機能・検証状態へ更新した。ローカル検証用の`build-*.png`と`build-*.xml`をGitHubへ送らないよう`.gitignore`へ追加した。検証ファイル自体は削除していない。
 - 公開前Lintで`Class.getPackageName`がAPI 31以上を要求するエラーを検出したため、namespace取得をAPI 26でも使用できるクラス完全名の解析へ変更した。minSdk 26は引き上げていない。
 - 修正後に`:app:testDebugUnitTest :app:lintDebug :app:assembleDebug`を再実行し、BUILD SUCCESSFULを確認した。Lintはエラー0で、既存の非推奨API等の警告だけが残る。公開対象へ検証用画像やUIツリーが混入していないことをGit状態で確認する。
+- 公開対象16ファイルをコミット`2240159 Essential 0.5.6にPro Filmと操作改善を追加`として作成し、`main`をGitHubの`origin/main`へpushした。APK、検証スクリーンショット、UIツリー、秘密鍵、Tokenはコミットへ含めていない。
+- 注釈付きタグ`v0.5.6`を同コミットへ作成してpushし、GitHub Actions run `34473536697`のAndroid Releaseを起動した。タグとversionNameの一致、Android／Rust準備、4 ABIのRust JNIビルド、単体テスト、Lint、署名付きRelease APK、apksigner、16KiB zipalign、Release公開の全ステップが`completed / success`になった。
+- GitHub Release `Essential v0.5.6`がdraft=false、prerelease=falseで正式公開された。arm64-v8a、armeabi-v7a、x86、x86_64、universalの署名付きAPK 5種類と`SHA256SUMS.txt`の計6ファイルがuploaded状態であることを公開APIで確認した。Release URLは`https://github.com/Aikidoooo/Essential-for-Android/releases/tag/v0.5.6`。
+- 公開された`SHA256SUMS.txt`をUTF-8として取得し、5行すべてが64桁SHA-256とv0.5.6の対応APK名から成る形式であることを確認した。
 
 ## 2026-09-10 Pro Film新規追加
 

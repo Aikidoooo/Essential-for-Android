@@ -15,9 +15,9 @@
 - プロジェクト: `D:\#AI開発\Android\Essential`
 - Git remote: `https://github.com/Aikidoooo/Essential-for-Android.git`
 - 現在のブランチ: `main`
-- 公開準備中バージョン: `v0.5.6`（versionCode 17）。Block Blast、動画フレーム切り取り、Pro Film、Debug共存対応を含む。
-- タグ: `v0.5.0`〜`v0.5.5`。`v0.5.6`の公開結果は`Work history.txt`とGitHubを確認する。
-- GitHub Release `Essential v0.5.5`までは正式公開済み。ローカル検証用スクリーンショットとUIツリーは公開対象外。
+- 現在の公開バージョン: `v0.5.6`（versionCode 17）。Block Blast、動画フレーム切り取り、Pro Film、Debug共存対応を含む。
+- 公開コミット: `2240159 Essential 0.5.6にPro Filmと操作改善を追加`。タグは`v0.5.0`〜`v0.5.6`。
+- GitHub Release `Essential v0.5.6`は正式公開済み。Release URLは`https://github.com/Aikidoooo/Essential-for-Android/releases/tag/v0.5.6`。ローカル検証用スクリーンショットとUIツリーは公開対象外。
 - ユーザーが明示的に公開を依頼するまで、GitHubへのpush、タグ作成、Release公開、外部アップロードを行わない。
 
 ## 開発ルール
@@ -222,3 +222,4 @@ requiredXP(L) = round(raw / 15)
 - Block Blastの継続保存はエミュレーターで強制終了後の復元まで確認済み。ゲーム終了面と倍率の実プレイ体感は未確認。
 - 縦動画のフレーム切り取りは実フレーム570×1280へ枠が追従することをエミュレーターで確認済み。物理端末のコーデック差とPNG保存完走は未確認。
 - Pro Filmはホーム、機能一覧、専用画面への遷移を`Essential Debug`で確認済み。実写真のPNG保存と実機カメラとの色一致は未確認。
+- v0.5.6のGitHub Actions run `34473536697`は成功し、5 ABI種別の署名付きAPKと`SHA256SUMS.txt`を公開済み。
