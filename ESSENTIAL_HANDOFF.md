@@ -15,9 +15,9 @@
 - プロジェクト: `D:\#AI開発\Android\Essential`
 - Git remote: `https://github.com/Aikidoooo/Essential-for-Android.git`
 - 現在のブランチ: `main`
-- 現在の公開予定バージョン: `v0.5.8`（versionCode 19）。Pro Filmの比較位置・現像色調、全画面の泡付きバー、QR倍率、Block Blastドラッグ、日課イベント／通知の改善を含む。
-- 直前の公開コミット: `72920ef Essential 0.5.7を公開`。公開準備中のタグは`v0.5.8`。
-- GitHub Release `Essential v0.5.7`は正式公開済み。`v0.5.8`は検査・タグpush・GitHub Actions完了後に正式公開する。ローカル検証用スクリーンショットとUIツリーは公開対象外。
+- 現在の公開バージョン: `v0.5.8`（versionCode 19）。Pro Filmの比較位置・現像色調、全画面の泡付きバー、QR倍率、Block Blastドラッグ、日課イベント／通知の改善を含む。
+- 公開コミット: `d1786f7 Essential 0.5.8を公開`。タグは`v0.5.0`〜`v0.5.8`。
+- GitHub Release `Essential v0.5.8`は正式公開済み。Release URLは`https://github.com/Aikidoooo/Essential-for-Android/releases/tag/v0.5.8`。ローカル検証用スクリーンショットとUIツリーは公開対象外。
 - ユーザーが明示的に公開を依頼するまで、GitHubへのpush、タグ作成、Release公開、外部アップロードを行わない。
 
 ## 開発ルール
@@ -230,4 +230,4 @@ requiredXP(L) = round(raw / 15)
 - 縦動画のフレーム切り取りは実フレーム570×1280へ枠が追従することをエミュレーターで確認済み。物理端末のコーデック差とPNG保存完走は未確認。
 - Pro Filmはホーム、機能一覧、専用画面への遷移を`Essential Debug`で確認済み。実写真のPNG保存、比較レイヤーの実画像確認、実機カメラとの色一致は未確認。
 - 2026-09-11時点で共通バー、QR倍率補助、Block Blastの指上プレビュー、日課イベント／通知設定を含むDebugビルドをエミュレーターへインストール済み。実機の通知発火・カメラ倍率上限・長押し体感は未確認。
-- v0.5.6のGitHub Actions run `34473536697`は成功し、5 ABI種別の署名付きAPKと`SHA256SUMS.txt`を公開済み。
+- v0.5.8のGitHub Actions run `34579976274`は成功し、5 ABI種別の署名付きAPKと`SHA256SUMS.txt`を公開済み。
