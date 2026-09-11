@@ -15,9 +15,9 @@
 - プロジェクト: `D:\#AI開発\Android\Essential`
 - Git remote: `https://github.com/Aikidoooo/Essential-for-Android.git`
 - 現在のブランチ: `main`
-- 現在の公開バージョン: `v0.5.7`（versionCode 18）。Pro Filmの比較・現像・モーション改善、外部Picker、マインスイーパー12×24、全画面のスクロール追従改善を含む。
-- 公開コミット: `72920ef Essential 0.5.7を公開`。タグは`v0.5.0`〜`v0.5.7`。
-- GitHub Release `Essential v0.5.7`は正式公開済み。Release URLは`https://github.com/Aikidoooo/Essential-for-Android/releases/tag/v0.5.7`。ローカル検証用スクリーンショットとUIツリーは公開対象外。
+- 現在の公開予定バージョン: `v0.5.8`（versionCode 19）。Pro Filmの比較位置・現像色調、全画面の泡付きバー、QR倍率、Block Blastドラッグ、日課イベント／通知の改善を含む。
+- 直前の公開コミット: `72920ef Essential 0.5.7を公開`。公開準備中のタグは`v0.5.8`。
+- GitHub Release `Essential v0.5.7`は正式公開済み。`v0.5.8`は検査・タグpush・GitHub Actions完了後に正式公開する。ローカル検証用スクリーンショットとUIツリーは公開対象外。
 - ユーザーが明示的に公開を依頼するまで、GitHubへのpush、タグ作成、Release公開、外部アップロードを行わない。
 
 ## 開発ルール
@@ -35,8 +35,8 @@
 ## Androidビルド構成
 
 - `applicationId` / namespace: `jp.essential.app`
-- `versionCode = 18`
-- `versionName = "0.5.7"`
+- `versionCode = 19`
+- `versionName = "0.5.8"`
 - `compileSdk = 36`、`targetSdk = 35`、`minSdk = 26`
 - Android Gradle Plugin `8.9.1`
 - Gradle Wrapper `8.11.1`
@@ -107,6 +107,7 @@ Set-Location -LiteralPath $junction
 - CameraX Camera2バックエンド＋端末内ML Kit Barcode Scanning。Quick Settings Tileあり。
 - 検出矩形をPreviewViewのクロップに合わせて画面座標へ変換。認識したQRの位置を実際にタップすると、HTTP/HTTPSだけ外部ブラウザーで開く。
 - 戻る／ライトボタンは円形Surfaceと同じ形状・押下モーション。検出外タップはフォーカス操作。
+- ズーム操作は1×・2×・5×の補助FilterChipと共通の泡付きレールを使い、端末のCameraX対応範囲外の倍率は無効表示にする。
 - 物理カメラでの位置精度・端末別の露出や倍率は未確認。
 
 ### 行程表・ファイル参照
@@ -121,6 +122,9 @@ Set-Location -LiteralPath $junction
 - `feature/profilm/ProFilmScreen.kt`。OpenDocumentで写真を参照し、EXIF回転を補正して長辺最大2560pxで端末内処理する。
 - Leica M9、Leica M3、Leica (Xiaomi Original)、Hasselblad (OPPO Original)、Huawei (Huaweiスマートフォン)、ZEISS (Vivo Original)、Sony (Xperia Original)、FUJIFILM (PROVIA)の8種類。
 - 色チャンネル、選択色、露出、階調、黒、ハイライト、粒状感、周辺減光を組み合わせ、100%の加工結果と元画像を強度0〜100%で合成する。公式LUTや実機ISPの完全再現とは表現しない。
+- 比較プレビューは元画像と現像後画像を同じ枠・同じ位置へ重ね、現像後レイヤーだけをクリップするImage Comparison Slider。参照写真の縦横比へ枠と後続UIがスプリング追従する。
+- 強度レールは紫色・白ノブ・右から左へ流れる泡の`ui/BubblyBars.kt`を使用し、同じコンポーネントをアプリ全体のSlider／ProgressIndicatorへ適用する。
+- 現像パラメータはLeica M9／Xiaomi Original／Huaweiの彩度を抑え、公開公式資料とユーザー投稿の傾向（Authentic／Originalの自然色、Vibrantの過飽和）に合わせて全8プリセットを再調整している。
 
 ### ミニゲーム
 
@@ -139,7 +143,7 @@ Set-Location -LiteralPath $junction
 
 #### マインスイーパー
 
-- `MiniGameScreen.kt`内に実装。先に「マス目を選択」画面を表示し、8×8（地雷10）、9×9（地雷10）、12×12（地雷22）から選択する。
+- `MiniGameScreen.kt`内に実装。先に「マス目を選択」画面を表示し、8×8（地雷10）、9×9（地雷10）、12×12（地雷22）、12×24（地雷44）から選択する。
 - 通常タップで開く、長押しで旗、旗立てモードのON/OFF、クリア／ゲームオーバー、再挑戦を実装。
 
 #### Block Blast（現行最新仕様）
@@ -152,6 +156,7 @@ Set-Location -LiteralPath $junction
 - 手札は枠、背景、状態文言を描画せず、ブロック形状だけを表示。外接矩形だけを描画し、空の4×4余白は表示しない。
 - 手札行高は132dp、プレビューセルは25dp。不可視のドラッグ受付領域は残している。
 - `BlockShapeMetrics`で形状中心を計算し、持った場所に依存せずブロック中央を指位置へ合わせる。ドラッグ中の浮遊プレビュー、候補セルの有効／無効色、盤面外・重複配置拒否は維持。
+- ドラッグ中は`blockPointerAboveFinger`でブロックを指の上へ表示し、表示プレビューと吸着／当たり判定を同じ補正座標で処理する。
 - 直接候補へ置けない場合は近傍の配置可能な隙間へ吸着する。全手札を配置できない場合は現在スコアと「次へ」を表示し、ベストスコアを残して新しいゲームへ進む。
 - 配置ごとの列消去が連続すると、2連続で10秒間2倍、3連続で10秒間3倍のように倍率を上げる。倍率中は配置点と消去点へ適用する。
 - `BlockBlastRulesTest.kt`で交差列消去、境界・重複拒否、配置可能性、吸着、連続消去倍率を検証。
@@ -176,6 +181,8 @@ requiredXP(L) = round(raw / 15)
 - 報酬レベルは16、20、25、30、35、40、50、55、60。現行表示名は順にAnemo Essential、Geo Essential、Electro Essential、Dendro Essential、Hydro Essential、Pyro Essential、Lunar Essential、Cryo Essential。LV60はアイコン変更権。
 - 報酬画像は`app/src/main/res/drawable-nodpi/routine_reward_lv16.png`〜`routine_reward_lv60.png`。設定画面のアプリアイコン選択とactivity-aliasへ同期する。
 - レベル報酬一覧とアプリアイコン設定は折りたたみ可能。`animateContentSize`、expand/shrink、fade、広いV字矢印を使い、最下部でも全体が一緒に動く設計。
+- 報酬の展開・折りたたみは遅延感を抑えた短いモーション（サイズ220ms、展開240ms、折りたたみ170ms）。日課項目は情報行の長押しまたは「設定」から通知オン／オフと通知時刻を編集できる。
+- `RoutineCadence.Event`のイベントミッションは開始日・開始時刻・期間日数を持ち、期間中は1日1回、期間外は達成不可。`RoutineNotificationScheduler`がデイリー／ウィークリー／イベントの通知をAlarmManagerへ登録し、Android 13以降は通知権限を要求する。設定ダイアログは縦スクロール対応。
 
 ## テーマとアプリアイコン
 
@@ -221,5 +228,6 @@ requiredXP(L) = round(raw / 15)
 
 - Block Blastの継続保存はエミュレーターで強制終了後の復元まで確認済み。ゲーム終了面と倍率の実プレイ体感は未確認。
 - 縦動画のフレーム切り取りは実フレーム570×1280へ枠が追従することをエミュレーターで確認済み。物理端末のコーデック差とPNG保存完走は未確認。
-- Pro Filmはホーム、機能一覧、専用画面への遷移を`Essential Debug`で確認済み。実写真のPNG保存と実機カメラとの色一致は未確認。
+- Pro Filmはホーム、機能一覧、専用画面への遷移を`Essential Debug`で確認済み。実写真のPNG保存、比較レイヤーの実画像確認、実機カメラとの色一致は未確認。
+- 2026-09-11時点で共通バー、QR倍率補助、Block Blastの指上プレビュー、日課イベント／通知設定を含むDebugビルドをエミュレーターへインストール済み。実機の通知発火・カメラ倍率上限・長押し体感は未確認。
 - v0.5.6のGitHub Actions run `34473536697`は成功し、5 ABI種別の署名付きAPKと`SHA256SUMS.txt`を公開済み。

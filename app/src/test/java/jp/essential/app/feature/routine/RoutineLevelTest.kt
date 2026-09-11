@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDate
+import java.time.LocalTime
 
 class RoutineLevelTest {
     @Test
@@ -39,5 +40,24 @@ class RoutineLevelTest {
         val date = LocalDate.of(2026, 9, 7)
         assertEquals("D:2026-09-07", routinePeriodKey(RoutineCadence.Daily, date))
         assertTrue(routinePeriodKey(RoutineCadence.Weekly, date).startsWith("W:2026-"))
+    }
+
+    @Test
+    fun `イベントミッションは指定期間と開始時刻だけ有効`() {
+        val task = RoutineTask(
+            id = "event",
+            title = "イベント",
+            emoji = "★",
+            cadence = RoutineCadence.Event,
+            points = 10,
+            eventStartDate = "2026-09-11",
+            eventStartTime = "10:00",
+            eventDurationDays = 3,
+        )
+        assertTrue(!isRoutineTaskActive(task, LocalDate.of(2026, 9, 10), LocalTime.NOON))
+        assertTrue(!isRoutineTaskActive(task, LocalDate.of(2026, 9, 11), LocalTime.of(9, 59)))
+        assertTrue(isRoutineTaskActive(task, LocalDate.of(2026, 9, 11), LocalTime.of(10, 0)))
+        assertTrue(isRoutineTaskActive(task, LocalDate.of(2026, 9, 13), LocalTime.NOON))
+        assertTrue(!isRoutineTaskActive(task, LocalDate.of(2026, 9, 14), LocalTime.NOON))
     }
 }

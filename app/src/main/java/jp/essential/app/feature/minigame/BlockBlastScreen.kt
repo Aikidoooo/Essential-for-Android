@@ -237,6 +237,14 @@ private fun blockPreviewOffset(
     )
 }
 
+/** 掴んだ指を隠さず、ブロックの下端が指の少し上へ来る表示・当たり判定位置を返す。 */
+private fun blockPointerAboveFinger(pointer: Offset, shape: Int, cellSizePx: Float, gapPx: Float): Offset {
+    val metrics = blockShapeMetrics(shape) ?: return pointer
+    val pitch = cellSizePx + gapPx
+    val lift = (metrics.maxY - metrics.minY + 1f) * pitch * 0.72f
+    return Offset(pointer.x, pointer.y - lift)
+}
+
 /** 参考画面の淡い盤面と、ドラッグ配置に対応したBlock Blast画面。 */
 @Composable
 internal fun BlockBlastScreen(onBack: () -> Unit) {
@@ -273,14 +281,18 @@ internal fun BlockBlastScreen(onBack: () -> Unit) {
             bounds.bottom - boardPaddingPx,
         )
     }
-    val dropCell = dragPointer?.let { pointer ->
+    val draggingShape = hand.getOrNull(draggingIndex) ?: -1
+    val dragTargetPointer = dragPointer?.let { pointer ->
+        blockPointerAboveFinger(pointer, draggingShape, with(density) { 18.dp.toPx() }, with(density) { 1.dp.toPx() })
+    }
+    val dropCell = dragTargetPointer?.let { pointer ->
         gridBounds?.let { grid ->
             assistedBlockOriginForPointer(
                 pointer,
                 grid,
                 boardGapPx,
                 board,
-                hand.getOrNull(draggingIndex) ?: -1,
+                draggingShape,
             )
         }
     }
@@ -356,7 +368,10 @@ internal fun BlockBlastScreen(onBack: () -> Unit) {
 
     fun dropDraggedShape(index: Int, pointer: Offset?) {
         val shape = hand.getOrNull(index) ?: -1
-        val cell = pointer?.let { current ->
+        val targetPointer = pointer?.let { current ->
+            blockPointerAboveFinger(current, shape, with(density) { 18.dp.toPx() }, with(density) { 1.dp.toPx() })
+        }
+        val cell = targetPointer?.let { current ->
             gridBounds?.let { grid ->
                 assistedBlockOriginForPointer(current, grid, boardGapPx, board, shape)
             }
@@ -544,7 +559,7 @@ internal fun BlockBlastScreen(onBack: () -> Unit) {
         }
 
         val previewShape = hand.getOrNull(draggingIndex) ?: -1
-        val pointer = dragPointer
+        val pointer = dragTargetPointer
         if (previewShape in BlockBlastRules.shapes.indices && pointer != null) {
             val previewOffset = with(density) {
                 // 外接矩形に合わせたプレビューの中心を指の位置へ合わせる。

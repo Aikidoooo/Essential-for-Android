@@ -815,20 +815,6 @@ private fun FeaturesScreen(onOpenFeature: (FeatureRoute) -> Unit, onComingSoon: 
         progressiveItem(7) {
             CategoryPanel("Pro Film", "写真を参照して色調・強度を調整", EssentialSymbol.Media, EssentialOrange) { onOpenFeature(FeatureRoute.ProFilm) }
         }
-        progressiveItem(8) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f), RoundedCornerShape(28.dp))
-                    .padding(20.dp),
-            ) {
-                Text(
-                    "ダウンローダーは公開コンテンツ専用。QR解析、行程表生成、ファイル加工は端末内で実行します。",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                )
-            }
-        }
     }
 }
 

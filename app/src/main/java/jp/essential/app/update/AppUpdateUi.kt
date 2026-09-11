@@ -13,6 +13,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import jp.essential.app.BuildConfig
+import jp.essential.app.ui.EssentialBubblyProgressBar
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
@@ -123,7 +124,7 @@ internal fun AppUpdateSettingsCard(model: AppUpdateModel = viewModel()) {
                 Switch(checked = model.startupCheck, onCheckedChange = model::changeStartupCheck)
             }
             Button(enabled = !model.busy, onClick = { model.check() }, modifier = Modifier.fillMaxWidth()) { Text("アップデートを確認") }
-            if (model.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+            if (model.busy) EssentialBubblyProgressBar(modifier = Modifier.fillMaxWidth())
             if (model.message.isNotBlank()) Text(model.message, style = MaterialTheme.typography.bodyMedium)
             Text("ダウンロードとインストールは確認後に開始します", style = MaterialTheme.typography.bodySmall)
         }

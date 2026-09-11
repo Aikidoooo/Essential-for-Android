@@ -31,6 +31,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import jp.essential.app.R
 import jp.essential.app.ui.ProgressiveWidget
+import jp.essential.app.ui.EssentialBubblyProgressBar
 import jp.essential.app.ui.theme.EssentialTheme
 import jp.essential.app.ui.theme.LocalEssentialDark
 import java.util.Locale
@@ -130,8 +131,8 @@ internal fun UpdateAvailableCard(
             }
             Column(Modifier.animateContentSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 if (busy) {
-                    if (fraction < 1f) LinearProgressIndicator(progress = { animatedProgress }, modifier = Modifier.fillMaxWidth().height(8.dp))
-                    else LinearProgressIndicator(modifier = Modifier.fillMaxWidth().height(8.dp))
+                    if (fraction < 1f) EssentialBubblyProgressBar(progress = animatedProgress, modifier = Modifier.fillMaxWidth())
+                    else EssentialBubblyProgressBar(modifier = Modifier.fillMaxWidth())
                 }
                 if (busy || failed || downloaded) {
                     Text(

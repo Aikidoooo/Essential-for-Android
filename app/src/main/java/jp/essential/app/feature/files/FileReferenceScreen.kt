@@ -63,6 +63,7 @@ import kotlin.math.abs
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import jp.essential.app.ui.progressiveItem
+import jp.essential.app.ui.EssentialBubblySlider
 import jp.essential.app.ui.EssentialMediaPickerContract
 import android.widget.VideoView
 import android.graphics.Bitmap
@@ -175,7 +176,7 @@ fun FileReferenceScreen(onBack: () -> Unit) {
             progressiveItem(motionIndex++) {
                 ToolCard {
                     Text("自由設定　${targetMegabytes}MB以下", fontWeight = FontWeight.Bold)
-                    Slider(
+                    EssentialBubblySlider(
                         value = targetMegabytes.toFloat(),
                         onValueChange = { targetMegabytes = it.toInt().coerceIn(1, 500) },
                         valueRange = 1f..500f,
@@ -236,13 +237,13 @@ fun FileReferenceScreen(onBack: () -> Unit) {
                         val startMillis = (file.durationMillis * trimStart).toLong()
                         val endMillis = (file.durationMillis * trimEnd).toLong()
                         Text("開始 ${formatTime(startMillis)}")
-                        Slider(
+                        EssentialBubblySlider(
                             value = trimStart,
                             onValueChange = { trimStart = it.coerceAtMost(trimEnd - 0.001f) },
                             valueRange = 0f..1f,
                         )
                         Text("終了 ${formatTime(endMillis)}")
-                        Slider(
+                        EssentialBubblySlider(
                             value = trimEnd,
                             onValueChange = { trimEnd = it.coerceAtLeast(trimStart + 0.001f) },
                             valueRange = 0f..1f,
@@ -463,7 +464,7 @@ private fun FrameExtractionScreen(
                         }
                     }
                 }
-                Slider(
+                EssentialBubblySlider(
                     value = positionMillis.toFloat(),
                     onValueChange = { seekTo(it.toLong()) },
                     valueRange = 0f..durationMillis.toFloat(),

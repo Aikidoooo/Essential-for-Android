@@ -54,7 +54,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
@@ -83,6 +82,7 @@ import androidx.core.content.ContextCompat
 import kotlinx.coroutines.launch
 import jp.essential.app.R
 import jp.essential.app.ui.progressiveItem
+import jp.essential.app.ui.EssentialBubblyProgressBar
 
 @Composable
 fun DownloaderScreen(
@@ -178,9 +178,6 @@ fun DownloaderScreen(
                 subtitle = "yt-dlp + FFmpeg・端末内処理",
                 onBack = onBack,
             )
-        }
-        progressiveItem(motionIndex++) {
-            SafetyNotice()
         }
         progressiveItem(motionIndex++) {
             MotionSurface(
@@ -296,7 +293,7 @@ fun DownloaderScreen(
             progressiveItem(motionIndex++) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (imageLoading) {
-                        LinearProgressIndicator(Modifier.fillMaxWidth())
+                        EssentialBubblyProgressBar(modifier = Modifier.fillMaxWidth())
                         Text("URL内の画像を読み込んでいます")
                     }
                     imageError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -561,17 +558,17 @@ private fun DownloadStatus(state: DownloadState) {
             when (state) {
                 DownloadState.Idle -> Unit
                 is DownloadState.Preparing -> {
-                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    EssentialBubblyProgressBar(modifier = Modifier.fillMaxWidth())
                     Text(state.message, style = MaterialTheme.typography.bodyMedium)
                 }
                 is DownloadState.Running -> {
                     if (state.progress != null) {
-                        LinearProgressIndicator(
-                            progress = { state.progress / 100f },
+                        EssentialBubblyProgressBar(
+                            progress = state.progress / 100f,
                             modifier = Modifier.fillMaxWidth(),
                         )
                     } else {
-                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                        EssentialBubblyProgressBar(modifier = Modifier.fillMaxWidth())
                     }
                     Text(state.message, style = MaterialTheme.typography.bodyMedium)
                 }
@@ -585,22 +582,6 @@ private fun DownloadStatus(state: DownloadState) {
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun SafetyNotice() {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.70f), RoundedCornerShape(20.dp))
-            .padding(15.dp),
-    ) {
-        Text(
-            "本人が保存権限を持つ公開コンテンツ専用です。認証・Cookie・DRMなどの保護回避には対応しません。",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSecondaryContainer,
-        )
     }
 }
 

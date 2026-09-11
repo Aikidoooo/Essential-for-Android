@@ -52,8 +52,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -93,6 +93,7 @@ import java.util.concurrent.atomic.AtomicReference
 import jp.essential.app.device.DeviceOptimizer
 import jp.essential.app.R
 import jp.essential.app.ui.ProgressiveWidget
+import jp.essential.app.ui.EssentialBubblySlider
 
 @Composable
 fun QrScannerScreen(onBack: () -> Unit) {
@@ -336,7 +337,8 @@ fun QrScannerScreen(onBack: () -> Unit) {
                         )
                     }
                 }
-                if (maxZoom > minZoom) {
+                // 端末が単焦点でも補助ボタンを常時見せ、対応しない倍率だけを無効表示にする。
+                if (maxZoom >= minZoom) {
                     Surface(
                         color = Color.Black.copy(alpha = 0.58f),
                         shape = RoundedCornerShape(24.dp),
@@ -346,7 +348,24 @@ fun QrScannerScreen(onBack: () -> Unit) {
                                 Text("倍率（上限 ${"%.1f".format(maxZoom)}×）", color = Color.White, style = MaterialTheme.typography.labelLarge)
                                 Text("${"%.1f".format(zoomRatio)}×", color = Color.White, style = MaterialTheme.typography.labelLarge)
                             }
-                            Slider(
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                listOf(1f, 2f, 5f).forEach { preset ->
+                                    FilterChip(
+                                        selected = kotlin.math.abs(zoomRatio - preset) < 0.05f,
+                                        onClick = {
+                                            val next = preset.coerceIn(minZoom, maxZoom)
+                                            zoomRatio = next
+                                            camera?.cameraControl?.setZoomRatio(next)
+                                        },
+                                        enabled = preset in minZoom..maxZoom,
+                                        label = { Text("${preset.toInt()}×") },
+                                    )
+                                }
+                            }
+                            EssentialBubblySlider(
                                 value = zoomRatio,
                                 onValueChange = { value ->
                                     zoomRatio = value

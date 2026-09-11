@@ -24,6 +24,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
@@ -34,14 +35,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.rememberInfiniteTransition
 import jp.essential.app.ui.progressiveItem
+import jp.essential.app.ui.EssentialBubblyProgressBar
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -50,7 +47,6 @@ import kotlinx.coroutines.launch
 import kotlin.math.max
 import kotlin.math.pow
 import kotlin.math.exp
-import kotlin.math.sin
 import kotlin.math.sqrt
 import jp.essential.app.ui.EssentialMediaPickerContract
 
@@ -88,12 +84,12 @@ private enum class FilmLook(
 ) {
     M9(
         "Leica M9", "CCDの色分離と深い赤、締まった中間調を再生成",
-        saturation = 1.08f, contrast = 1.12f, exposure = -0.015f, warmth = 0.018f,
-        blackCrush = 0.018f, redGain = 1.025f, blueGain = 0.985f,
-        redAccent = 0.045f, greenAccent = 0.012f, blueAccent = -0.018f,
-        colorMatrix = floatArrayOf(1.08f, -0.035f, -0.045f, -0.015f, 1.04f, -0.025f, 0.01f, -0.03f, 1.03f),
-        toneKnee = 0.72f, shoulder = 2.2f, chromaCompression = 0.08f, microContrast = 0.032f, halation = 0.016f,
-        grain = 0.012f, vignette = 0.055f,
+        saturation = 1.015f, contrast = 1.065f, exposure = -0.018f, warmth = 0.012f,
+        blackCrush = 0.012f, redGain = 1.012f, blueGain = 0.992f,
+        redAccent = 0.018f, greenAccent = 0.006f, blueAccent = -0.006f,
+        colorMatrix = floatArrayOf(1.035f, -0.018f, -0.017f, -0.010f, 1.028f, -0.018f, 0.006f, -0.016f, 1.025f),
+        toneKnee = 0.74f, shoulder = 1.95f, chromaCompression = 0.12f, microContrast = 0.026f, halation = 0.010f,
+        grain = 0.009f, vignette = 0.045f,
     ),
     M3(
         "Leica M3", "銀塩モノクロ現像の深い黒と細かな粒状感を再生成",
@@ -104,16 +100,16 @@ private enum class FilmLook(
     ),
     Xiaomi(
         "Leica (Xiaomi Original)", "Leica Authentic系の自然で繊細な発色を再生成",
-        saturation = 0.92f, contrast = 1.095f, exposure = -0.02f, warmth = 0.014f,
-        highlightSoftness = 0.13f, blackCrush = 0.016f,
-        redGain = 1.012f, blueGain = 0.992f, redAccent = 0.018f,
-        colorMatrix = floatArrayOf(1.035f, -0.02f, -0.015f, 0.0f, 1.025f, -0.025f, -0.01f, 0.01f, 1.01f),
-        toneKnee = 0.76f, shoulder = 2.0f, chromaCompression = 0.1f, microContrast = 0.021f, halation = 0.012f,
-        grain = 0.009f, vignette = 0.075f,
+        saturation = 0.84f, contrast = 1.045f, exposure = -0.028f, warmth = 0.010f,
+        highlightSoftness = 0.15f, blackCrush = 0.010f,
+        redGain = 1.006f, blueGain = 0.996f, redAccent = 0.008f,
+        colorMatrix = floatArrayOf(1.018f, -0.009f, -0.009f, -0.006f, 1.016f, -0.010f, 0.003f, -0.008f, 1.018f),
+        toneKnee = 0.78f, shoulder = 1.75f, chromaCompression = 0.16f, microContrast = 0.018f, halation = 0.008f,
+        grain = 0.006f, vignette = 0.048f,
     ),
     Oppo(
         "Hasselblad (OPPO Original)", "Natural Colour系の穏やかで正確な階調を再生成",
-        saturation = 0.985f, contrast = 1.025f, exposure = 0.012f, warmth = 0.012f,
+        saturation = 0.965f, contrast = 1.018f, exposure = 0.008f, warmth = 0.010f,
         shadowLift = 0.012f, highlightSoftness = 0.14f,
         redGain = 1.008f, greenGain = 1.004f, blueGain = 0.992f,
         redAccent = 0.012f, greenAccent = 0.008f, grain = 0.006f, vignette = 0.025f,
@@ -122,16 +118,16 @@ private enum class FilmLook(
     ),
     Huawei(
         "Huawei (Huaweiスマートフォン)", "XMAGE系の明瞭な色とハイライトを再生成",
-        saturation = 1.055f, contrast = 1.075f, exposure = 0.018f, warmth = 0.004f,
-        highlightSoftness = 0.12f, blackCrush = 0.008f,
-        redGain = 1.006f, greenGain = 1.012f, blueGain = 1.006f,
-        greenAccent = 0.022f, blueAccent = 0.016f, grain = 0.004f, vignette = 0.015f,
-        colorMatrix = floatArrayOf(1.025f, -0.015f, -0.01f, -0.01f, 1.045f, -0.035f, -0.005f, 0.0f, 1.03f),
-        toneKnee = 0.77f, shoulder = 2.1f, chromaCompression = 0.06f, microContrast = 0.024f, halation = 0.01f,
+        saturation = 0.90f, contrast = 1.04f, exposure = 0.006f, warmth = 0.002f,
+        highlightSoftness = 0.15f, blackCrush = 0.006f,
+        redGain = 1.004f, greenGain = 1.008f, blueGain = 1.004f,
+        greenAccent = 0.010f, blueAccent = 0.007f, grain = 0.003f, vignette = 0.012f,
+        colorMatrix = floatArrayOf(1.016f, -0.008f, -0.008f, -0.006f, 1.022f, -0.016f, -0.003f, 0.0f, 1.018f),
+        toneKnee = 0.79f, shoulder = 1.85f, chromaCompression = 0.13f, microContrast = 0.018f, halation = 0.007f,
     ),
     Vivo(
         "ZEISS (Vivo Original)", "ZEISS Natural Color系の忠実でニュートラルな色を再生成",
-        saturation = 0.945f, contrast = 1.015f, exposure = 0.008f, warmth = -0.003f,
+        saturation = 0.94f, contrast = 1.012f, exposure = 0.006f, warmth = -0.002f,
         shadowLift = 0.008f, highlightSoftness = 0.1f,
         redGain = 1.002f, greenGain = 1.004f, blueGain = 1.006f,
         grain = 0.003f, vignette = 0.012f,
@@ -140,7 +136,7 @@ private enum class FilmLook(
     ),
     Xperia(
         "Sony (Xperia Original)", "Xperia Creative Look系の自然で透明感のある仕上がりを再生成",
-        saturation = 0.99f, contrast = 1.045f, exposure = 0.006f, warmth = -0.006f,
+        saturation = 0.975f, contrast = 1.035f, exposure = 0.004f, warmth = -0.004f,
         shadowLift = 0.006f, highlightSoftness = 0.09f,
         redGain = 1.003f, greenGain = 1.002f, blueGain = 1.012f,
         blueAccent = 0.014f, grain = 0.004f, vignette = 0.018f,
@@ -149,7 +145,7 @@ private enum class FilmLook(
     ),
     Fujifilm(
         "FUJIFILM (PROVIA)", "PROVIA系の記憶色と標準的な階調を再生成",
-        saturation = 1.075f, contrast = 1.045f, exposure = 0.008f, warmth = -0.002f,
+        saturation = 1.035f, contrast = 1.035f, exposure = 0.006f, warmth = -0.002f,
         tint = 0.004f, shadowLift = 0.005f, highlightSoftness = 0.08f,
         redGain = 0.998f, greenGain = 1.012f, blueGain = 1.012f,
         redAccent = -0.008f, greenAccent = 0.035f, blueAccent = 0.038f,
@@ -365,9 +361,13 @@ private fun FilmComparisonPreview(
         if (previewBitmap != null) {
             Box(
                 modifier = Modifier
-                    .fillMaxHeight()
-                    .fillMaxWidth(animatedPosition)
-                    .clip(RoundedCornerShape(topStart = 30.dp, bottomStart = 30.dp)),
+                    .matchParentSize()
+                    .drawWithContent {
+                        // 画像自体は比較枠いっぱいへ描画し、クリップだけを動かすことで前後の位置を完全に揃える。
+                        this@drawWithContent.clipRect(right = size.width * animatedPosition) {
+                            this@drawWithContent.drawContent()
+                        }
+                    },
             ) {
                 Image(
                     bitmap = previewBitmap.asImageBitmap(),
@@ -422,84 +422,10 @@ private fun FilmComparisonPreview(
     }
 }
 
-/** 参照画像の紫色レールと、右から左へ流れる泡を一体化した強度コントロール。 */
+/** Pro Filmの強度レールを共通バーへ接続する。 */
 @Composable
-private fun BubblyStrengthSlider(
-    value: Float,
-    onValueChange: (Float) -> Unit,
-    enabled: Boolean,
-) {
-    val transition = rememberInfiniteTransition(label = "強度の泡")
-    val phase by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(durationMillis = 2400, easing = LinearEasing)),
-        label = "泡の流れ",
-    )
-    val bubbles = remember {
-        listOf(
-            0.04f to 0.16f,
-            0.18f to 0.10f,
-            0.31f to 0.13f,
-            0.47f to 0.08f,
-            0.63f to 0.12f,
-            0.78f to 0.07f,
-            0.92f to 0.11f,
-        )
-    }
-    BoxWithConstraints(
-        modifier = Modifier.fillMaxWidth().height(48.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        val railHeight = 28.dp
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(railHeight)
-                .clip(RoundedCornerShape(railHeight / 2))
-                .background(Color(0xFFE6D8FF)),
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxHeight()
-                    .fillMaxWidth(value.coerceIn(0f, 1f))
-                    .background(Color(0xFFB77BF4)),
-            )
-            Canvas(Modifier.matchParentSize()) {
-                clipRect(right = size.width * value.coerceIn(0f, 1f)) {
-                    bubbles.forEachIndexed { index, (offset, sizeFactor) ->
-                        val travel = (phase + offset) % 1f
-                        val x = size.width * (1f - travel)
-                        val wave = sin((travel * Math.PI * 2.0 + index * 1.7)).toFloat()
-                        val y = size.height * (0.5f + wave * 0.18f)
-                        val radius = size.height * (sizeFactor + sin((travel * Math.PI * 2.0 + index).toFloat()) * 0.025f)
-                        val alpha = (0.16f + (1f - travel) * 0.38f).coerceIn(0f, 0.58f)
-                        drawCircle(Color.White.copy(alpha = alpha), radius.coerceAtLeast(1f), Offset(x, y))
-                    }
-                }
-            }
-        }
-        Slider(
-            value = value,
-            onValueChange = onValueChange,
-            enabled = enabled,
-            modifier = Modifier.fillMaxWidth().height(48.dp),
-            colors = SliderDefaults.colors(
-                thumbColor = Color.Transparent,
-                activeTrackColor = Color.Transparent,
-                inactiveTrackColor = Color.Transparent,
-                activeTickColor = Color.Transparent,
-                inactiveTickColor = Color.Transparent,
-            ),
-        )
-        Box(
-            modifier = Modifier
-                .align(Alignment.CenterStart)
-                .offset(x = (maxWidth - 28.dp) * value.coerceIn(0f, 1f))
-                .size(28.dp)
-                .background(Color.White, CircleShape),
-        )
-    }
+private fun BubblyStrengthSlider(value: Float, onValueChange: (Float) -> Unit, enabled: Boolean) {
+    jp.essential.app.ui.EssentialBubblySlider(value, onValueChange, enabled = enabled)
 }
 
 @Composable
@@ -628,7 +554,7 @@ fun ProFilmScreen(onBack: () -> Unit) {
                         }
                     }
                     if (busy || (source != null && renderedSettings != (look to strength))) {
-                        LinearProgressIndicator(Modifier.fillMaxWidth())
+                        EssentialBubblyProgressBar(modifier = Modifier.fillMaxWidth())
                     }
                 }
             }

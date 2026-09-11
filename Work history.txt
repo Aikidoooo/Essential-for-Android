@@ -982,3 +982,26 @@
 - GitHub Actions run `34563063859`のAndroid Releaseが`completed / success`になった。タグとversionNameの一致、Android／Rust準備、4 ABIのRust JNI再ビルド、単体テスト、Lint、配布署名付きRelease APK生成、apksigner検証、16KiB zipalign、Release公開の全Stepが成功し、失敗Stepは0件だった。
 - GitHub Release `Essential v0.5.7`がdraft=false、prerelease=falseで正式公開された。arm64-v8a、armeabi-v7a、x86、x86_64、universalの署名付きAPK 5種と`SHA256SUMS.txt`の計6ファイルがすべてuploaded状態であることを公開APIで確認した。Release URLは`https://github.com/Aikidoooo/Essential-for-Android/releases/tag/v0.5.7`。
 - 公開された`SHA256SUMS.txt`をUTF-8として取得し、5行すべてが64桁SHA-256とv0.5.7の対応APK名から成り、欠落・余分なファイル名が0件であることを確認した。
+
+【2026-09-11 Pro Film・共通バー・QR・Block Blast・日課の継続改善】
+- Pro FilmのImage Comparison Sliderを、元画像と現像後画像を同一の比較枠へ同じ`ContentScale.Crop`で描画し、現像後だけを`clipRect`で左右切り替えする方式へ整理した。スライダー位置を動かしても画像の拡大率・中心・縦横位置がずれない。比較枠は参照画像の比率へスプリング補間し、角丸と後続UIの`animateContentSize`による追従モーションを維持した。
+- カメラ別現像エンジンの色設計を見直した。Leica M9はCCD由来の色分離と深い赤を残しつつ彩度・色行列をほぼニュートラルへ、Leica (Xiaomi Original)はAuthentic系の自然な彩度・穏やかなコントラストへ、HuaweiはXMAGE Original系の明瞭だが過飽和にならない発色へ調整した。Hasselblad (OPPO Original)、ZEISS (Vivo Original)、Sony (Xperia Original)、FUJIFILM (PROVIA)、Leica M3もハイライト、黒つぶれ、色行列、微細コントラスト、ハレーション、粒状感、周辺減光を再調整した。
+- 調整方針にはLeica／Xiaomi公式資料（Authenticの自然な色・シャドウ定義・ローカルコントラスト）とHuawei公式XMAGE説明（Originalの忠実色、Vivid／Brightとの違い）を反映した。ユーザー投稿ではXiaomi Vibrantが過飽和との声、Authenticでもコントラストが強いとの声が複数あったため、彩度を抑えつつ階調と局所コントラストを残す方向にした。参照URL: https://leica-camera.com/sites/default/files/2022-07/leica_press_release_-_xiaomi_and_leica_camera_present_their_first_jointly_developed_products.pdf 、https://consumer.huawei.com/en/support/content/en-us15950824/ 、https://www.reddit.com/r/Xiaomi/comments/1kbqyy9 。実機ISPの非公開LUT・ピクセル単位の完全一致ではなく、公開情報に基づく端末内再生成である。
+- Pro Filmで採用した紫色レール・白い丸ノブ・右から左へ流れる泡のデザインを`ui/BubblyBars.kt`へ共通化した。ファイル参照、Pro Film強度、日課ポイント、QR倍率、ダウンロード／画像処理状況、アプリ更新ダイアログのSlider／ProgressIndicatorを共通バーへ置き換え、泡は連続アニメーション、ノブはスプリング補間とした。
+- QRスキャナーへ1×・2×・5×のFilterChip補助を追加し、CameraXが返す最小／最大ズーム範囲で自動的に有効・無効を切り替えるようにした。端末が単眼で上限1.0×のエミュレーターでは1×のみ有効、2×・5×が無効表示されることをUIツリーで確認した。
+- Block Blastのドラッグ中ポインターをブロックの外接矩形分だけ指の上へ持ち上げる`blockPointerAboveFinger`で統一し、画面に見えるプレビューとドロップ／当たり判定の座標を同じ補正値にした。指で隠れて形状が見えない問題を解消した。
+- ダウンローダー画面とホーム機能一覧に残っていた公開コンテンツ・保存権限の注意文を削除した。ダウンロード処理自体の動作や既存のエラー表示は変更していない。
+- 日課へイベントミッション枠を追加した。イベントは開始日（YYYY-MM-DD）、開始時刻、期間日数、1日1回の達成キーを保存し、期間外は達成ボタンを無効化する。デイリー／ウィークリー／イベントの各項目は設定ボタンに加えて情報行の長押しで詳細ダイアログを開き、通知オン／オフと時／分を設定できる。`AlarmManager`と通知チャンネル、Android 13以降の通知権限要求を追加し、イベント初日の通知が開始時刻より前に発火しないよう境界を補正した。
+- イベント開始時刻は`HH:MM`として保存時に検証し、不正な時刻では「追加する／変更を保存」を無効化する。開催期間の日数は1〜365日に制限する。
+- レベル報酬の展開・折りたたみは220msのサイズ変化、240msの展開、170msの折りたたみへ短縮し、遅延感を抑えた。イベント設定ダイアログは縦スクロール可能にして小画面でも開始日・開始時刻・期間・通知設定を操作できるようにした。
+- ASCII Junction（`C:\Users\waki1\Desktop\essential-build` → 本プロジェクト）経由で`:app:testDebugUnitTest :app:lintDebug :app:assembleDebug --no-daemon --max-workers=1 -Pkotlin.compiler.execution.strategy=in-process`を再実行し、Composeコンパイル、単体テスト、Lint、Debug APK生成の`BUILD SUCCESSFUL`を確認した。既存の非推奨API／実験的設定警告は継続するが、新規エラーはない。
+- x86_64 Debug APKを`emulator-5554`へ更新インストールした。QRスキャナーで倍率チップ、日課をスクロールしたイベントミッション欄、イベント追加ダイアログの開始日・開始時刻・期間欄をUIツリーで確認し、起動時のFATAL EXCEPTIONは発生しなかった。実機のカメラズーム上限、通知の実時間発火、長押しの指触り、各社実機ISPとの見た目一致、異なる写真を使ったSliderのフレーム単位の見た目は未確認。
+
+【2026-09-11 Essential v0.5.8公開準備】
+- ユーザーの明示的な依頼により、正式版v0.5.7からv0.5.8へのGitHub Release公開を開始した。
+- `app/build.gradle.kts`の`versionCode`を18から19、`versionName`を0.5.7から0.5.8へ更新した。Release版Application ID `jp.essential.app`とDebug共存設定は維持した。
+- `.github/release-notes/v0.5.8.md`を追加し、Pro Film比較位置と現像色調、アプリ共通の泡付きバー、QR倍率補助、Block Blastの指上ドラッグ、ダウンローダー注意文削除、日課イベント／通知／モーション改善をv0.5.7以降の更新内容として整理した。
+- `ESSENTIAL_HANDOFF.md`の公開予定版とAndroidビルド構成をv0.5.8／versionCode 19へ更新した。Releaseビルド、公開前検査、GitHub Actions、署名済みAPKとSHA-256の確認結果は公開完了後に追記する。
+- originをfetchして`origin/main...main`が0/0、ローカルの`v0.5.8`タグが未作成であることを確認した。公開差分と新規ファイルの秘密鍵、OpenAI／Google APIキー、GitHub Tokenを値を表示しない件数検査で確認し、すべて0件だった。既存`dosukoi.html`のFirebaseクライアント設定は今回の差分に含まれない。
+- 参照先を確認したASCII Junction経由で`:app:testDebugUnitTest :app:lintDebug :app:assembleRelease --no-daemon --max-workers=1 -Pkotlin.compiler.execution.strategy=in-process`を実行し、`BUILD SUCCESSFUL`を確認した。既存の非推奨API・実験的設定警告は継続するが、単体テスト、Lint、Releaseビルドの失敗はない。
+- 生成したarm64-v8a、armeabi-v7a、x86、x86_64、universalの未署名Release APK 5種を`aapt dump badging`で検査し、すべて`applicationId=jp.essential.app`、`versionCode=19`、`versionName=0.5.8`であることを確認した。正式な配布署名、apksigner検証、16KiB zipalignはGitHub Actionsで実施する。
