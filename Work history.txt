@@ -962,3 +962,9 @@
 - 共通ヘルパーのため、ホームのヒーロー・機能カード、機能一覧の各カード、設定の各セクションに加え、同じ`progressiveItem`を利用する既存画面にも同じスクロール即応性が適用される。
 - ASCII Junction経由で`:app:testDebugUnitTest :app:lintDebug :app:assembleDebug --no-daemon --max-workers=1 -Pkotlin.compiler.execution.strategy=in-process`を実行し、Composeコンパイル、単体テスト、Lint、Debug APK生成の`BUILD SUCCESSFUL`を確認した。既存の非推奨API・注釈警告は継続するが失敗はない。
 - x86_64 Debug APKを`emulator-5554`へ更新インストールし、`open_feature=pro_film`で画面を起動して「Pro Film」「写真を選ぶ」「設定」「100%」の表示と`FATAL EXCEPTION=0`を確認した。実機の高速フリック時の体感、全画面を連続往復したフレーム単位の滑らかさは未確認。
+
+【2026-09-11 Pro Film・ゲーム・Progressive MotionのGitHubソース公開】
+- 公開前に`origin/main`をfetchし、ローカル`main`との進み遅れが0/0であることを確認した。差分へ秘密鍵、OpenAI／Google APIキー、GitHub Token、パスワード代入形式の簡易スキャンを行い、該当0件を確認した。生成APK、スクリーンショット、ユーザー添付、ビルド出力は`.gitignore`対象のまま公開対象へ含めていない。
+- Pro FilmのImage Comparison Slider、泡付き強度レール、メーカー別現像エンジン再生成、写真比率追従モーション、外部メディアPicker、ファイル参照Picker、マインスイーパー12×24、共通Progressive Motionのスクロール追従改善、作業履歴、Design QAをコミット`191b43a`（`Pro Filmと画面操作を改善`）へまとめた。
+- コミット`191b43a`をGitHubリポジトリ`https://github.com/Aikidoooo/Essential-for-Android`の`main`へpushし、`72a72df..191b43a main -> main`を確認した。
+- 今回はソース更新の公開として実施し、versionCode／versionNameの更新、新規タグ、GitHub Release、Release APKの追加公開は行っていない。既存の正式版タグ`v0.5.6`は維持している。
