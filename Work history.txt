@@ -968,3 +968,12 @@
 - Pro FilmのImage Comparison Slider、泡付き強度レール、メーカー別現像エンジン再生成、写真比率追従モーション、外部メディアPicker、ファイル参照Picker、マインスイーパー12×24、共通Progressive Motionのスクロール追従改善、作業履歴、Design QAをコミット`191b43a`（`Pro Filmと画面操作を改善`）へまとめた。
 - コミット`191b43a`をGitHubリポジトリ`https://github.com/Aikidoooo/Essential-for-Android`の`main`へpushし、`72a72df..191b43a main -> main`を確認した。
 - 今回はソース更新の公開として実施し、versionCode／versionNameの更新、新規タグ、GitHub Release、Release APKの追加公開は行っていない。既存の正式版タグ`v0.5.6`は維持している。
+
+【2026-09-11 Essential v0.5.7公開準備】
+- ユーザーの明示的な依頼により、現在の正式版v0.5.6からv0.5.7へのGitHub Release公開を開始した。
+- `app/build.gradle.kts`の`versionCode`を17から18、`versionName`を0.5.6から0.5.7へ更新した。Release版のApplication ID `jp.essential.app`とDebug共存用設定は維持した。
+- `.github/release-notes/v0.5.7.md`を追加し、v0.5.6以降のPro Film比較UI・メーカー別現像エンジン・写真比率モーション・外部Picker、マインスイーパー12×24、全画面Progressive Motion改善を更新内容として整理した。
+- `ESSENTIAL_HANDOFF.md`の版番号と公開予定情報をv0.5.7へ更新した。公開前検査、Releaseビルド、GitHub Actions、署名済みAPKとSHA-256の検証結果は公開完了後に追記する。
+- 参照先を確認したASCII Junction経由で`:app:testDebugUnitTest :app:lintDebug :app:assembleRelease --no-daemon --max-workers=1 -Pkotlin.compiler.execution.strategy=in-process`を実行し、`BUILD SUCCESSFUL`を確認した。既存の非推奨API・実験的設定の警告は残るが、テスト、Lint、Releaseビルドの失敗はない。
+- 生成されたarm64-v8a、armeabi-v7a、x86、x86_64、universalの未署名Release APK 5種を`aapt dump badging`で確認し、すべて`applicationId=jp.essential.app`、`versionCode=18`、`versionName=0.5.7`であることを確認した。ローカルAPKは配布署名なしであり、正式な署名・apksigner・16KiB zipalign検査はGitHub Actionsで行う。
+- 検証用Junctionは参照先が本プロジェクトであることを再確認してからJunction自体だけを削除し、プロジェクト本体と生成物は削除していない。

@@ -15,9 +15,9 @@
 - プロジェクト: `D:\#AI開発\Android\Essential`
 - Git remote: `https://github.com/Aikidoooo/Essential-for-Android.git`
 - 現在のブランチ: `main`
-- 現在の公開バージョン: `v0.5.6`（versionCode 17）。Block Blast、動画フレーム切り取り、Pro Film、Debug共存対応を含む。
-- 公開コミット: `2240159 Essential 0.5.6にPro Filmと操作改善を追加`。タグは`v0.5.0`〜`v0.5.6`。
-- GitHub Release `Essential v0.5.6`は正式公開済み。Release URLは`https://github.com/Aikidoooo/Essential-for-Android/releases/tag/v0.5.6`。ローカル検証用スクリーンショットとUIツリーは公開対象外。
+- 公開準備中のバージョン: `v0.5.7`（versionCode 18）。Pro Filmの比較・現像・モーション改善、外部Picker、マインスイーパー12×24、全画面のスクロール追従改善を含む。
+- 直前の公開バージョン: `v0.5.6`（versionCode 17）。公開コミットは`2240159 Essential 0.5.6にPro Filmと操作改善を追加`。
+- GitHub Release `Essential v0.5.6`は正式公開済み。v0.5.7のRelease URLは`https://github.com/Aikidoooo/Essential-for-Android/releases/tag/v0.5.7`を予定する。ローカル検証用スクリーンショットとUIツリーは公開対象外。
 - ユーザーが明示的に公開を依頼するまで、GitHubへのpush、タグ作成、Release公開、外部アップロードを行わない。
 
 ## 開発ルール
@@ -35,8 +35,8 @@
 ## Androidビルド構成
 
 - `applicationId` / namespace: `jp.essential.app`
-- `versionCode = 17`
-- `versionName = "0.5.6"`
+- `versionCode = 18`
+- `versionName = "0.5.7"`
 - `compileSdk = 36`、`targetSdk = 35`、`minSdk = 26`
 - Android Gradle Plugin `8.9.1`
 - Gradle Wrapper `8.11.1`
