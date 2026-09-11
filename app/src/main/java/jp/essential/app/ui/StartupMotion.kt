@@ -18,11 +18,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import jp.essential.app.R
 import jp.essential.app.ui.theme.LocalEssentialDark
-import kotlinx.coroutines.delay
 
 @Composable
 internal fun StartupGate(content: @Composable () -> Unit) {
@@ -64,22 +66,37 @@ internal fun StartupGate(content: @Composable () -> Unit) {
 @Composable
 internal fun ProgressiveWidget(index: Int, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     var revealed by rememberSaveable { mutableStateOf(false) }
+    var visibleInViewport by remember { mutableStateOf(false) }
     val progress = remember { Animatable(if (revealed) 1f else 0f) }
-    LaunchedEffect(Unit) {
-        if (!revealed) {
-            delay((index * 65L).coerceIn(0L, 520L))
-            progress.animateTo(1f, tween(380, easing = FastOutSlowInEasing))
+    val rootView = LocalView.current
+    LaunchedEffect(visibleInViewport, revealed) {
+        if (visibleInViewport && !revealed) {
+            // LazyColumnが先読みした画面外の項目では待たず、見えた瞬間から再生する。
+            progress.snapTo(0f)
+            progress.animateTo(1f, tween(240, easing = FastOutSlowInEasing))
             revealed = true
         }
     }
     // 各フレームの状態は描画レイヤーで読み、子の再コンポーズや再計測を避ける。
-    Box(modifier.graphicsLayer {
-        val fraction = progress.value
-        alpha = fraction
-        translationY = (1f - fraction) * 34.dp.toPx()
-        scaleX = 0.99f + 0.01f * fraction
-        scaleY = scaleX
-    }) { content() }
+    Box(
+        modifier
+            .onGloballyPositioned { coordinates ->
+                val bounds = coordinates.boundsInWindow()
+                val viewportWidth = rootView.width.toFloat()
+                val viewportHeight = rootView.height.toFloat()
+                visibleInViewport = viewportWidth > 0f && viewportHeight > 0f &&
+                    bounds.right > 0f && bounds.left < viewportWidth &&
+                    bounds.bottom > 0f && bounds.top < viewportHeight
+            }
+            .graphicsLayer {
+                val fraction = progress.value
+                alpha = fraction
+                val initialOffset = (34 + index.coerceIn(0, 4) * 2).dp.toPx()
+                translationY = (1f - fraction) * initialOffset
+                scaleX = 0.99f + 0.01f * fraction
+                scaleY = scaleX
+            },
+    ) { content() }
 }
 
 internal fun LazyListScope.progressiveItem(index: Int, content: @Composable LazyItemScope.() -> Unit) {

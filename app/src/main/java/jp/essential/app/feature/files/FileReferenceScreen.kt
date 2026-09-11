@@ -2,7 +2,6 @@ package jp.essential.app.feature.files
 
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -64,6 +63,7 @@ import kotlin.math.abs
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import jp.essential.app.ui.progressiveItem
+import jp.essential.app.ui.EssentialMediaPickerContract
 import android.widget.VideoView
 import android.graphics.Bitmap
 import android.graphics.drawable.GradientDrawable
@@ -104,10 +104,13 @@ fun FileReferenceScreen(onBack: () -> Unit) {
         }
     }
 
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+    val picker = rememberLauncherForActivityResult(EssentialMediaPickerContract()) { uri ->
         if (uri != null) {
             runCatching {
-                context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                // ACTION_GET_CONTENTは永続権限を返さない場合があるため、取得できるときだけ維持する。
+                runCatching {
+                    context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
                 engine.inspect(uri)
             }.onSuccess {
                 referencedFile = it

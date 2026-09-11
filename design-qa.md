@@ -66,6 +66,35 @@
 
 final result: passed
 
+# Design QA — Pro Filmメーカー別現像エンジン再生成（2026-09-11）
+
+## 比較対象
+
+- Implementation loaded state: `D:\#AI開発\Android\Essential\build-profilm-engine-controls2.png`
+- Implementation M3 state: `D:\#AI開発\Android\Essential\build-profilm-engine-m3.png`
+- State: Android 17 Pixel_10aエミュレーター、Pro Filmへ画像を読み込み済み。参照画像の比較スライダーと既存の角丸構成を維持したまま、フィルター選択後の処理名と現像結果を確認した。
+
+## Focused region comparison evidence
+
+- Leica M9選択時に「Leica M9現像エンジンで再生成」、Leica M3選択時に「Leica M3現像エンジンで再生成」へステータスが切り替わることをUIツリーで確認した。
+- 選択中フィルターの説明カードも「現像エンジン • …を再生成」へ更新し、単純なフィルター適用ではなく現像処理を選択していることを明示した。
+- 画像処理はシーンリニア化、固有色行列、トーンカーブ、局所コントラスト、ハレーション、粒状感、周辺減光、sRGB再エンコードの順序で構成し、比較スライダーの元画像／加工後画像を維持した。
+
+## Findings
+
+- ブロッキングまたは修正必須の表示差分なし。
+- P2: メーカーの実機ISP、非公開LUT、撮影時のレンズ・露出情報は取得できないため、物理端末のJPEGとピクセル単位で完全一致するものではない。公開されている色傾向を現像エンジンのパラメーターとして再構成している。
+
+## Implementation checklist
+
+- [x] 8プリセットを固有色行列・トーン・光学特性へ分離
+- [x] sRGB→シーンリニア→現像→sRGB再エンコード
+- [x] 現像エンジン名と再生成ステータスの表示
+- [x] Leica M9／M3のエミュレーター選択確認
+- [x] `testDebugUnitTest`、`lintDebug`、`assembleDebug`
+
+final result: passed
+
 # Design QA — Block Blast ドラッグ専用UI・中央グリップ（2026-09-10）
 
 ## 比較対象
@@ -173,6 +202,85 @@ final result: passed
 - [x] WebViewへのmotion-fps=120反映
 - [x] 比較画像とエミュレーター実画面確認
 - [x] `test`、`lint`、`assembleDebug`
+
+final result: passed
+
+# Design QA — Pro Film 強度泡モーション・外部Picker（2026-09-11）
+
+## 比較対象
+
+- Source visual truth: `C:\Users\waki1\AppData\Local\Temp\codex-clipboard-e2820bb7-a678-45d1-a5bd-957feb27c5b1.png`、`C:\Users\waki1\AppData\Local\Temp\codex-clipboard-b4b1f46b-4b7d-4eda-bf74-1843df71d45e.png`
+- Implementation Pro Film: `D:\#AI開発\Android\Essential\build-profilm-updated-empty.png`
+- Implementation external picker: `D:\#AI開発\Android\Essential\build-profilm-external-picker.png`
+- State: Android 17 Pixel_10aエミュレーター、ライトテーマ、Pro Film空状態。1枚目は強度レールと泡モーション、2枚目はシステムPickerの外部アプリ導線を視覚基準として扱った。手描き画像内の文字は実装指示ではなく、配置と状態の参考とした。
+
+## Focused region comparison evidence
+
+- 強度レールは太い紫色の角丸トラック、白い円形サム、現在値100%を同じ領域へまとめた。泡は複数の白い円を右から左へ循環させ、上下の揺れと透明度変化を加えた常時モーションとして実装した。
+- ヘッダーの戻る操作はファイル参照など既存画面と同じ46dp円形Surface、`‹`記号、見出し＋補助説明へ統一した。+ボタンと保存アイコンは除去し、保存はテキストのみとした。
+- 写真参照とファイル参照は共通`ACTION_GET_CONTENT`契約へ切り替え、画像・動画・音声のMIME配列を渡す。Android 17エミュレーターではPhoto Pickerが開き、実Xiaomi端末ではインストール済みのPhotos／Driveが「他のアプリでファイルを探す」候補へ参加できるIntent経路へ切り替えた。Drive未インストールのエミュレーターでカードが出ないことは仕様上の未検証範囲として記録した。
+
+## Required fidelity surfaces
+
+- Motion: `InfiniteTransition`の連続位相で泡を循環させ、Sliderの操作感と競合しないようレール内へクリップした。
+- Controls: 既存の強度0〜100%、フィルター選択、写真参照、保存状態を維持しながら、参照画像の色・太さ・角丸を反映した。
+- External providers: Photosなど`ACTION_GET_CONTENT`へ応答するアプリを候補に含め、File Referenceでは永続権限を返さないプロバイダーでも読み込みを止めない。
+
+## Findings
+
+- ブロッキングまたは修正必須の視覚差分なし。
+- P3: 外部Pickerに表示されるPhotos／Driveの名称・カード数はXiaomiのOS、アプリのインストール状態、ユーザーアカウントで変わるため、実機表示は端末側で最終確認が必要。
+
+## Implementation checklist
+
+- [x] 参照画像準拠の泡付き強度レール
+- [x] 既存機能と同じ戻るUI
+- [x] +ボタンと保存アイコンの除去
+- [x] Photos／Drive候補へ対応するGET_CONTENT契約
+- [x] エミュレーターで強度UIとPicker起動を確認
+- [x] `testDebugUnitTest`、`lintDebug`、`assembleDebug`
+
+final result: passed
+
+# Design QA — Pro Film Image Comparison Slider（2026-09-11）
+
+## 比較対象
+
+- Source visual truth: `C:\Users\waki1\AppData\Local\Temp\codex-clipboard-71ddb488-9b98-4ee1-b858-805a61e29601.png`
+- Implementation empty state: `D:\#AI開発\Android\Essential\build-profilm-redesign-empty.png`
+- Implementation loaded state: `D:\#AI開発\Android\Essential\build-profilm-redesign-loaded2.png`
+- Implementation drag state: `D:\#AI開発\Android\Essential\build-profilm-redesign-dragged.png`
+- State: Android 17 Pixel_10aエミュレーター、ライトテーマ、Pro Film画面。参照画像の手描き表現はそのまま複製せず、上部ツールバー、比較枠、フィルター列、設定スライダーという構成と操作をComposeへ再構成した。
+
+## Focused region comparison evidence
+
+- ヘッダーは左の円形戻る、中央のPro Film、右の円形追加、角丸の保存操作を同じ読み順で配置した。追加は写真ピッカー、保存は加工済みPNG出力へ接続している。
+- 比較枠は画像の縦横比を維持した角丸コンテナとし、左側を加工後、右側を元画像として常に同時表示する。黄色の縦バーと円形グリップはタップ・ドラッグで位置が変わり、`build-profilm-redesign-dragged.png`で中央から右側への移動を確認した。
+- フィルターは横スクロール可能なMaterial 3 FilterChipへ置き換え、Leica M9／M3、Xiaomi、OPPO、Huawei、Vivo、Xperia、FUJIFILMの全8種へ到達できる。選択状態の説明は直下の角丸面へ表示する。
+- 設定は紫色の強度Sliderと数値表示を角丸カードへまとめ、既存の0〜100%強度処理と再レンダリング状態を維持した。
+
+## Required fidelity surfaces
+
+- Fonts and typography: Material 3の見出し・本文・ラベルを使用し、参照画像の見出し／セクション／補助情報の階層を維持した。
+- Spacing and layout rhythm: 20 dp外側余白、16 dp基準のセクション間隔、28〜32 dpの角丸でヘッダーから設定までを連続させた。
+- Colors and visual tokens: Essentialの黄緑Liquid Glass背景を維持し、比較バーは参照画像に合わせた黄色、強度設定は紫で識別した。
+- Image quality and interaction: 元画像と加工画像を同一サイズで重ね、バー位置をスプリング補間してProgressive Motionを付与した。追加・戻る操作にはcontentDescriptionを設定した。
+
+## Findings
+
+- ブロッキングまたは修正必須の視覚差分なし。
+- P3: 手描きフォントそのものは端末標準フォントへ置き換えているため、将来ブランドフォントを同梱する場合は見出しだけ差し替え余地がある。
+
+## Implementation checklist
+
+- [x] 参照画像に沿ったPro Filmヘッダー
+- [x] 黄色Image Comparison Slider（タップ・ドラッグ対応）
+- [x] 画像縦横比を維持する角丸比較枠
+- [x] 8種フィルターの横スクロール選択
+- [x] 紫色の強度設定Slider
+- [x] 空状態、読み込み中、保存可能状態の表示
+- [x] エミュレーターで空状態・画像表示・ドラッグ状態を視覚確認
+- [x] `testDebugUnitTest`、`lintDebug`、`assembleDebug`
 
 final result: passed
 

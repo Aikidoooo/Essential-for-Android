@@ -222,12 +222,14 @@ private enum class MinesweeperStatus { Playing, Won, Lost }
 private enum class MineDifficulty(
     val label: String,
     val description: String,
-    val boardSize: Int,
+    val columns: Int,
+    val rows: Int,
     val mineCount: Int,
 ) {
-    Compact("8 × 8", "テンポよく遊べる・地雷10個", 8, 10),
-    Standard("9 × 9", "標準サイズ・地雷10個", 9, 10),
-    Wide("12 × 12", "じっくり挑戦・地雷22個", 12, 22),
+    Compact("8 × 8", "テンポよく遊べる・地雷10個", 8, 8, 10),
+    Standard("9 × 9", "標準サイズ・地雷10個", 9, 9, 10),
+    Wide("12 × 12", "じっくり挑戦・地雷22個", 12, 12, 22),
+    Tall("12 × 24", "縦長盤面・地雷44個", 12, 24, 44),
 }
 
 @Composable
@@ -270,11 +272,13 @@ private fun MinesweeperSizeScreen(
                         MineDifficulty.Compact -> "🌱"
                         MineDifficulty.Standard -> "💣"
                         MineDifficulty.Wide -> "⚡"
+                        MineDifficulty.Tall -> "🗺️"
                     },
                     accent = when (option) {
                         MineDifficulty.Compact -> Color(0xFF27B99A)
                         MineDifficulty.Standard -> Color(0xFF5A8DEE)
                         MineDifficulty.Wide -> Color(0xFF9C6BFF)
+                        MineDifficulty.Tall -> Color(0xFFE37B32)
                     },
                     onClick = { onSelect(option) },
                 )
@@ -285,9 +289,10 @@ private fun MinesweeperSizeScreen(
 
 @Composable
 private fun MinesweeperScreen(difficulty: MineDifficulty, onBack: () -> Unit) {
-    val boardSize = difficulty.boardSize
+    val boardColumns = difficulty.columns
+    val boardRows = difficulty.rows
     val mineCount = difficulty.mineCount
-    var cells by remember(difficulty) { mutableStateOf(createMineBoard(boardSize, mineCount)) }
+    var cells by remember(difficulty) { mutableStateOf(createMineBoard(boardColumns, boardRows, mineCount)) }
     var status by remember { mutableStateOf(MinesweeperStatus.Playing) }
     var flagMode by remember { mutableStateOf(false) }
     val flags = cells.count { it.flagged }
@@ -295,7 +300,7 @@ private fun MinesweeperScreen(difficulty: MineDifficulty, onBack: () -> Unit) {
     val safeCells = cells.count { !it.isMine }
 
     fun restart() {
-        cells = createMineBoard(boardSize, mineCount)
+        cells = createMineBoard(boardColumns, boardRows, mineCount)
         status = MinesweeperStatus.Playing
         flagMode = false
     }
@@ -317,7 +322,7 @@ private fun MinesweeperScreen(difficulty: MineDifficulty, onBack: () -> Unit) {
             status = MinesweeperStatus.Lost
             return
         }
-        cells = revealSafeCells(cells, index, boardSize)
+        cells = revealSafeCells(cells, index, boardColumns, boardRows)
         if (cells.count { it.revealed && !it.isMine } == safeCells) status = MinesweeperStatus.Won
     }
 
@@ -387,10 +392,10 @@ private fun MinesweeperScreen(difficulty: MineDifficulty, onBack: () -> Unit) {
                     .padding(10.dp),
                 verticalArrangement = Arrangement.spacedBy(3.dp),
             ) {
-                repeat(boardSize) { row ->
+                repeat(boardRows) { row ->
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                        repeat(boardSize) { column ->
-                            val index = row * boardSize + column
+                        repeat(boardColumns) { column ->
+                            val index = row * boardColumns + column
                             MineCellView(cells[index], index, ::open, ::toggleFlag)
                         }
                     }
@@ -459,33 +464,33 @@ private fun RowScope.MineCellView(
     }
 }
 
-private fun createMineBoard(boardSize: Int, mineCount: Int): List<MineCell> {
-    val cellCount = boardSize * boardSize
+private fun createMineBoard(columns: Int, rows: Int, mineCount: Int): List<MineCell> {
+    val cellCount = columns * rows
     val mineIndexes = (0 until cellCount).shuffled().take(mineCount.coerceAtMost(cellCount - 1)).toSet()
     return (0 until cellCount).map { index ->
-        MineCell(index in mineIndexes, adjacentMineCount(index, mineIndexes, boardSize))
+        MineCell(index in mineIndexes, adjacentMineCount(index, mineIndexes, columns, rows))
     }
 }
 
-private fun adjacentMineCount(index: Int, mineIndexes: Set<Int>, boardSize: Int): Int =
-    neighbors(index, boardSize).count { it in mineIndexes }
+private fun adjacentMineCount(index: Int, mineIndexes: Set<Int>, columns: Int, rows: Int): Int =
+    neighbors(index, columns, rows).count { it in mineIndexes }
 
-private fun neighbors(index: Int, boardSize: Int): List<Int> {
-    val row = index / boardSize
-    val column = index % boardSize
+private fun neighbors(index: Int, columns: Int, rows: Int): List<Int> {
+    val row = index / columns
+    val column = index % columns
     return buildList {
         for (rowOffset in -1..1) for (columnOffset in -1..1) {
             if (rowOffset == 0 && columnOffset == 0) continue
             val nextRow = row + rowOffset
             val nextColumn = column + columnOffset
-            if (nextRow in 0 until boardSize && nextColumn in 0 until boardSize) {
-                add(nextRow * boardSize + nextColumn)
+            if (nextRow in 0 until rows && nextColumn in 0 until columns) {
+                add(nextRow * columns + nextColumn)
             }
         }
     }
 }
 
-private fun revealSafeCells(source: List<MineCell>, start: Int, boardSize: Int): List<MineCell> {
+private fun revealSafeCells(source: List<MineCell>, start: Int, columns: Int, rows: Int): List<MineCell> {
     val result = source.toMutableList()
     val pending = ArrayDeque<Int>()
     pending.add(start)
@@ -494,7 +499,7 @@ private fun revealSafeCells(source: List<MineCell>, start: Int, boardSize: Int):
         val cell = result[index]
         if (cell.revealed || cell.flagged || cell.isMine) continue
         result[index] = cell.copy(revealed = true)
-        if (cell.adjacentMines == 0) neighbors(index, boardSize).forEach { pending.add(it) }
+        if (cell.adjacentMines == 0) neighbors(index, columns, rows).forEach { pending.add(it) }
     }
     return result
 }

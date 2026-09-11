@@ -911,3 +911,54 @@
 - ユーザー提示画面では縦動画が横長の16:9枠内へ縮小され、左右に大きな黒帯が残っていたため、プレビュー枠の縦横比判定を追加調整した。動画メタデータだけでなく、`MediaMetadataRetriever`で実際に取得したプレビューフレームの幅・高さを最優先してSurface自体の縦横比へ反映する。
 - メタデータ読み取り直後から実フレーム取得後へ表示寸法が切り替わる際、枠の縦横比と幅を360msで補間し、急に跳ねず縦長または横長へ変形するProgressive Motionを追加した。回転角0度、90度、270度の表示寸法変換テストも追加した。
 - ASCII Junction経由で`:app:testDebugUnitTest :app:assembleDebug --no-daemon --max-workers=1`を実行してBUILD SUCCESSFUL。x86_64 Debug APKを`emulator-5554`へ更新インストールし、縦動画の実フレーム寸法570×1280に合わせ、プレビュー外枠が`[219,382][862,1811]`の縦長・角丸表示になることをUIツリーと`build-frame-portrait-adaptive.png`で確認した。添付画面にあった横長外枠の左右余白は解消されている。物理端末確認とGitHub公開は行っていない。
+
+【2026-09-11 Pro Film Image Comparison Slider UI】
+- ユーザー提供のPro Film参照画像を設計上の視覚的真実として扱い、手描きの内容自体は複製せず、上部の円形戻る、Pro Filmタイトル、円形追加、角丸保存ボタンというツールバー構成を`ProFilmScreen.kt`へ再構成した。追加は既存のStorage Access Framework写真参照、保存は既存のPNG出力へ接続し、既存の端末内加工と100%初期強度を維持した。
+- 画像未選択時は角丸の空状態プレビューと「写真を選ぶ」導線を表示し、写真選択後は元画像を右側、加工後画像を左側へ同一の角丸縦横比コンテナ内に重ねる`FilmComparisonPreview`を追加した。写真の縦横比は0.45〜2.4の範囲で保ち、縦長・横長の画像で枠を引き伸ばさない。
+- 中央の黄色バーをImage Comparison Sliderとして実装した。プレビュー上のタップとドラッグで0〜100%を変更し、黄色の縦線と円形グリップをスプリング補間してProgressive Motionを加えた。グリップには左右矢印を描き、左右ラベル「編集後」「元画像」をオーバーレイ表示する。戻る／写真参照のカスタムアイコンへcontentDescriptionを設定した。
+- フィルター領域を参照画像に合わせた「フィルター」見出しと横スクロール列へ整理し、Leica M9／M3、Leica (Xiaomi Original)、Hasselblad (OPPO Original)、Huawei、ZEISS (Vivo Original)、Sony (Xperia Original)、FUJIFILM (PROVIA)の8種をMaterial 3 FilterChipで選択できるようにした。選択中の説明は角丸面へ表示する。
+- 「設定」カードへ紫色の強度Sliderと数値をまとめ、既存の強度変更→再レンダリング→保存有効化の整合性を維持した。ヘッダー、比較枠、フィルター、設定の全主要面へ角丸と半透明Surfaceを適用し、EssentialのLiquid Glass配色と統一した。
+- `design-qa.md`へ参照画像、空状態・画像表示・ドラッグ状態のキャプチャ、比較観点、未解決の軽微なフォント差を追記した。`build-profilm-redesign-empty.png`、`build-profilm-redesign-loaded2.png`、`build-profilm-redesign-dragged.png`で、主要操作の切れ・重なりがなく、黄色バーが中央から右へ移動することを確認した。
+- Composeコンパイル、`:app:testDebugUnitTest`、`:app:lintDebug`、`:app:assembleDebug`をASCII Junction経由で実行し、BUILD SUCCESSFULを確認した。最終のcontentDescription変更後も`:app:compileDebugKotlin`はBUILD SUCCESSFUL。既存の非推奨API・注釈警告は継続するが失敗はない。
+- x86_64 Debug APKを`emulator-5554`へ更新インストールし、機能一覧からPro Film画面を開いて空状態、写真ピッカーからの画像読み込み、比較ラベル、フィルター横スクロール、強度100%、保存無効状態をUIツリーで確認した。比較枠のドラッグ操作後にバー移動をスクリーンショットで確認した。物理端末のフォント差、実機カメラISPとの色一致、PNG保存完走は未確認。GitHub公開は行っていない。
+
+【2026-09-11 Pro Film強度レール・外部アプリPicker対応】
+- Pro Filmの強度設定を参照画像の太い紫色レールと白い円形サムへ変更した。`BubblyStrengthSlider`では決定的な複数の泡をレール内へ描画し、InfiniteTransitionで右から左へ流しながら上下に揺らすことで、炭酸のような常時ぷくぷくするマイクロインタラクションを実装した。泡は現在の強度範囲でクリップし、強度0〜100%の既存レンダリング値とSliderのアクセシビリティ操作は維持した。
+- Pro Filmの戻る操作をファイル参照など既存機能と同じ46dp円形Surface、`‹`記号、見出し＋補助説明の構成へ統一した。ヘッダーの追加（+）ボタンを削除し、写真参照は比較枠内の「写真を選ぶ」から行う。保存ボタンからアイコンを削除し、テキスト「保存」だけを表示する。戻るボタンのcontentDescriptionは維持した。
+- Photosなど外部アプリが登録する`ACTION_GET_CONTENT`を候補へ含めるため、`EssentialMediaPickerContract.kt`を追加した。`ACTION_GET_CONTENT`、`CATEGORY_OPENABLE`、`*/*`、指定MIME配列、読み取り権限を設定し、Pro Filmの写真選択とファイル参照（画像・動画・音声）をこの契約へ切り替えた。File ReferenceではGET_CONTENTが永続権限を返さない端末でも読み込みを続け、永続権限が取得できる場合だけ従来どおり保持する。
+- Android標準のプロバイダー表示は端末にインストール・有効化されたアプリへ依存するため、アプリ側で未インストールのDriveを捏造・追加する処理は行わない。Photos／Driveが端末で提供するGET_CONTENT応答をXiaomiのシステムPickerが「他のアプリでファイルを探す」候補へ表示できるIntent経路へ合わせた。エミュレーターにはDriveが入っていないため、Photos／Driveカードの実端末表示自体は未確認。
+- `build-profilm-updated-empty.png`で、+なしの統一ヘッダー、アイコンなし保存、紫色レール、右から左へ流れる泡、白サム、横スクロールフィルター、100%表示を確認した。UIツリーで`Pro Film`、`保存`、`写真を選ぶ`、`フィルター`、`設定`、`100%`を取得した。
+- `:app:compileDebugKotlin`、`:app:testDebugUnitTest`、`:app:lintDebug`、`:app:assembleDebug`をASCII Junction経由で実行し、BUILD SUCCESSFULを確認した。既存の非推奨API・注釈警告は継続するが失敗はない。物理Xiaomi端末でのPhotos／Drive候補、実機の泡フレームレート、実ファイルの保存完走は未確認。GitHub公開は行っていない。
+
+【2026-09-11 外部Pickerのクラウド候補明示】
+- `EssentialMediaPickerContract.kt`へ`Intent.EXTRA_LOCAL_ONLY=false`を追加し、端末内ファイルだけに限定せず、DriveなどクラウドDocumentProviderを候補に含める意図を明示した。Photos／Driveの表示可否は端末側アプリの登録・有効状態に依存するため、未インストールのアプリをEssentialから追加する処理は行っていない。
+
+【2026-09-11 Pro Film下部説明文の削除】
+- Pro Film画面の最下部に表示していた色表現・公式LUT・実機ISPの完全再現ではない旨の説明文を、ユーザーが内容を承知のうえで使用するため不要との指定に合わせて削除した。画像選択、比較スライダー、フィルター、強度設定、保存操作は変更していない。
+- 既存の角丸SurfaceとProgressive Motionの構成を崩さず、説明文だけをLazyColumnから除去した。コンパイル確認は削除後に実施する。
+
+【2026-09-11 Pro Filmメーカー別現像エンジン再生成】
+- 各フィルターを単純なsRGBチャンネル補正から、メーカー別の現像エンジンとして再構成した。入力をsRGBからシーンリニアへ戻し、プリセット固有の3×3色行列、露出・ホワイトバランス、彩度とハイライト彩度圧縮、トーンカーブ、黒つぶれ・シャドウリフト、ハイライトロールオフを順に適用してからsRGBへ再エンコードする。
+- Leica M9／M3、Leica (Xiaomi Original)、Hasselblad (OPPO Original)、Huawei、ZEISS (Vivo Original)、Sony (Xperia Original)、FUJIFILM (PROVIA)の各プリセットへ、色行列、トーンの膝、ショルダー、マイクロコントラスト、ハレーション、粒状感、周辺減光の固有値を持たせた。M3は色行列後に銀塩モノクロの輝度へ変換する。
+- 4近傍の輝度差から現像エンジン固有のマイクロコントラストを加え、ハイライト域へ赤寄りのハレーション、暗部へ決定的な粒状ノイズ、画面端へレンズシェーディングを付与した。強度スライダーは再生成結果と元画像を0〜100%で混合する既存仕様を維持した。
+- 処理関数を`regenerateFilmThroughEngine`へ変更し、選択中の状態説明と処理ステータスを「現像エンジンで再生成」と表示するようにした。説明文はUI下部へ戻さず、既存のフィルター説明カードへ集約した。
+- ASCII Junction経由で`:app:testDebugUnitTest :app:lintDebug :app:assembleDebug --no-daemon --max-workers=1`を実行し、BUILD SUCCESSFULを確認した。x86_64 Debug APKを`emulator-5554`へ更新インストールし、Leica M9とLeica M3を選択して現像エンジン名・再生成ステータスがUIツリーへ反映され、比較画像が表示されることを確認した。実機メーカーISPとのピクセル単位一致、各社非公開LUTの完全一致、保存完走は未確認。
+
+【2026-09-11 マインスイーパー12×24盤面追加】
+- マス目選択へ12列×24行の「12 × 24」を追加した。既存の12×12盤面と同じ地雷密度になるよう地雷数は44個とし、選択カードには縦長盤面であることが分かる説明とアクセント色を設定した。
+- `MineDifficulty`の正方形前提だった`boardSize`を`columns`／`rows`へ分離し、盤面生成、地雷隣接数、周囲マス探索、空白連鎖開示、盤面描画のすべてを長方形へ対応させた。既存の8×8、9×9、12×12の挙動と旗モード、再スタート、勝敗判定は維持した。
+- ASCII Junction経由で`gradlew build --no-daemon --max-workers=1 -Pkotlin.compiler.execution.strategy=in-process`を実行し、Debug／Releaseのコンパイル、Lint、単体テスト、APK生成を含む`BUILD SUCCESSFUL`を確認した。既存の非推奨API警告とFFmpeg／Pythonライブラリのstrip警告は継続するが、失敗はない。
+- x86_64 Debug APKを`emulator-5554`へデータ保持で更新インストールし、ミニゲーム→マインスイーパーのサイズ選択画面で「12 × 24」「縦長盤面・地雷44個」をUIツリーから確認した。選択後はステータスに「12 × 24・地雷44個」「開いたマス 0/244」が表示され、12列×24行（288マス、非地雷244マス）の盤面として起動することを確認した。物理端末での長時間スクロールと実プレイ完走は未確認。
+
+【2026-09-11 Pro Film写真比率追従モーション】
+- `ProFilmScreen.kt`の`FilmComparisonPreview`で、参照写真の幅／高さ比を0.45〜2.4の範囲で目標値として取得し、`animateFloatAsState`のスプリング補間でプレビュー枠の縦横比を滑らかに変更するようにした。縦写真から横写真、横写真から縦写真へ切り替えても、角丸比較枠が瞬間的に跳ねず、写真比率へ連続的に変形する。
+- 比較プレビューを包むSurfaceへ`animateContentSize`を追加し、プレビューの高さ変化に合わせて比較カード、ステータス、フィルター、設定の後続UIも同じモーションで追従するようにした。Image Comparison Sliderの位置補間、メーカー別現像、強度レール、写真の角丸表示は維持した。
+- ASCII Junction経由で`:app:testDebugUnitTest :app:lintDebug :app:assembleDebug --no-daemon --max-workers=1 -Pkotlin.compiler.execution.strategy=in-process`を実行し、Composeコンパイル、単体テスト、Lint、Debug APK生成の`BUILD SUCCESSFUL`を確認した。既存の非推奨API・注釈警告は継続するが失敗はない。
+- x86_64 Debug APKを`emulator-5554`へ更新インストールし、`open_feature=pro_film`でPro Film画面を起動した。UIツリーから「Pro Film」「写真を選ぶ」「設定」「100%」と戻る操作を確認し、起動時の`FATAL EXCEPTION`がないことを確認した。異なる縦横比の実写真を連続選択した際のフレーム単位の見た目と物理端末のモーション体感は未確認。
+
+【2026-09-11 全画面Progressive Motionのスクロール追従改善】
+- ホーム、機能一覧、設定を含む共通`progressiveItem`の`ProgressiveWidget`を、Composition時点から`index×65ms`待つ方式から、表示領域に入った瞬間を`onGloballyPositioned`／`boundsInWindow`で検知して開始する方式へ変更した。LazyColumnが先読みした画面外項目で待ち時間を消費しないため、スクロールで新しく見える項目が遅れて表示されるタイムラグを解消した。
+- 表示開始後のフェード・縦移動は`FastOutSlowInEasing`の240msへ短縮し、既存のProgressive Motionの透明度、34〜42dpの初期移動、0.99〜1.0のスケール感は維持した。画面外へスクロールした項目は既存の`rememberSaveable`状態で再表示時に不要な再アニメーションを行わない。
+- 共通ヘルパーのため、ホームのヒーロー・機能カード、機能一覧の各カード、設定の各セクションに加え、同じ`progressiveItem`を利用する既存画面にも同じスクロール即応性が適用される。
+- ASCII Junction経由で`:app:testDebugUnitTest :app:lintDebug :app:assembleDebug --no-daemon --max-workers=1 -Pkotlin.compiler.execution.strategy=in-process`を実行し、Composeコンパイル、単体テスト、Lint、Debug APK生成の`BUILD SUCCESSFUL`を確認した。既存の非推奨API・注釈警告は継続するが失敗はない。
+- x86_64 Debug APKを`emulator-5554`へ更新インストールし、`open_feature=pro_film`で画面を起動して「Pro Film」「写真を選ぶ」「設定」「100%」の表示と`FATAL EXCEPTION=0`を確認した。実機の高速フリック時の体感、全画面を連続往復したフレーム単位の滑らかさは未確認。
