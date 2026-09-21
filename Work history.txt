@@ -1597,3 +1597,9 @@
 - 公開アセットは`Essential-0.5.9-arm64-v8a.apk`、`Essential-0.5.9-armeabi-v7a.apk`、`Essential-0.5.9-x86.apk`、`Essential-0.5.9-x86_64.apk`、`Essential-0.5.9-universal.apk`、`SHA256SUMS.txt`の6件で、すべてGitHub API上の状態が`uploaded`であることを確認した。
 - `SHA256SUMS.txt`はAPK 5件分の64桁SHA-256と正しいファイル名を含み、各値がGitHub Release APIのアセット`digest`と全件一致した。これにより、公開ファイル名、件数、アップロード状態、ハッシュ整合性を外部から再確認した。
 - CameraStyleAI研究フォルダ、`.android`、ローカルビルドログ、旧Pro Film設計資料など、公開対象外と判断した未追跡ファイルはコミット・Releaseへ含めていない。ユーザーデータの削除やリセットも行っていない。
+
+【2026-09-21 Essential v0.5.9 GitHub Release削除】
+- ユーザーの明示的な依頼に基づき、GitHub Release `Essential v0.5.9`を削除した。削除対象はRelease ID `392678527`、タグ`v0.5.9`、添付アセット6件であることを事前確認した。
+- GitHub Releases APIのDELETEはHTTP `204`で成功した。キャッシュ回避付きのRelease API再確認では`v0.5.9`がHTTP `404`となり、Releaseページと添付APK／`SHA256SUMS.txt`が削除されたことを確認した。
+- `refs/tags/v0.5.9`は意図どおり保持し、注釈付きタグオブジェクト`669600a88e74c59f361314143e9986229ba55779`からコミット`421925d2f96a34f40bb3ab089106e149efe25e7e`を参照している。`main`のソース、コミット、GitHub Actions履歴、ユーザーデータは削除していない。
+- Release削除後もローカル`main`と`origin/main`は0/0で同期している。v0.5.9を再配布する場合は、保持した同一タグに対してGitHub Releaseと配布アセットを再作成する必要がある。
