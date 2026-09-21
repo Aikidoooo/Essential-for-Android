@@ -1603,3 +1603,34 @@
 - GitHub Releases APIのDELETEはHTTP `204`で成功した。キャッシュ回避付きのRelease API再確認では`v0.5.9`がHTTP `404`となり、Releaseページと添付APK／`SHA256SUMS.txt`が削除されたことを確認した。
 - `refs/tags/v0.5.9`は意図どおり保持し、注釈付きタグオブジェクト`669600a88e74c59f361314143e9986229ba55779`からコミット`421925d2f96a34f40bb3ab089106e149efe25e7e`を参照している。`main`のソース、コミット、GitHub Actions履歴、ユーザーデータは削除していない。
 - Release削除後もローカル`main`と`origin/main`は0/0で同期している。v0.5.9を再配布する場合は、保持した同一タグに対してGitHub Releaseと配布アセットを再作成する必要がある。
+
+【2026-09-21 v0.5.9 Release初回起動クラッシュ修正・初回APK明確化】
+- ユーザー提供の4枚の画像は実装指示書ではなく、v0.5.9をダウンロード／初回インストールした端末でAndroidのスマートアプリアシスタントが表示したクラッシュ情報として扱った。画像からは`java.lang.RuntimeException: Unable to start activity ComponentInfo{jp.essential.app/jp.essential.app.MainActivity}`まで確認できたが、根本例外の`Caused by`は表示範囲外だった。
+- Debug版では再現しない一方、v0.5.9のR8 mappingで`jp.essential.app.AppIconManager -> t4.a`となることを確認した。従来の`AppIconManager::class.java.name.substringBeforeLast('.')`はRelease版で`t4`を返し、Manifestに存在しない`t4.LightLauncher`等を`PackageManager.setComponentEnabledSettings`へ渡すため、`MainActivity.onCreate`内のアイコン適用で起動不能になることを特定した。
+- `AppIconManager`へ固定のManifest namespace `jp.essential.app`と`launcherClassName`を追加した。ランチャー別名の完全修飾名を難読化対象クラスの実行時名から生成しないため、R8で`AppIconManager`自体が引き続き`t4.a`へ変換されても正しい`jp.essential.app.LightLauncher`等を参照する。
+- `AppIconManagerTest`を追加し、`.LightLauncher`からManifestと一致する完全修飾名を生成すること、先頭ピリオドのない不正別名を拒否することを検査した。`UpdatePolicyTest`のUniversal APK名も新しい初回インストール名へ更新し、ABI一致を優先しつつUniversalへフォールバックできることを維持した。
+- `.github/workflows/release.yml`ではUniversal APKの配布名を`Essential-<version>-FIRST-INSTALL-universal.apk`へ変更した。ABIが分からない利用者が選ぶファイルを名前で判別でき、末尾`-universal.apk`を維持するため既存のアプリ内アップデート選択処理とも互換性がある。`.github/release-notes/v0.5.9.md`先頭にも「迷った場合はこのファイル」と太字で案内し、ABI別APKは容量を抑えたい利用者向けであることを記載した。
+- Java 23とASCII Junctionで`:app:testDebugUnitTest :app:lintDebug :app:assembleRelease --offline --no-daemon --max-workers=1 '-Pkotlin.compiler.execution.strategy=in-process' '-PUPDATE_REPOSITORY=Aikidoooo/Essential-for-Android' --rerun-tasks`を実行し、`BUILD SUCCESSFUL`を確認した。Unit Testは31件成功、失敗0、エラー0。Lintは76件中エラー0。R8有効Release APK 5種の生成も成功した。既存のKotlin metadata警告とzip形式ネイティブライブラリstrip警告は非致命警告として継続した。
+- 実行時確認のため、一時的にReleaseと同じR8設定、Debug署名、Application ID `jp.essential.app.smoke`の`releaseSmoke` APKを生成した。`emulator-5554`へx86_64版を新規インストールし、Manifestの`jp.essential.app.LightLauncher`からコールド起動した結果、`jp.essential.app.smoke/jp.essential.app.MainActivity`が前面となり、AndroidRuntimeクラッシュ0件だった。確認後は検証アプリをアンインストールし、一時build typeをソースから削除した。
+- 通常Debug APKの最初の更新インストールは、一時検証用`ANDROID_USER_HOME`に新規生成された別Debug鍵を参照したため`INSTALL_FAILED_UPDATE_INCOMPATIBLE`で拒否された。既存の`jp.essential.app.debug`はアンインストールせず、インストール済みAPKと`C:\Users\waki1\.android\debug.keystore`の証明書SHA-256が`d3239bc87283a80ad899ec547b2344b2b5013c54a5f62e58dae1c6fec39b3b44`で一致することを確認した。
+- 通常のDebug署名鍵で`:app:assembleDebug`を再実行し、x86_64 Debug APKを`adb install -r`でデータ保持のまま更新インストールした。ランチャーから起動後、`jp.essential.app.debug/jp.essential.app.MainActivity`が前面となり、AndroidRuntimeクラッシュ0件を確認した。APKは148,133,353 bytes、SHA-256 `4CE4C7786A3507896F9E3F1180510593448EA107D6904B76AE4A72DEC0A4160D`。
+- v0.5.9 GitHub Releaseはユーザー指示によって削除済みの状態を維持した。この修正ではコミット、push、タグ移動、Release再公開を行っていない。再公開時には修正コミットを含むタグ／Releaseを改めて作成する必要がある。
+
+【2026-09-21 Android／Xiaomi向け4配布モデル作成】
+- ユーザー要望に基づき、ReleaseでダウンロードできるAPKを「初回ダウンロード用（Android端末）」「初回ダウンロード用（Xiaomi端末）」「アップデート用（Android端末）」「アップデート用（Xiaomi端末）」の4種類へ整理した。初回用／更新用ともApplication IDと配布署名を共通化し、更新時にユーザーデータを保持できる設計を維持した。
+- `.github/workflows/release.yml`の配布工程は、Universal Release APKをAndroidモデル、arm64-v8a Release APKをXiaomiモデルとして利用する。公開名は`Essential-<version>-FIRST-INSTALL-ANDROID.apk`、`Essential-<version>-FIRST-INSTALL-XIAOMI.apk`、`Essential-<version>-UPDATE-ANDROID-universal.apk`、`Essential-<version>-UPDATE-XIAOMI-arm64-v8a.apk`の4件とし、全件の`SHA256SUMS.txt`を生成する。
+- Xiaomi最適化は、現行Xiaomi／Redmi／POCO端末で一般的なarm64-v8aだけを収録し、x86、x86_64、armeabi-v7aの不要なネイティブライブラリを除く方式とした。今回生成した未署名ReleaseではAndroid Universalが334,853,509 bytes、Xiaomi arm64-v8aが125,537,711 bytesで、Xiaomi版は209,315,798 bytes小さい。アプリ機能、画像、音声分離モデルは削除していない。
+- `GitHubUpdateRepository`は`Build.MANUFACTURER`、`Build.BRAND`、`Build.SUPPORTED_ABIS`を更新選択へ渡す。`UpdatePolicy`はメーカーまたはブランドがXiaomi／Redmi／POCOでarm64-v8a対応ならXiaomi更新用を選び、それ以外のAndroid端末およびarm64非対応の古いXiaomi系端末ではAndroid Universal更新用へ戻す。
+- 既存v0.5.8の更新処理はファイル名末尾でABIを選ぶため、更新用Xiaomiには`-arm64-v8a.apk`、更新用Androidには`-universal.apk`を残した。初回用2件にはABI末尾を付けず、旧更新処理が重複候補として誤認しない構成にした。旧ロジックを再現するUnit Testも追加し、arm64端末とx86_64端末の双方で更新用APKが一意に選ばれることを確認した。
+- `.github/release-notes/v0.5.9.md`先頭へ4モデルの用途・端末・ファイル名を表で記載した。Xiaomi版は64bit ARM用であり、インストールできない古い端末はAndroid版を使うこと、アプリ内更新では自動選択することも明記した。
+- Java 23とASCII Junctionで`:app:testDebugUnitTest :app:lintDebug :app:assembleRelease`を実行し、R8有効Releaseを含め`BUILD SUCCESSFUL`だった。最終Unit Testは36件成功、失敗0、エラー0。Lintは76件中エラー0。既存のKotlin metadata警告とzip形式ネイティブライブラリstrip警告は非致命警告として継続した。
+- `aapt dump badging`でAndroidモデルは`arm64-v8a`、`armeabi-v7a`、`x86`、`x86_64`の4 ABI、Xiaomiモデルは`arm64-v8a`のみを含むことを確認した。両方とも`jp.essential.app`、versionCode 20、versionName 0.5.9である。
+- v0.5.9 GitHub Releaseは削除済みの状態を維持した。この変更ではコミット、push、タグ移動、Release再公開を行っていない。
+
+【2026-09-21 Essential v0.6.0 GitHub公開準備】
+- ユーザーの明示的な依頼により、v0.5.9 Releaseを欠番としてv0.6.0をGitHubへ正式公開する作業を開始した。v0.5.9 Releaseは削除済みのまま復活させず、既存の注釈付き`v0.5.9`タグは履歴保持のため変更しない。
+- `app/build.gradle.kts`を`versionCode=21`、`versionName=0.6.0`へ更新した。Application ID `jp.essential.app`、対応Android、配布署名構成は維持した。
+- `.github/release-notes/v0.6.0.md`を追加し、Android／Xiaomi向け4配布APKの選択表、Xiaomi arm64最適化、データ保持、v0.5.9 Release初回起動クラッシュ修正、v0.5.8以降の機能変更を記載した。v0.5.9のRelease notesは履歴として元の内容へ戻した。
+- Java 23とASCII Junctionで`:app:testDebugUnitTest :app:lintDebug :app:assembleRelease --offline --no-daemon --max-workers=1 '-Pkotlin.compiler.execution.strategy=in-process' '-PUPDATE_REPOSITORY=Aikidoooo/Essential-for-Android' --rerun-tasks`を実行し、`BUILD SUCCESSFUL`を確認した。Unit Testは36件成功、失敗0、エラー0。Lintは76件中エラー0。R8有効Release APK 5出力の生成も成功した。
+- `aapt dump badging`で0.6.0 Androidモデル元のUniversal APKは`jp.essential.app`、versionCode 21、versionName 0.6.0、arm64-v8a／armeabi-v7a／x86／x86_64対応、334,853,489 bytesであることを確認した。Xiaomiモデル元は同じパッケージ／版でarm64-v8a専用、125,537,687 bytesだった。
+- GitHub Actionsでは上記2つの署名済みAPKから初回／更新×Android／Xiaomiの4ファイルを作成し、`SHA256SUMS.txt`とともに公開する。公開前に差分、秘密情報、タグ不存在、main同期を確認し、commit・push・`v0.6.0`タグpush後にActionsと公開アセットを検証する。

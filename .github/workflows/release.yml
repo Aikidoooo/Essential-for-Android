@@ -73,12 +73,18 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p release-assets
-          for abi in arm64-v8a armeabi-v7a x86 x86_64 universal; do
-            apk="app/build/outputs/apk/release/app-$abi-release.apk"
+          android_apk="app/build/outputs/apk/release/app-universal-release.apk"
+          xiaomi_apk="app/build/outputs/apk/release/app-arm64-v8a-release.apk"
+          for apk in "$android_apk" "$xiaomi_apk"; do
             "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify "$apk"
             "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -P 16 4 "$apk"
-            cp "$apk" "release-assets/Essential-${RELEASE_TAG#v}-$abi.apk"
           done
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$xiaomi_apk" | grep -Fq "native-code: 'arm64-v8a'"
+          version="${RELEASE_TAG#v}"
+          cp "$android_apk" "release-assets/Essential-$version-FIRST-INSTALL-ANDROID.apk"
+          cp "$xiaomi_apk" "release-assets/Essential-$version-FIRST-INSTALL-XIAOMI.apk"
+          cp "$android_apk" "release-assets/Essential-$version-UPDATE-ANDROID-universal.apk"
+          cp "$xiaomi_apk" "release-assets/Essential-$version-UPDATE-XIAOMI-arm64-v8a.apk"
           cd release-assets
           sha256sum *.apk > SHA256SUMS.txt
       - name: 全ファイルを添付してからReleaseを公開

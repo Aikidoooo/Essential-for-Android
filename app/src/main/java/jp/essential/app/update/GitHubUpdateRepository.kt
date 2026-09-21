@@ -68,7 +68,12 @@ internal class GitHubUpdateRepository(private val context: Context) {
         if (!UpdatePolicy.isNewer(version, BuildConfig.VERSION_NAME)) return@withContext null
         val assets = json.getJSONArray("assets")
         val entries = (0 until assets.length()).map { assets.getJSONObject(it) }
-        val selected = UpdatePolicy.chooseAsset(entries.map { it.getString("name") }, Build.SUPPORTED_ABIS.toList())
+        val selected = UpdatePolicy.chooseAsset(
+            names = entries.map { it.getString("name") },
+            abis = Build.SUPPORTED_ABIS.toList(),
+            manufacturer = Build.MANUFACTURER,
+            brand = Build.BRAND,
+        )
             ?: error("この端末に対応するrelease APKがありません")
         val asset = entries.single { it.getString("name") == selected }
         val url = asset.getString("browser_download_url")

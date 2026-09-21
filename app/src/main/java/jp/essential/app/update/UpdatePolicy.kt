@@ -13,11 +13,35 @@ internal object UpdatePolicy {
         val b = version(current)
         return a.indices.firstOrNull { a[it] != b[it] }?.let { a[it] > b[it] } ?: false
     }
-    fun chooseAsset(names: List<String>, abis: List<String>): String? {
+    fun chooseAsset(
+        names: List<String>,
+        abis: List<String>,
+        manufacturer: String = "",
+        brand: String = "",
+    ): String? {
         val apks = names.filter { it.endsWith(".apk") && !it.contains("debug", true) }
+        val updateApks = apks.filter { it.contains("-UPDATE-", ignoreCase = true) }
+        if (updateApks.isNotEmpty()) {
+            val xiaomiOptimized = isXiaomiFamily(manufacturer, brand) && "arm64-v8a" in abis
+            val preferredSuffix = if (xiaomiOptimized) {
+                "-UPDATE-XIAOMI-arm64-v8a.apk"
+            } else {
+                "-UPDATE-ANDROID-universal.apk"
+            }
+            updateApks.singleOrNull { it.endsWith(preferredSuffix, ignoreCase = true) }?.let { return it }
+            return updateApks.singleOrNull { it.endsWith("-UPDATE-ANDROID-universal.apk", ignoreCase = true) }
+        }
+
+        // 新しい4モデル構成より前のReleaseも引き続き選択できるようにする。
         for (abi in abis) apks.singleOrNull { it.endsWith("-$abi.apk") }?.let { return it }
         return apks.singleOrNull { it.endsWith("-universal.apk") }
     }
+
+    internal fun isXiaomiFamily(manufacturer: String, brand: String): Boolean =
+        listOf(manufacturer, brand).any { value ->
+            val normalized = value.trim().lowercase()
+            normalized == "xiaomi" || normalized == "redmi" || normalized == "poco"
+        }
     fun validateAssetUrl(url: String, repository: String) {
         val uri = URI(url)
         require(uri.scheme == "https" && uri.host == "github.com" && uri.userInfo == null &&

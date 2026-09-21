@@ -20,7 +20,43 @@ class UpdatePolicyTest {
             assertTrue(runCatching { UpdatePolicy.version(it) }.isFailure)
         }
     }
-    @Test fun 対応ABIを優先し汎用APKへ戻す() {
+    @Test fun Android端末はAndroid更新用を選ぶ() {
+        val names = fourDistributionModels()
+        assertEquals(
+            "Essential-1.0.0-UPDATE-ANDROID-universal.apk",
+            UpdatePolicy.chooseAsset(names, listOf("arm64-v8a"), manufacturer = "Google", brand = "google"),
+        )
+    }
+    @Test fun Xiaomi系arm64端末はXiaomi更新用を選ぶ() {
+        val names = fourDistributionModels()
+        listOf("Xiaomi", "Redmi", "POCO").forEach { deviceBrand ->
+            assertEquals(
+                "Essential-1.0.0-UPDATE-XIAOMI-arm64-v8a.apk",
+                UpdatePolicy.chooseAsset(names, listOf("arm64-v8a", "armeabi-v7a"), manufacturer = deviceBrand),
+            )
+        }
+    }
+    @Test fun Xiaomi系でもarm64非対応ならAndroid更新用へ戻す() {
+        assertEquals(
+            "Essential-1.0.0-UPDATE-ANDROID-universal.apk",
+            UpdatePolicy.chooseAsset(fourDistributionModels(), listOf("armeabi-v7a"), brand = "POCO"),
+        )
+    }
+    @Test fun 初回用をアプリ内アップデートには選ばない() {
+        val names = fourDistributionModels()
+        assertFalse(UpdatePolicy.chooseAsset(names, listOf("arm64-v8a"), manufacturer = "Xiaomi")!!.contains("FIRST-INSTALL"))
+    }
+    @Test fun 四モデル名は旧版のABI選択とも互換性を保つ() {
+        val names = fourDistributionModels()
+        fun legacyChoose(abis: List<String>): String? {
+            val apks = names.filter { it.endsWith(".apk") }
+            for (abi in abis) apks.singleOrNull { it.endsWith("-$abi.apk") }?.let { return it }
+            return apks.singleOrNull { it.endsWith("-universal.apk") }
+        }
+        assertEquals("Essential-1.0.0-UPDATE-XIAOMI-arm64-v8a.apk", legacyChoose(listOf("arm64-v8a")))
+        assertEquals("Essential-1.0.0-UPDATE-ANDROID-universal.apk", legacyChoose(listOf("x86_64")))
+    }
+    @Test fun 旧配布形式では対応ABIを優先し汎用APKへ戻す() {
         val names = listOf("Essential-1.0.0-arm64-v8a.apk", "Essential-1.0.0-universal.apk", "app-debug.apk")
         assertEquals(names[0], UpdatePolicy.chooseAsset(names, listOf("arm64-v8a", "armeabi-v7a")))
         assertEquals(names[1], UpdatePolicy.chooseAsset(names, listOf("x86_64")))
@@ -32,4 +68,11 @@ class UpdatePolicyTest {
             assertTrue(runCatching { UpdatePolicy.validateAssetUrl(it, "owner/repo") }.isFailure)
         }
     }
+
+    private fun fourDistributionModels() = listOf(
+        "Essential-1.0.0-FIRST-INSTALL-ANDROID.apk",
+        "Essential-1.0.0-FIRST-INSTALL-XIAOMI.apk",
+        "Essential-1.0.0-UPDATE-ANDROID-universal.apk",
+        "Essential-1.0.0-UPDATE-XIAOMI-arm64-v8a.apk",
+    )
 }

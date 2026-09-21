@@ -15,8 +15,8 @@
 - プロジェクト: `D:\#AI開発\Android\Essential`
 - Git remote: `https://github.com/Aikidoooo/Essential-for-Android.git`
 - 現在のブランチ: `main`
-- 現在のソースバージョン: `v0.5.9`（versionCode 20）。ユーザー指示によりGitHub Release `v0.5.9`は削除済みで、現在ダウンロード可能な最新Releaseは`v0.5.8`。
-- v0.5.9はPro Film削除、Downloader拡張、音声分離、アプリ共通レベル／プロフィール、Liquid Glass下部ナビゲーション、日課・QR・ミニゲーム改善を含む。
+- 現在のソースバージョン: `v0.6.0`（versionCode 21）。GitHub Release `v0.6.0`の公開準備中で、公開完了まではダウンロード可能な最新Releaseは`v0.5.8`。
+- v0.6.0はPro Film削除、Downloader拡張、音声分離、アプリ共通レベル／プロフィール、Liquid Glass下部ナビゲーション、日課・QR・ミニゲーム改善、Release初回起動クラッシュ修正、Android／Xiaomi向け4配布モデルを含む。
 - v0.5.9のアプリ公開コミットは`847939d Essential 0.5.9を公開`、Release workflow修正コミットは`421925d Android Release workflowを修正`。タグは`v0.5.0`〜`v0.5.9`。
 - GitHub Release `Essential v0.5.9`は一度正式公開したが、2026-09-21のユーザー指示によりRelease本体と添付アセット6件を削除した。`v0.5.9`タグ、`main`、コミット、GitHub Actions履歴は保持している。再公開する場合は同一タグ向けにReleaseを作り直す必要がある。
 - ユーザーが明示的に公開を依頼するまで、GitHubへのpush、タグ作成、Release公開、外部アップロードを行わない。
@@ -223,7 +223,7 @@ requiredXP(L) = round(raw / 15)
 - キャンセル・失敗・再起動後の`.part`、期限切れAPK、管理情報のないファイルを回収する。既存のyt-dlp実行環境を誤削除しない。
 - `storage/StorageMaintenance.kt`が更新後の初回起動と6時間間隔で、アプリ固有の期限切れ一時キャッシュ、旧形式のyt-dlpルート、FFmpegKit対応ABIで不要な展開済みFFmpegを回収する。ユーザーのDownload/Essential保存物、設定、現行Python／yt-dlp環境は対象外。arm64-v8a／x86_64では`YtDlpDownloadEngine`もFFmpegランタイムの重複展開を行わず、音声は取得後にFFmpegKitで変換する。
 - 正式Releaseは同一署名鍵が前提。必要Secretsは`ANDROID_KEYSTORE_BASE64`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`。鍵やTokenをリポジトリへ入れない。
-- GitHub Actionsはタグ`v*`で起動し、4 ABI Rust再ビルド、単体テスト、lint、署名、apksigner、16KB zipalign、5 APK＋SHA256SUMSをReleaseへ添付する。
+- GitHub Actionsはタグ`v*`で起動し、4 ABI Rust再ビルド、単体テスト、lint、署名、apksigner、16KB zipalignを行う。Releaseへは初回／更新×Android／Xiaomiの4配布APKと`SHA256SUMS.txt`を添付する。
 
 ## Rust/JNI
 
@@ -408,3 +408,23 @@ requiredXP(L) = round(raw / 15)
 - Java 23とASCII Junctionで`:app:testDebugUnitTest :app:lintDebug :app:assembleRelease`が成功。JUnit 29件成功、Lintエラー0、5種類の未署名Release APKはすべて`jp.essential.app`、versionCode 20、versionName 0.5.9。正式署名と16KiB zipalign検査はタグpush後のGitHub Actionsで行う。
 - 公開差分の秘密情報形式検査は0件、最大の新規モデルファイルは19,681,024 bytes、`git diff --check`はエラー0。`origin/main...main`は公開準備開始時点で0/0、`v0.5.9`タグは未作成。
 - 最初の`v0.5.9`タグpushでGitHub Actions run `35557133232`が起動したが、アプリのビルド前に`android-actions/setup-android@v3`が削除済みSDKパッケージ`tools`を要求して失敗した。公式v4で修正済みのため、workflowを`android-actions/setup-android@v4`へ更新し、未公開タグを修正コミットへ付け直して再実行する。
+
+## v0.5.9 Release初回起動クラッシュ修正（2026-09-21）
+
+- v0.5.9 Releaseを初回インストールした実機で`MainActivity`の起動に失敗した。原因は`AppIconManager`が自身の実行時クラス名からランチャー別名のnamespaceを作っていたため、R8で同クラスが`t4.a`へ難読化されたRelease版だけが、存在しない`t4.LightLauncher`などをPackageManagerへ渡していたこと。
+- `AppIconManager.launcherClassName`はR8の実行時クラス名を使わず、Manifestと同じ`jp.essential.app` namespaceから完全修飾名を作る。DebugのApplication ID接尾辞とReleaseの難読化の両方に影響されない。
+- `AppIconManagerTest`を追加し、Manifest namespaceでの完全修飾名と不正な別名の拒否を検査する。全Unit Testは31件成功、Lintは76件中エラー0、R8有効Releaseビルドは成功した。
+- R8有効・Debug署名・一時Application ID `jp.essential.app.smoke`の検証APKを`emulator-5554`へ新規インストールし、`jp.essential.app.LightLauncher`からコールド起動した。`MainActivity`が前面となり、AndroidRuntimeクラッシュ0件を確認後、検証アプリと一時ビルド設定を削除した。
+- 通常Debug APKは既存エミュレーター版と同じ`C:\Users\waki1\.android\debug.keystore`で再生成し、署名SHA-256 `d3239bc87283a80ad899ec547b2344b2b5013c54a5f62e58dae1c6fec39b3b44`の一致を確認して`adb install -r`した。既存データを保持した更新インストールとランチャー起動に成功し、`MainActivity`前面・AndroidRuntimeクラッシュ0件を確認した。
+- Release workflowは4モデル構成へ更新した。Android初回用、Xiaomi初回用、Android更新用、Xiaomi更新用を明示した名前で配布し、詳細は後続の「4配布モデル」節を優先する。
+- この修正時点ではv0.5.9 Releaseは削除済みのまま。コミット、push、タグ移動、Release再公開は行っていない。
+
+## Android／Xiaomi向け4配布モデル（2026-09-21）
+
+- Releaseアセットは`Essential-<version>-FIRST-INSTALL-ANDROID.apk`、`Essential-<version>-FIRST-INSTALL-XIAOMI.apk`、`Essential-<version>-UPDATE-ANDROID-universal.apk`、`Essential-<version>-UPDATE-XIAOMI-arm64-v8a.apk`の4種類と`SHA256SUMS.txt`を公開する。
+- Androidモデルはarm64-v8a／armeabi-v7a／x86／x86_64を含むUniversal APK。Xiaomiモデルは現行Xiaomi／Redmi／POCO端末を主対象とするarm64-v8a専用APKで、不要なCPUライブラリを除きダウンロード容量と展開量を抑える。今回の未署名ReleaseではAndroidモデル334,853,509 bytes、Xiaomiモデル125,537,711 bytes。
+- 4モデルはすべてApplication ID `jp.essential.app`、versionCode 20、versionName 0.5.9で、正式Release時は同じ配布署名を使う。初回用と更新用でユーザーデータ形式やパッケージを分けない。
+- `GitHubUpdateRepository`は`Build.MANUFACTURER`、`Build.BRAND`、`Build.SUPPORTED_ABIS`を`UpdatePolicy`へ渡す。Xiaomi／Redmi／POCOかつarm64対応ならXiaomi更新用、それ以外と32bit Xiaomi系端末はAndroid更新用を選ぶ。
+- 更新用ファイルだけ末尾`-arm64-v8a.apk`／`-universal.apk`を維持するため、旧v0.5.8のABI選択処理からも更新可能。初回用ファイルは旧アプリ内更新の候補にならない。
+- Unit Test 36件成功、Lint 76件中エラー0、R8有効Releaseビルド成功。`aapt dump badging`でAndroidモデルが4 ABI、Xiaomiモデルがarm64-v8aのみ、両方とも同一Application ID／versionCode／versionNameであることを確認した。
+- v0.5.9 Releaseは削除済みのままであり、この変更ではコミット、push、タグ移動、Release再公開を行っていない。

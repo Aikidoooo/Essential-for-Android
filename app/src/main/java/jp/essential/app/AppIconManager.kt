@@ -21,6 +21,7 @@ internal data class AppIconOption(
 internal object AppIconManager {
     private const val PREFERENCES = "appearance"
     private const val SELECTED_ICON_KEY = "app_icon_style"
+    private const val LAUNCHER_COMPONENT_NAMESPACE = "jp.essential.app"
 
     val options: List<AppIconOption> = listOf(
         AppIconOption(
@@ -77,10 +78,9 @@ internal object AppIconManager {
     /** 選択した別名を有効化し、同時に他のランチャー入口を無効化する。 */
     fun apply(context: Context, option: AppIconOption) {
         val manager = context.packageManager
-        // Application IDへ接尾辞が付くDebug版でも、別名クラスはソースのnamespace内に存在する。
-        val namespace = AppIconManager::class.java.name.substringBeforeLast('.')
-        val components = options.map { ComponentName(context, namespace + it.aliasName) }
-        val target = ComponentName(context, namespace + option.aliasName)
+        // R8でこのクラス名が変更されても、Manifestのactivity-alias名は変わらない。
+        val components = options.map { ComponentName(context, launcherClassName(it.aliasName)) }
+        val target = ComponentName(context, launcherClassName(option.aliasName))
         if (android.os.Build.VERSION.SDK_INT >= 33) {
             manager.setComponentEnabledSettings(
                 components.map { component ->
@@ -99,6 +99,12 @@ internal object AppIconManager {
             }
         }
         save(context, option)
+    }
+
+    /** Manifestへ登録したランチャー別名の完全修飾名を返す。 */
+    internal fun launcherClassName(aliasName: String): String {
+        require(aliasName.startsWith('.')) { "ランチャー別名はピリオドから始める必要があります" }
+        return LAUNCHER_COMPONENT_NAMESPACE + aliasName
     }
 
     private fun rewardOption(
