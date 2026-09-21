@@ -15,10 +15,10 @@
 - プロジェクト: `D:\#AI開発\Android\Essential`
 - Git remote: `https://github.com/Aikidoooo/Essential-for-Android.git`
 - 現在のブランチ: `main`
-- 現在の公開バージョン: `v0.5.8`（versionCode 19）。`v0.5.9`（versionCode 20）はGitHub公開準備中。
+- 現在の公開バージョン: `v0.5.9`（versionCode 20）。
 - v0.5.9はPro Film削除、Downloader拡張、音声分離、アプリ共通レベル／プロフィール、Liquid Glass下部ナビゲーション、日課・QR・ミニゲーム改善を含む。
-- 公開コミット: `d1786f7 Essential 0.5.8を公開`。タグは`v0.5.0`〜`v0.5.8`。
-- GitHub Release `Essential v0.5.8`は正式公開済み。Release URLは`https://github.com/Aikidoooo/Essential-for-Android/releases/tag/v0.5.8`。ローカル検証用スクリーンショットとUIツリーは公開対象外。
+- v0.5.9のアプリ公開コミットは`847939d Essential 0.5.9を公開`、Release workflow修正コミットは`421925d Android Release workflowを修正`。タグは`v0.5.0`〜`v0.5.9`。
+- GitHub Release `Essential v0.5.9`は正式公開済み。Release URLは`https://github.com/Aikidoooo/Essential-for-Android/releases/tag/v0.5.9`。GitHub Actions run `35557388507`で、署名・テスト・Lint・apksigner・16KiB zipalign検査、5種類のAPKと`SHA256SUMS.txt`の公開に成功した。ローカル検証用スクリーンショットとUIツリーは公開対象外。
 - ユーザーが明示的に公開を依頼するまで、GitHubへのpush、タグ作成、Release公開、外部アップロードを行わない。
 
 ## 開発ルール

@@ -1589,3 +1589,11 @@
 - 公開コミット`847939d Essential 0.5.9を公開`を`main`へpushし、同コミットへ注釈付きタグ`v0.5.9`を作成してpushした。GitHub Actions run `35557133232`はアプリのビルド前、`android-actions/setup-android@v3`のStepで失敗した。
 - 認証済みGitHub APIからJobログを取得し、setup-android v3がGoogleから削除済みのSDKパッケージ`tools`を要求して`Failed to find package 'tools'`で終了したことを確認した。アプリソース、署名Secrets、Gradle、テストの失敗ではない。
 - `android-actions/setup-android`の公式READMEとReleaseを確認し、v4.0.2以降で削除済み`tools`問題が修正されているため、`.github/workflows/release.yml`を`android-actions/setup-android@v4`へ更新した。最初のrunはRelease作成前に終了しており、修正コミット後に未公開の`v0.5.9`タグを新コミットへ付け直して再実行する。
+
+【2026-09-21 Essential v0.5.9 GitHub公開完了】
+- Release workflow修正コミット`421925d Android Release workflowを修正`を`main`へpushした。最初の失敗runではReleaseが作成されていないことをGitHub APIで確認してから、ローカル／リモートの注釈付き`v0.5.9`タグを`421925d`へ付け直してpushし、GitHub Actionsを再実行した。
+- 再実行したGitHub Actions run `35557388507`は`completed / success`で完了した。`android-actions/setup-android@v4`、バージョンとタグの一致確認、Android／Rust準備、Rust JNI再ビルド、テスト・Lint・署名付きAPK生成、配布ファイルとSHA-256作成、Release公開の全工程が成功した。
+- GitHub Release `Essential v0.5.9`を正式公開した。Release URLは`https://github.com/Aikidoooo/Essential-for-Android/releases/tag/v0.5.9`、`draft=false`、`prerelease=false`、公開日時は2026-09-21 03:32:22 UTCだった。
+- 公開アセットは`Essential-0.5.9-arm64-v8a.apk`、`Essential-0.5.9-armeabi-v7a.apk`、`Essential-0.5.9-x86.apk`、`Essential-0.5.9-x86_64.apk`、`Essential-0.5.9-universal.apk`、`SHA256SUMS.txt`の6件で、すべてGitHub API上の状態が`uploaded`であることを確認した。
+- `SHA256SUMS.txt`はAPK 5件分の64桁SHA-256と正しいファイル名を含み、各値がGitHub Release APIのアセット`digest`と全件一致した。これにより、公開ファイル名、件数、アップロード状態、ハッシュ整合性を外部から再確認した。
+- CameraStyleAI研究フォルダ、`.android`、ローカルビルドログ、旧Pro Film設計資料など、公開対象外と判断した未追跡ファイルはコミット・Releaseへ含めていない。ユーザーデータの削除やリセットも行っていない。
