@@ -437,3 +437,11 @@ requiredXP(L) = round(raw / 15)
 - GitHub Release `Essential v0.6.0`は`draft=false`、`prerelease=false`。Android初回用334,878,745 bytes、Xiaomi初回用125,556,603 bytes、Android更新用334,878,745 bytes、Xiaomi更新用125,556,603 bytesと`SHA256SUMS.txt`を公開した。
 - `SHA256SUMS.txt`は4行で形式・ファイル名が正しく、全APKのSHA-256がGitHub Release APIの`digest`と一致した。同じプラットフォームの初回用／更新用は意図どおり同一バイナリ・同一ハッシュ。
 - 公式v0.5.8 APKとv0.6.0 APKの署名証明書SHA-256は`d9037fa8b1ed3855cd3fad04dd4791e568ffb4123ee8b4f54c5e494a30ab64e8`で一致し、GitHub正式版同士の更新互換性を確認した。エミュレーターに残っていたv0.5.5は別の旧署名だったため更新インストールを拒否されたが、データ保護のためアンインストールしていない。
+
+## 端末別APK自動選択・Xiaomi版yt-dlp更新修正（2026-09-21）
+
+- アプリ内更新はXiaomi／Redmi／POCOかつarm64-v8aならXiaomi更新APK、それ以外ならAndroid Universal更新APKを選ぶ。`Xiaomi Communications Co., Ltd.`のような複合メーカー表記にも対応済み。
+- Xiaomi版でyt-dlp更新時に表示された`p5.e`は、R8で難読化されたCommons Compressの`ExtraFieldUtils`。更新ZIP展開でReflectionから使う`ZipExtraField`実装の公開引数なしコンストラクタがRelease縮小で消えていた。
+- `app/proguard-rules.pro`で該当コンストラクタだけを保持する。修正後R8 mappingで`JarMarker.<init>()`が残ることを確認済み。
+- Unit Test 36件成功、Lintエラー0、R8有効Release APK 5種生成成功。Xiaomi実機でのyt-dlpネットワーク更新は未検証。
+- この修正はv0.6.1の公開対象。最終的な公開状態は`Work history.txt`末尾を参照する。

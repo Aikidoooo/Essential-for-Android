@@ -1643,3 +1643,20 @@
 - `SHA256SUMS.txt`は4行、64桁SHA-256＋期待した4ファイル名の形式で、各ハッシュがGitHub Release APIのアセット`digest`と全件一致した。Android初回用／更新用のSHA-256は`f3bd447a4a40d16c13556b40d63cf96c297b214baf8377d0cbf0528b64d76abb`、Xiaomi初回用／更新用は`08ecc6d5d79b70abfedb653e085bac1900ffa181fafd77f983403b586cdbadf1`。
 - 公開Android更新APKを外部URLから再ダウンロードし、ファイルサイズとSHA-256一致、apksigner v2署名検証、Application ID `jp.essential.app`、versionCode 21、versionName 0.6.0、4 ABI収録を確認した。
 - エミュレーターに残る`jp.essential.app` v0.5.5へ`adb install -r`を試したところ、`INSTALL_FAILED_UPDATE_INCOMPATIBLE`となった。調査のため公式GitHub v0.5.8 APKを取得し、v0.5.8とv0.6.0の署名証明書SHA-256がともに`d9037fa8b1ed3855cd3fad04dd4791e568ffb4123ee8b4f54c5e494a30ab64e8`で一致することを確認した。エミュレーターのv0.5.5だけが別の旧署名であり、正式配布版間の更新互換性には問題ない。データを失わないよう旧アプリはアンインストールしていない。
+
+【2026-09-21 端末別APK自動選択の強化・Xiaomi版yt-dlp更新修正】
+- 作業前に`Work history.txt`と`ESSENTIAL_HANDOFF.md`を確認した。既存の未追跡CameraStyleAIフォルダ、`.android`、ログ、`docs/`には触れていない。
+- アプリ内更新では、既存どおり`Build.MANUFACTURER`、`Build.BRAND`、`Build.SUPPORTED_ABIS`を使い、Xiaomi／Redmi／POCOかつarm64-v8a端末では`UPDATE-XIAOMI-arm64-v8a.apk`、それ以外では`UPDATE-ANDROID-universal.apk`だけを選ぶ。メーカー値が`Xiaomi Communications Co., Ltd.`のような複合表記でもXiaomi系として検出するよう、単語単位の判定へ強化した。
+- ユーザー報告の`p5.e`をR8 mappingへ照合し、`org.apache.commons.compress.archivers.zip.ExtraFieldUtils`の難読化後クラス名であることを特定した。Commons Compressはyt-dlp更新ZIPの展開時、`ZipExtraField`実装をReflectionで引数なし生成するが、v0.6.0相当のRelease最適化では`JarMarker`などの公開引数なしコンストラクタが削除されていた。
+- `app/proguard-rules.pro`へ、`ZipExtraField`実装の公開引数なしコンストラクタだけを保持するR8ルールを追加した。クラス名の難読化と最適化は許可し、必要以上にコードを保持しない。修正後mappingでは`JarMarker`に`void <init>()`が残ることを確認した。
+- `UpdatePolicyTest`へ複合メーカー名のXiaomi選択ケースを追加した。Java 23とASCII Junctionで`:app:testDebugUnitTest :app:lintDebug :app:assembleRelease --offline --no-daemon --max-workers=1 '-Pkotlin.compiler.execution.strategy=in-process' '-PUPDATE_REPOSITORY=Aikidoooo/Essential-for-Android' --rerun-tasks`を実行し、`BUILD SUCCESSFUL`、Unit Test 36件成功、失敗0、エラー0、Lintエラー0、R8有効Release APK 5種の生成成功を確認した。
+- 未署名Release APKはAndroid Universal 334,859,621 bytes、Xiaomi用arm64-v8a 125,543,819 bytes。既存のKotlin metadata警告とzip形式ネイティブライブラリstrip警告は非致命警告として継続する。実機Xiaomi上でのネットワーク更新操作はこの環境では未検証。コミット、push、タグ作成、GitHub Release更新は行っていない。
+
+【2026-09-21 Essential v0.6.1 GitHub公開準備】
+- ユーザーの明示的な依頼により、Xiaomi版のyt-dlp更新修正と端末別APK自動選択強化をv0.6.1としてGitHubへ正式公開する作業を開始した。
+- `app/build.gradle.kts`を`versionCode=22`、`versionName=0.6.1`へ更新した。Application ID `jp.essential.app`、4配布モデル、正式署名構成、ユーザーデータを維持する更新方式は変更していない。
+- `.github/release-notes/v0.6.1.md`を追加し、初回／更新×Android／Xiaomiの4ファイル、端末別自動選択、`p5.e`修正内容を記載した。
+- `git fetch --prune --tags`後、ローカル`main`と`origin/main`が0/0で同期し、ローカル／リモートに`v0.6.1`タグが存在しないことを確認した。
+- Java 23とASCII Junctionで`:app:testDebugUnitTest :app:lintDebug :app:assembleRelease --offline --no-daemon --max-workers=1 '-Pkotlin.compiler.execution.strategy=in-process' '-PUPDATE_REPOSITORY=Aikidoooo/Essential-for-Android' --rerun-tasks`を実行し、`BUILD SUCCESSFUL`、Unit Test 36件成功、失敗0、エラー0、Lintエラー0、R8有効Release APK 5種の生成成功を確認した。
+- `aapt dump badging`で5 APKすべてが`jp.essential.app`、versionCode 22、versionName 0.6.1であることを確認した。Android Universalは334,859,617 bytes、Xiaomi元のarm64-v8a APKは125,543,815 bytes。R8 mappingでは`JarMarker.<init>()`が保持されている。
+- 公開対象は今回のソース修正、テスト、R8設定、バージョン、v0.6.1 Release notes、作業履歴、引き継ぎ資料に限定する。CameraStyleAI研究フォルダ、`.android`、ローカルログ、`docs/`は公開しない。

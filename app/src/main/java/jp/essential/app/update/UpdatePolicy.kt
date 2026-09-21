@@ -39,8 +39,12 @@ internal object UpdatePolicy {
 
     internal fun isXiaomiFamily(manufacturer: String, brand: String): Boolean =
         listOf(manufacturer, brand).any { value ->
-            val normalized = value.trim().lowercase()
-            normalized == "xiaomi" || normalized == "redmi" || normalized == "poco"
+            val deviceNames = value
+                .trim()
+                .lowercase()
+                .split(Regex("[^a-z0-9]+"))
+                .filter(String::isNotBlank)
+            deviceNames.any { it == "xiaomi" || it == "redmi" || it == "poco" }
         }
     fun validateAssetUrl(url: String, repository: String) {
         val uri = URI(url)

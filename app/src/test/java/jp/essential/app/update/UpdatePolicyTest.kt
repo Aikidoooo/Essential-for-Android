@@ -29,7 +29,7 @@ class UpdatePolicyTest {
     }
     @Test fun Xiaomi系arm64端末はXiaomi更新用を選ぶ() {
         val names = fourDistributionModels()
-        listOf("Xiaomi", "Redmi", "POCO").forEach { deviceBrand ->
+        listOf("Xiaomi", "Redmi", "POCO", "Xiaomi Communications Co., Ltd.").forEach { deviceBrand ->
             assertEquals(
                 "Essential-1.0.0-UPDATE-XIAOMI-arm64-v8a.apk",
                 UpdatePolicy.chooseAsset(names, listOf("arm64-v8a", "armeabi-v7a"), manufacturer = deviceBrand),
