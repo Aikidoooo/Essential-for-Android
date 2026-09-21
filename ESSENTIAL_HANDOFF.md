@@ -407,3 +407,4 @@ requiredXP(L) = round(raw / 15)
 - 公開対象は現行アプリの追跡済み変更、音声分離モデル、`AudioStemSeparationEngine`、プロフィール／ストレージ処理とテスト、Release notes。CameraStyleAI研究フォルダ、ローカルログ、`.android`、旧Pro Film設計資料は含めない。
 - Java 23とASCII Junctionで`:app:testDebugUnitTest :app:lintDebug :app:assembleRelease`が成功。JUnit 29件成功、Lintエラー0、5種類の未署名Release APKはすべて`jp.essential.app`、versionCode 20、versionName 0.5.9。正式署名と16KiB zipalign検査はタグpush後のGitHub Actionsで行う。
 - 公開差分の秘密情報形式検査は0件、最大の新規モデルファイルは19,681,024 bytes、`git diff --check`はエラー0。`origin/main...main`は公開準備開始時点で0/0、`v0.5.9`タグは未作成。
+- 最初の`v0.5.9`タグpushでGitHub Actions run `35557133232`が起動したが、アプリのビルド前に`android-actions/setup-android@v3`が削除済みSDKパッケージ`tools`を要求して失敗した。公式v4で修正済みのため、workflowを`android-actions/setup-android@v4`へ更新し、未公開タグを修正コミットへ付け直して再実行する。
