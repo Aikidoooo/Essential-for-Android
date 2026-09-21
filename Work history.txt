@@ -1634,3 +1634,12 @@
 - Java 23とASCII Junctionで`:app:testDebugUnitTest :app:lintDebug :app:assembleRelease --offline --no-daemon --max-workers=1 '-Pkotlin.compiler.execution.strategy=in-process' '-PUPDATE_REPOSITORY=Aikidoooo/Essential-for-Android' --rerun-tasks`を実行し、`BUILD SUCCESSFUL`を確認した。Unit Testは36件成功、失敗0、エラー0。Lintは76件中エラー0。R8有効Release APK 5出力の生成も成功した。
 - `aapt dump badging`で0.6.0 Androidモデル元のUniversal APKは`jp.essential.app`、versionCode 21、versionName 0.6.0、arm64-v8a／armeabi-v7a／x86／x86_64対応、334,853,489 bytesであることを確認した。Xiaomiモデル元は同じパッケージ／版でarm64-v8a専用、125,537,687 bytesだった。
 - GitHub Actionsでは上記2つの署名済みAPKから初回／更新×Android／Xiaomiの4ファイルを作成し、`SHA256SUMS.txt`とともに公開する。公開前に差分、秘密情報、タグ不存在、main同期を確認し、commit・push・`v0.6.0`タグpush後にActionsと公開アセットを検証する。
+
+【2026-09-21 Essential v0.6.0 GitHub公開完了】
+- 公開対象10ファイルだけをステージし、`git diff --cached --check`成功後、公開コミット`1ce2de2 Essential 0.6.0を公開`を`main`へpushした。CameraStyleAI研究フォルダ、`.android`、ローカルログ、`docs/`など既存の未追跡ファイルは含めていない。
+- 注釈付きタグ`v0.6.0`を`1ce2de28100f29f5f4450d50d8ef804de95af06b`へ作成してpushし、GitHub Actions run `35572469386`を起動した。runは`completed / success`で、Android／Rust準備、Rust JNI再ビルド、テスト・Lint・R8、配布署名、apksigner、16KiB zipalign、4配布モデル作成、SHA-256生成、Release公開の全工程が成功した。
+- GitHub Release `Essential v0.6.0`を正式公開した。Release IDは`392762303`、URLは`https://github.com/Aikidoooo/Essential-for-Android/releases/tag/v0.6.0`、`draft=false`、`prerelease=false`、公開日時は2026-09-21 07:27:34 UTC。v0.5.9 Releaseは削除済みのままで、v0.5.8からv0.6.0へ進む。
+- 公開アセットは`Essential-0.6.0-FIRST-INSTALL-ANDROID.apk` 334,878,745 bytes、`Essential-0.6.0-FIRST-INSTALL-XIAOMI.apk` 125,556,603 bytes、`Essential-0.6.0-UPDATE-ANDROID-universal.apk` 334,878,745 bytes、`Essential-0.6.0-UPDATE-XIAOMI-arm64-v8a.apk` 125,556,603 bytes、`SHA256SUMS.txt` 436 bytesの5件。すべてGitHub API上で`uploaded`だった。
+- `SHA256SUMS.txt`は4行、64桁SHA-256＋期待した4ファイル名の形式で、各ハッシュがGitHub Release APIのアセット`digest`と全件一致した。Android初回用／更新用のSHA-256は`f3bd447a4a40d16c13556b40d63cf96c297b214baf8377d0cbf0528b64d76abb`、Xiaomi初回用／更新用は`08ecc6d5d79b70abfedb653e085bac1900ffa181fafd77f983403b586cdbadf1`。
+- 公開Android更新APKを外部URLから再ダウンロードし、ファイルサイズとSHA-256一致、apksigner v2署名検証、Application ID `jp.essential.app`、versionCode 21、versionName 0.6.0、4 ABI収録を確認した。
+- エミュレーターに残る`jp.essential.app` v0.5.5へ`adb install -r`を試したところ、`INSTALL_FAILED_UPDATE_INCOMPATIBLE`となった。調査のため公式GitHub v0.5.8 APKを取得し、v0.5.8とv0.6.0の署名証明書SHA-256がともに`d9037fa8b1ed3855cd3fad04dd4791e568ffb4123ee8b4f54c5e494a30ab64e8`で一致することを確認した。エミュレーターのv0.5.5だけが別の旧署名であり、正式配布版間の更新互換性には問題ない。データを失わないよう旧アプリはアンインストールしていない。

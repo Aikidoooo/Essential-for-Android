@@ -15,10 +15,11 @@
 - プロジェクト: `D:\#AI開発\Android\Essential`
 - Git remote: `https://github.com/Aikidoooo/Essential-for-Android.git`
 - 現在のブランチ: `main`
-- 現在のソースバージョン: `v0.6.0`（versionCode 21）。GitHub Release `v0.6.0`の公開準備中で、公開完了まではダウンロード可能な最新Releaseは`v0.5.8`。
+- 現在の公開バージョン: `v0.6.0`（versionCode 21）。GitHub Release `Essential v0.6.0`を正式公開済み。
 - v0.6.0はPro Film削除、Downloader拡張、音声分離、アプリ共通レベル／プロフィール、Liquid Glass下部ナビゲーション、日課・QR・ミニゲーム改善、Release初回起動クラッシュ修正、Android／Xiaomi向け4配布モデルを含む。
 - v0.5.9のアプリ公開コミットは`847939d Essential 0.5.9を公開`、Release workflow修正コミットは`421925d Android Release workflowを修正`。タグは`v0.5.0`〜`v0.5.9`。
 - GitHub Release `Essential v0.5.9`は一度正式公開したが、2026-09-21のユーザー指示によりRelease本体と添付アセット6件を削除した。`v0.5.9`タグ、`main`、コミット、GitHub Actions履歴は保持している。再公開する場合は同一タグ向けにReleaseを作り直す必要がある。
+- v0.6.0公開コミットは`1ce2de2 Essential 0.6.0を公開`、タグは`v0.6.0`。Release URLは`https://github.com/Aikidoooo/Essential-for-Android/releases/tag/v0.6.0`、GitHub Actions runは`35572469386`。4配布APKと`SHA256SUMS.txt`の5アセットを検証済み。
 - ユーザーが明示的に公開を依頼するまで、GitHubへのpush、タグ作成、Release公開、外部アップロードを行わない。
 
 ## 開発ルール
@@ -428,3 +429,11 @@ requiredXP(L) = round(raw / 15)
 - 更新用ファイルだけ末尾`-arm64-v8a.apk`／`-universal.apk`を維持するため、旧v0.5.8のABI選択処理からも更新可能。初回用ファイルは旧アプリ内更新の候補にならない。
 - Unit Test 36件成功、Lint 76件中エラー0、R8有効Releaseビルド成功。`aapt dump badging`でAndroidモデルが4 ABI、Xiaomiモデルがarm64-v8aのみ、両方とも同一Application ID／versionCode／versionNameであることを確認した。
 - v0.5.9 Releaseは削除済みのままであり、この変更ではコミット、push、タグ移動、Release再公開を行っていない。
+
+## Essential v0.6.0公開結果（2026-09-21）
+
+- `1ce2de2 Essential 0.6.0を公開`を`main`へpushし、注釈付きタグ`v0.6.0`を同コミットへ作成した。v0.5.9 Releaseは欠番のまま、Release一覧はv0.5.8からv0.6.0へ進む。
+- GitHub Actions run `35572469386`は成功。タグ／バージョン一致、Android・Rust準備、Rust JNI再ビルド、Unit Test、Lint、R8、配布署名、apksigner、16KiB zipalign、4モデル作成、SHA-256生成、Release公開の全工程が完了した。
+- GitHub Release `Essential v0.6.0`は`draft=false`、`prerelease=false`。Android初回用334,878,745 bytes、Xiaomi初回用125,556,603 bytes、Android更新用334,878,745 bytes、Xiaomi更新用125,556,603 bytesと`SHA256SUMS.txt`を公開した。
+- `SHA256SUMS.txt`は4行で形式・ファイル名が正しく、全APKのSHA-256がGitHub Release APIの`digest`と一致した。同じプラットフォームの初回用／更新用は意図どおり同一バイナリ・同一ハッシュ。
+- 公式v0.5.8 APKとv0.6.0 APKの署名証明書SHA-256は`d9037fa8b1ed3855cd3fad04dd4791e568ffb4123ee8b4f54c5e494a30ab64e8`で一致し、GitHub正式版同士の更新互換性を確認した。エミュレーターに残っていたv0.5.5は別の旧署名だったため更新インストールを拒否されたが、データ保護のためアンインストールしていない。
