@@ -29,6 +29,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
@@ -60,6 +61,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import java.util.Locale
 import kotlin.math.abs
+import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import jp.essential.app.ui.progressiveItem
@@ -83,6 +85,10 @@ fun FileReferenceScreen(onBack: () -> Unit) {
     var gifPreset by remember { mutableStateOf(GifPreset.Standard) }
     var processingLabel by remember { mutableStateOf<String?>(null) }
     var resultMessage by remember { mutableStateOf<String?>(null) }
+    var separatedAudio by remember { mutableStateOf<AudioStemFiles?>(null) }
+    var separationProgress by remember { mutableFloatStateOf(0f) }
+    var vocalGain by rememberSaveable { mutableFloatStateOf(1f) }
+    var accompanimentGain by rememberSaveable { mutableFloatStateOf(1f) }
 
     frameEditorFile?.let { file ->
         FrameExtractionScreen(
@@ -105,6 +111,27 @@ fun FileReferenceScreen(onBack: () -> Unit) {
         }
     }
 
+    fun separateAudio(file: ReferencedFile) {
+        if (processingLabel != null) return
+        scope.launch {
+            processingLabel = "AI分離"
+            separationProgress = 0f
+            separatedAudio = null
+            resultMessage = null
+            runCatching {
+                engine.separateAudio(file) { separationProgress = it }
+            }.onSuccess {
+                separatedAudio = it
+                vocalGain = 1f
+                accompanimentGain = 1f
+                resultMessage = "分離が完了しました。音量を調整して保存できます"
+            }.onFailure {
+                resultMessage = it.message ?: "AI分離に失敗しました"
+            }
+            processingLabel = null
+        }
+    }
+
     val picker = rememberLauncherForActivityResult(EssentialMediaPickerContract()) { uri ->
         if (uri != null) {
             runCatching {
@@ -117,6 +144,10 @@ fun FileReferenceScreen(onBack: () -> Unit) {
                 referencedFile = it
                 trimStart = 0f
                 trimEnd = 1f
+                separatedAudio = null
+                separationProgress = 0f
+                vocalGain = 1f
+                accompanimentGain = 1f
                 resultMessage = null
             }.onFailure { resultMessage = it.message ?: "ファイルを参照できませんでした" }
         }
@@ -233,6 +264,42 @@ fun FileReferenceScreen(onBack: () -> Unit) {
                 }
                 ReferencedMediaType.Audio -> item {
                     ToolCard {
+                        SectionTitle("AIボーカル分離", "Spleeter 2-stem FP16でボーカルと楽器を端末内処理")
+                        Text(
+                            "初回はモデルを端末へ展開します。参照元は変更せず、ボーカル・楽器・合成音声を別ファイルで保存します。",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        ActionButton(
+                            if (separatedAudio == null) "ボーカルと楽器に分離" else "もう一度分離する",
+                            processingLabel,
+                        ) {
+                            separateAudio(file)
+                        }
+                        AnimatedVisibility(processingLabel == "AI分離") {
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text("AI分離中 ${(separationProgress * 100f).roundToInt()}%")
+                                LinearProgressIndicator(
+                                    progress = { separationProgress.coerceIn(0f, 1f) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
+                        }
+                        separatedAudio?.let {
+                            AudioStemMixer(
+                                vocalGain = vocalGain,
+                                accompanimentGain = accompanimentGain,
+                                onVocalGainChange = { vocalGain = it },
+                                onAccompanimentGainChange = { accompanimentGain = it },
+                            )
+                            ActionButton("調整した3ファイルを保存", processingLabel) {
+                                process("音量調整と合成") {
+                                    engine.exportSeparatedAudio(it, vocalGain, accompanimentGain)
+                                        .joinToString("、")
+                                }
+                            }
+                        }
+                    }
+                    ToolCard {
                         SectionTitle("音声ファイル切り取り", "開始地点と終了地点を指定")
                         val startMillis = (file.durationMillis * trimStart).toLong()
                         val endMillis = (file.durationMillis * trimEnd).toLong()
@@ -270,6 +337,40 @@ fun FileReferenceScreen(onBack: () -> Unit) {
                     }
                 }
             }
+        }
+    }
+}
+
+/** 分離済み2ステムの音量を調整し、合成結果を確認するためのミキサー。 */
+@Composable
+private fun AudioStemMixer(
+    vocalGain: Float,
+    accompanimentGain: Float,
+    onVocalGainChange: (Float) -> Unit,
+    onAccompanimentGainChange: (Float) -> Unit,
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.66f),
+        shape = RoundedCornerShape(18.dp),
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text("2ステムミキサー", fontWeight = FontWeight.Bold)
+            Text("ボーカルと楽器を個別に調整し、合成音声へ反映します。")
+            Text("ボーカル　${(vocalGain * 100f).roundToInt()}%")
+            EssentialBubblySlider(
+                value = vocalGain,
+                onValueChange = onVocalGainChange,
+                valueRange = 0f..2f,
+            )
+            Text("楽器　${(accompanimentGain * 100f).roundToInt()}%")
+            EssentialBubblySlider(
+                value = accompanimentGain,
+                onValueChange = onAccompanimentGainChange,
+                valueRange = 0f..2f,
+            )
         }
     }
 }

@@ -16,6 +16,7 @@ enum class VideoResolution(val label: String, val maxHeight: Int) {
 enum class FrameRate(val label: String, val maxFps: Int) {
     Fps30("30fps", 30),
     Fps60("60fps", 60),
+    Fps120("120fps", 120),
 }
 
 enum class VideoFormat(val label: String, val extension: String) {
@@ -33,7 +34,8 @@ enum class AudioQuality(val label: String, val bitRate: Int) {
 
 enum class AudioFormat(val label: String, val extension: String) {
     Mp3("MP3", "mp3"),
-    Aac("AAC", "aac"),
+    Wav("WAV", "wav"),
+    Flac("FLAC", "flac"),
 }
 
 enum class ImageQuality(val label: String, val maxLongEdge: Int) {

@@ -65,7 +65,14 @@ internal class AppUpdateModel(application: Application) : AndroidViewModel(appli
         message = "APKをダウンロードしています"
         viewModelScope.launch {
             try {
-                repository.download(target) { value -> viewModelScope.launch { progress = value } }
+                var publishedProgress = -1f
+                repository.download(target) { value ->
+                    // 通知を1%単位にまとめ、ダウンロード中のCompose再描画を抑える。
+                    if (publishedProgress < 0f || value >= 1f || value - publishedProgress >= 0.01f) {
+                        publishedProgress = value
+                        viewModelScope.launch { progress = value }
+                    }
+                }
                 downloaded = true
                 message = "検証済みです。インストールへ進めます"
             } catch (error: Exception) {

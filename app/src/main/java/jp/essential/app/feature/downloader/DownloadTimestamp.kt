@@ -24,7 +24,7 @@ internal object DownloadTimestamp {
                 for (tag in listOf(ExifInterface.TAG_SUBSEC_TIME, ExifInterface.TAG_SUBSEC_TIME_ORIGINAL, ExifInterface.TAG_SUBSEC_TIME_DIGITIZED)) setAttribute(tag, subseconds)
                 saveAttributes()
             }
-        } else if (extension in setOf("mp4", "mov", "mp3", "m4a")) {
+        } else if (extension in setOf("mp4", "mov", "mp3", "m4a", "wav", "flac")) {
             val output = File(context.cacheDir, "essential-dated-${UUID.randomUUID()}.$extension")
             try {
                 val date = instant.toString()

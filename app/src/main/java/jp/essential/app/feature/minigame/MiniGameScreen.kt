@@ -10,6 +10,7 @@ import android.view.View
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -40,6 +41,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -62,7 +64,12 @@ import androidx.webkit.WebViewAssetLoader
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import androidx.core.view.WindowCompat
+import jp.essential.app.profile.AppProgressStore
+import jp.essential.app.profile.ProfileStore
+import jp.essential.app.profile.minesweeperXp
 import jp.essential.app.ui.progressiveItem
+import kotlinx.coroutines.delay
+import org.json.JSONObject
 
 /** ミニゲームの入口。ゲーム選択と各ゲーム画面を一つの戻る階層で管理する。 */
 @Composable
@@ -225,11 +232,12 @@ private enum class MineDifficulty(
     val columns: Int,
     val rows: Int,
     val mineCount: Int,
+    val xpReward: Int,
 ) {
-    Compact("8 × 8", "テンポよく遊べる・地雷10個", 8, 8, 10),
-    Standard("9 × 9", "標準サイズ・地雷10個", 9, 9, 10),
-    Wide("12 × 12", "じっくり挑戦・地雷22個", 12, 12, 22),
-    Tall("12 × 24", "縦長盤面・地雷44個", 12, 24, 44),
+    Compact("8 × 8", "テンポよく遊べる・地雷10個", 8, 8, 10, minesweeperXp(8, 8)),
+    Standard("9 × 9", "標準サイズ・地雷10個", 9, 9, 10, minesweeperXp(9, 9)),
+    Wide("12 × 12", "じっくり挑戦・地雷22個", 12, 12, 22, minesweeperXp(12, 12)),
+    Tall("12 × 24", "縦長盤面・地雷44個", 12, 24, 44, minesweeperXp(12, 24)),
 }
 
 @Composable
@@ -289,12 +297,14 @@ private fun MinesweeperSizeScreen(
 
 @Composable
 private fun MinesweeperScreen(difficulty: MineDifficulty, onBack: () -> Unit) {
+    val context = LocalContext.current
     val boardColumns = difficulty.columns
     val boardRows = difficulty.rows
     val mineCount = difficulty.mineCount
     var cells by remember(difficulty) { mutableStateOf(createMineBoard(boardColumns, boardRows, mineCount)) }
     var status by remember { mutableStateOf(MinesweeperStatus.Playing) }
     var flagMode by remember { mutableStateOf(false) }
+    var xpAwarded by remember(difficulty) { mutableStateOf(false) }
     val flags = cells.count { it.flagged }
     val revealedSafe = cells.count { it.revealed && !it.isMine }
     val safeCells = cells.count { !it.isMine }
@@ -303,6 +313,7 @@ private fun MinesweeperScreen(difficulty: MineDifficulty, onBack: () -> Unit) {
         cells = createMineBoard(boardColumns, boardRows, mineCount)
         status = MinesweeperStatus.Playing
         flagMode = false
+        xpAwarded = false
     }
 
     fun toggleFlag(index: Int) {
@@ -323,7 +334,13 @@ private fun MinesweeperScreen(difficulty: MineDifficulty, onBack: () -> Unit) {
             return
         }
         cells = revealSafeCells(cells, index, boardColumns, boardRows)
-        if (cells.count { it.revealed && !it.isMine } == safeCells) status = MinesweeperStatus.Won
+        if (cells.count { it.revealed && !it.isMine } == safeCells) {
+            status = MinesweeperStatus.Won
+            if (!xpAwarded) {
+                AppProgressStore(context).addXp(difficulty.xpReward)
+                xpAwarded = true
+            }
+        }
     }
 
     LazyColumn(
@@ -512,6 +529,13 @@ private fun DosukoiWebViewScreen(onBack: () -> Unit, motionFps: Int) {
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
     var connectionState by remember { mutableStateOf("Firebase連携を初期化中…") }
     var pageVisible by remember { mutableStateOf(false) }
+    LaunchedEffect(pageVisible) {
+        if (!pageVisible) return@LaunchedEffect
+        while (true) {
+            delay(5 * 60 * 1000L)
+            AppProgressStore(context).addXp(2)
+        }
+    }
     BackHandler {
         val webView = webViewRef
         if (webView?.canGoBack() == true) webView.goBack() else onBack()
@@ -589,6 +613,12 @@ private fun DosukoiWebViewScreen(onBack: () -> Unit, motionFps: Int) {
                     settings.allowFileAccess = false
                     settings.allowContentAccess = false
                     if (Build.VERSION.SDK_INT >= 35) requestedFrameRate = motionFps.toFloat()
+                    addJavascriptInterface(object {
+                        @JavascriptInterface
+                        fun setProfileName(name: String) {
+                            ProfileStore(context).saveName(name)
+                        }
+                    }, "EssentialProfileBridge")
                     if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
                         // アプリ内HTTPSオリジンのメインフレームだけに、貼り付け要求を許可する。
                         WebViewCompat.addWebMessageListener(
@@ -648,6 +678,14 @@ private fun DosukoiWebViewScreen(onBack: () -> Unit, motionFps: Int) {
                             // DOMが描画可能になったことを確認してからローディングを外す。
                             pageFinished = true
                             connectionState = "Firebase連携対応"
+                            val profileName = ProfileStore(context).loadName()
+                            if (profileName.isNotBlank()) {
+                                val escapedName = JSONObject.quote(profileName)
+                                view.evaluateJavascript(
+                                    "(function(){var n=$escapedName;localStorage.setItem('essential_profile_name',n);localStorage.setItem('dosukoi_nickname',n);if(window.profileManager){var p=window.profileManager.getProfile()||{};p.nickname=n;window.profileManager.saveProfile(p);}if(typeof window.loadPlayerProfile==='function')window.loadPlayerProfile();var input=document.getElementById('nicknameInput');if(input){input.value=n;input.dispatchEvent(new Event('input'));}})();",
+                                    null,
+                                )
+                            }
                             view.evaluateJavascript(
                                 """(function(){
                                     var s=document.getElementById('essential-android-fix');

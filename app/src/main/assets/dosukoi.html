@@ -3711,7 +3711,6 @@ if (typeof window !== 'undefined') {
                 </header>
 
                 <section class="game-status-panel">
-                    <span class="game-status-label">MATCH SIGNAL</span>
                     <div class="game-status-message" id="gameStatus">待機中...</div>
                 </section>
 
@@ -5714,7 +5713,6 @@ window.showAlert = showCustomAlert;
   }
   .waiting-overline,
   .standby-kicker,
-  .game-status-label,
   .history-heading > div > span {
     display: block;
     color: #7dd8ff;
@@ -6438,7 +6436,7 @@ window.showAlert = showCustomAlert;
     const saveBtn = document.getElementById('saveQuickProfileBtn');
     const nameInput = document.getElementById('nicknameInput');
     const previewName = document.getElementById('profilePreviewName');
-    const savedName = localStorage.getItem('dosukoi_nickname') || '';
+    const savedName = localStorage.getItem('essential_profile_name') || localStorage.getItem('dosukoi_nickname') || '';
     if (nameInput) nameInput.value = savedName;
     const syncPreviewName = () => {
       if (previewName) previewName.textContent = nameInput.value.trim() || 'ゲスト';
@@ -6456,12 +6454,12 @@ window.showAlert = showCustomAlert;
     if (overlay) overlay.onclick = () => togglePanel(false);
     if (saveBtn) { saveBtn.onclick = () => {
       const name = nameInput.value.trim();
-      if (name) { localStorage.setItem('dosukoi_nickname', name); if (window.profileManager) { window.profileManager.saveProfile({ nickname: name, emoji: '😊' }); }
+      if (name) { localStorage.setItem('essential_profile_name', name); localStorage.setItem('dosukoi_nickname', name); if (window.EssentialProfileBridge && typeof window.EssentialProfileBridge.setProfileName === 'function') window.EssentialProfileBridge.setProfileName(name); if (window.profileManager) { window.profileManager.saveProfile({ nickname: name, emoji: '😊' }); }
       if (typeof window.loadPlayerProfile === 'function') window.loadPlayerProfile();
       togglePanel(false); if (window.showCustomAlert) window.showCustomAlert('保存完了', `名前を「${name}」に設定しました。`); }
       else { alert('名前を入力してください'); }
     }; }
-    const checkName = () => { const name = localStorage.getItem('dosukoi_nickname') || '';
+    const checkName = () => { const name = localStorage.getItem('essential_profile_name') || localStorage.getItem('dosukoi_nickname') || '';
        if (!name) { if (window.showCustomAlert) window.showCustomAlert('名前未設定', '名前を設定してからルームに参加してください。右下のアイコンから設定できます。'); togglePanel(true); return false; }
        return true; };
     const createBtn = document.getElementById('createRoomBtn');

@@ -182,6 +182,59 @@ class MediaFileEngine(private val context: Context) {
         }
     }
 
+    /** AIモデルで音声をボーカルと伴奏へ分離し、調整前の一時WAVを返す。 */
+    suspend fun separateAudio(
+        file: ReferencedFile,
+        onProgress: (Float) -> Unit = {},
+    ): AudioStemFiles = AudioStemSeparationEngine(context).separate(file, onProgress)
+
+    /** 分離済み2ステムの音量を調整し、個別音声と合成音声を保存する。 */
+    suspend fun exportSeparatedAudio(
+        stems: AudioStemFiles,
+        vocalGain: Float,
+        accompanimentGain: Float,
+    ): List<String> = withContext(Dispatchers.IO) {
+        require(vocalGain in 0f..2f && accompanimentGain in 0f..2f) {
+            "音量は0〜200%で指定してください"
+        }
+        val adjustedVocals = tempFile("adjusted-vocals", "wav")
+        val adjustedAccompaniment = tempFile("adjusted-accompaniment", "wav")
+        val mix = tempFile("mixed-stems", "wav")
+        try {
+            runFfmpeg(
+                listOf(
+                    "-i", stems.vocals.absolutePath,
+                    "-filter:a", "volume=${formatGain(vocalGain)}",
+                    "-c:a", "pcm_s16le", "-y", adjustedVocals.absolutePath,
+                ),
+            )
+            runFfmpeg(
+                listOf(
+                    "-i", stems.accompaniment.absolutePath,
+                    "-filter:a", "volume=${formatGain(accompanimentGain)}",
+                    "-c:a", "pcm_s16le", "-y", adjustedAccompaniment.absolutePath,
+                ),
+            )
+            runFfmpeg(
+                listOf(
+                    "-i", adjustedVocals.absolutePath,
+                    "-i", adjustedAccompaniment.absolutePath,
+                    "-filter_complex", "[0:a][1:a]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0",
+                    "-c:a", "pcm_s16le", "-y", mix.absolutePath,
+                ),
+            )
+            listOf(
+                publishFile(adjustedVocals, "audio/wav", "${stems.baseName}-vocals.wav"),
+                publishFile(adjustedAccompaniment, "audio/wav", "${stems.baseName}-instrumental.wav"),
+                publishFile(mix, "audio/wav", "${stems.baseName}-mix.wav"),
+            )
+        } finally {
+            adjustedVocals.delete()
+            adjustedAccompaniment.delete()
+            mix.delete()
+        }
+    }
+
     private fun compressImage(file: ReferencedFile, targetMegabytes: Int): String {
         val source = copyToCache(file)
         val output = tempFile("compressed-image", "jpg")
@@ -263,9 +316,9 @@ class MediaFileEngine(private val context: Context) {
         return output
     }
 
-    private fun publishFile(source: File, mimeType: String): String {
+    private fun publishFile(source: File, mimeType: String, displayNameOverride: String? = null): String {
         check(source.exists() && source.length() > 0L) { "出力ファイルが生成されませんでした" }
-        val displayName = source.name.replace(Regex("[^A-Za-z0-9._-]"), "_")
+        val displayName = (displayNameOverride ?: source.name).replace(Regex("[^A-Za-z0-9ぁ-んァ-ヶ一-龠._-]"), "_")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val values = ContentValues().apply {
                 put(MediaStore.MediaColumns.DISPLAY_NAME, displayName)
@@ -294,6 +347,7 @@ class MediaFileEngine(private val context: Context) {
 
     private fun tempFile(label: String, extension: String) = File(context.cacheDir, "Essential-$label-${UUID.randomUUID()}.$extension")
     private fun seconds(millis: Long) = "%.3f".format(java.util.Locale.US, millis / 1000.0)
+    private fun formatGain(gain: Float) = "%.4f".format(java.util.Locale.US, gain)
     private fun mimeFor(extension: String) = when (extension.lowercase()) {
         "jpg", "jpeg" -> "image/jpeg"
         "png" -> "image/png"

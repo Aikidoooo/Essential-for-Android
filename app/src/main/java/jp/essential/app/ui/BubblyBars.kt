@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -31,10 +32,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlin.math.sin
 
-/** Pro Filmの泡が流れるレールを、アプリ共通の値入力バーとして表示する。 */
+/** 泡が流れるレールを、アプリ共通の値入力バーとして表示する。 */
 @Composable
 internal fun EssentialBubblySlider(
     value: Float,
@@ -58,6 +60,7 @@ internal fun EssentialBubblySlider(
     ) {
         BubblyRail(
             fraction = animatedFraction,
+            thumbDiameter = 28.dp,
             modifier = Modifier.fillMaxWidth(),
         )
         Slider(
@@ -88,7 +91,7 @@ internal fun EssentialBubblySlider(
     }
 }
 
-/** Pro Filmの泡と紫色レールを、処理状況の横長バーにも適用する。 */
+/** 泡と紫色レールを、処理状況の横長バーにも適用する。 */
 @Composable
 internal fun EssentialBubblyProgressBar(
     progress: Float? = null,
@@ -116,6 +119,7 @@ private fun BubblyRail(
     fraction: Float,
     modifier: Modifier,
     phaseOverride: Float? = null,
+    thumbDiameter: Dp? = null,
 ) {
     val transition = rememberInfiniteTransition(label = "共通バーの泡レール")
     val phase by transition.animateFloat(
@@ -128,19 +132,28 @@ private fun BubblyRail(
     val bubbles = remember {
         listOf(0.04f to 0.16f, 0.18f to 0.10f, 0.31f to 0.13f, 0.47f to 0.08f, 0.63f to 0.12f, 0.78f to 0.07f, 0.92f to 0.11f)
     }
-    Box(modifier = modifier, contentAlignment = Alignment.Center) {
+    BoxWithConstraints(modifier = modifier, contentAlignment = Alignment.Center) {
         val railHeight = 28.dp
+        // 白ノブの下を右端まで紫で覆い、ノブの左側に暗い隙間を作らない。
+        val activeWidth = thumbDiameter?.let { diameter ->
+            diameter + (maxWidth - diameter).coerceAtLeast(0.dp) * fraction
+        } ?: (maxWidth * fraction)
+        val activeFraction = if (maxWidth > 0.dp) {
+            (activeWidth / maxWidth).coerceIn(0f, 1f)
+        } else {
+            0f
+        }
         Box(
             modifier = Modifier.fillMaxWidth().height(railHeight)
                 .clip(RoundedCornerShape(railHeight / 2))
                 .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.74f)),
         ) {
             Box(
-                modifier = Modifier.fillMaxHeight().fillMaxWidth(fraction)
+                modifier = Modifier.fillMaxHeight().width(activeWidth)
                     .background(Color(0xFFB77BF4)),
             )
             Canvas(Modifier.fillMaxSize()) {
-                clipRect(right = size.width * fraction) {
+                clipRect(right = size.width * activeFraction) {
                     bubbles.forEachIndexed { index, (offset, sizeFactor) ->
                         val travel = (actualPhase + offset) % 1f
                         val x = size.width * (1f - travel)

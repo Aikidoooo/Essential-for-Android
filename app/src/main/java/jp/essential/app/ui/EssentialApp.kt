@@ -1,12 +1,25 @@
 package jp.essential.app.ui
 
+import android.annotation.SuppressLint
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Matrix
+import android.graphics.RenderEffect
+import android.graphics.RuntimeShader
+import android.os.Build
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -18,6 +31,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -28,12 +42,12 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -46,20 +60,26 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -73,8 +93,11 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -92,9 +115,9 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.exifinterface.media.ExifInterface
 import jp.essential.app.AppIconManager
 import jp.essential.app.AppIconOption
-import jp.essential.app.feature.routine.calculateRoutineLevel
 import jp.essential.app.BuildConfig
 import jp.essential.app.R
 import jp.essential.app.core.EssentialCore
@@ -104,26 +127,40 @@ import jp.essential.app.feature.files.FileReferenceScreen
 import jp.essential.app.feature.minigame.MiniGameScreen
 import jp.essential.app.feature.qr.QrScannerScreen
 import jp.essential.app.feature.routine.RoutineScreen
-import jp.essential.app.feature.profilm.ProFilmScreen
 import jp.essential.app.feature.schedule.ScheduleGeneratorScreen
+import jp.essential.app.profile.AppProgressStore
+import jp.essential.app.profile.AppLevel
+import jp.essential.app.profile.AppReward
+import jp.essential.app.profile.ProfileStore
+import jp.essential.app.profile.appRewards
+import jp.essential.app.profile.calculateAppLevel
 import jp.essential.app.ui.theme.EssentialLime
 import jp.essential.app.ui.theme.EssentialOrange
 import jp.essential.app.ui.theme.EssentialRed
 import jp.essential.app.ui.theme.EssentialTheme
 import jp.essential.app.ui.theme.LocalEssentialDark
 import jp.essential.app.ui.theme.EssentialYellow
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private enum class Destination(val label: String, val symbol: EssentialSymbol) {
     Home("ホーム", EssentialSymbol.Home),
     Features("機能一覧", EssentialSymbol.Grid),
-    Settings("設定", EssentialSymbol.Settings),
+    Profile("プロフィール", EssentialSymbol.Profile),
 }
+
+// 下部バーは透明度82%（不透明度18%）を基準にし、背面の視認性を保つ。
+private const val NAVIGATION_GLASS_TRANSPARENCY = 0.82f
+private const val NAVIGATION_GLASS_SURFACE_ALPHA = 1f - NAVIGATION_GLASS_TRANSPARENCY
+// 最終項目全体が下部タブの影に隠れないための追加スクロール余白。
+private val NAVIGATION_CONTENT_CLEARANCE = 12.8.dp
 
 private enum class EssentialSymbol {
     Home,
     Grid,
     Settings,
+    Profile,
     Spark,
     Media,
     Device,
@@ -144,7 +181,6 @@ private enum class FeatureRoute(val requestId: String) {
     Files("files"),
     MiniGame("mini_game"),
     Routine("routine"),
-    ProFilm("pro_film"),
 }
 
 private data class FeatureItem(
@@ -215,8 +251,12 @@ private fun EssentialApp(
     initialSetupRequired: Boolean,
     onHomeShortcutChange: (String) -> Unit,
 ) {
+    val context = LocalContext.current
+    val profileStore = remember(context) { ProfileStore(context.applicationContext) }
+    var navigationProfileIcon by remember { mutableStateOf(profileStore.loadIcon()) }
+    var navigationProfileImagePath by remember { mutableStateOf(profileStore.loadImagePath()) }
     var destination by rememberSaveable {
-        mutableStateOf(if (initialSetupRequired) Destination.Settings else Destination.Home)
+        mutableStateOf(if (initialSetupRequired) Destination.Profile else Destination.Home)
     }
     var activeFeature by rememberSaveable { mutableStateOf<FeatureRoute?>(null) }
     var dosukoiActive by rememberSaveable { mutableStateOf(false) }
@@ -277,6 +317,9 @@ private fun EssentialApp(
                 if (activeFeature == null) {
                     EssentialNavigationBar(
                         selected = destination,
+                        appIcon = AppIconManager.optionForId(appIconId),
+                        profileIcon = navigationProfileIcon,
+                        profileImagePath = navigationProfileImagePath,
                         onSelected = { destination = it },
                     )
                 }
@@ -285,17 +328,18 @@ private fun EssentialApp(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(innerPadding),
+                    // 下部バーの背面まで画面コンテンツを描画し、空いた緑色の帯を作らない。
+                    .padding(top = innerPadding.calculateTopPadding()),
             ) {
                 AnimatedContent(
                     targetState = activeFeature,
-                    modifier = Modifier.fillMaxSize(),
                     transitionSpec = {
                         val direction = if (targetState != null) 1 else -1
                         // 入場は各機能内のまとまりに任せ、画面全体の横スライドは行わない。
                         fadeIn(tween(if (targetState != null) 90 else 180)) togetherWith fadeOut(tween(100))
                     },
                     label = "機能を開く段階的モーション",
+                    modifier = Modifier.fillMaxSize(),
                 ) { feature ->
                 when (feature) {
                     FeatureRoute.Downloader -> DownloaderScreen(
@@ -303,7 +347,7 @@ private fun EssentialApp(
                         onBack = { activeFeature = null },
                         onOpenSettings = {
                             activeFeature = null
-                            destination = Destination.Settings
+                            destination = Destination.Profile
                         },
                     )
                     FeatureRoute.QrScanner -> QrScannerScreen { activeFeature = null }
@@ -315,7 +359,6 @@ private fun EssentialApp(
                         motionFps = motionFps,
                     )
                     FeatureRoute.Routine -> RoutineScreen { activeFeature = null }
-                    FeatureRoute.ProFilm -> ProFilmScreen { activeFeature = null }
                     null -> AnimatedContent(
                         targetState = destination,
                         modifier = Modifier.fillMaxSize(),
@@ -337,19 +380,20 @@ private fun EssentialApp(
                                 onOpenAll = { destination = Destination.Features },
                                 onComingSoon = onComingSoon,
                                 shortcut = homeShortcut,
+                                contentBottomPadding = innerPadding.calculateBottomPadding(),
                             )
                             Destination.Features -> FeaturesScreen(
                                 onOpenFeature = { activeFeature = it },
                                 onComingSoon = onComingSoon,
+                                contentBottomPadding = innerPadding.calculateBottomPadding(),
                             )
-                            Destination.Settings -> SettingsScreen(
+                            Destination.Profile -> ProfileScreen(
                                 darkTheme = darkTheme,
                                 onDarkThemeChange = onDarkThemeChange,
                                 appIcon = AppIconManager.optionForId(appIconId),
-                                routineLevel = calculateRoutineLevel(
-                                    LocalContext.current.getSharedPreferences("routine", android.content.Context.MODE_PRIVATE)
-                                        .getInt("total_points", 0),
-                                ),
+                                appLevel = calculateAppLevel(AppProgressStore(LocalContext.current).loadXp()),
+                                onProfileIconChange = { navigationProfileIcon = it },
+                                onProfileImagePathChange = { navigationProfileImagePath = it },
                                 onAppIconChange = { option ->
                                     appIconId = option.id
                                     onAppIconChange(option)
@@ -361,6 +405,7 @@ private fun EssentialApp(
                                     homeShortcut = it
                                     onHomeShortcutChange(it.requestId)
                                 },
+                                contentBottomPadding = innerPadding.calculateBottomPadding(),
                             )
                         }
                         }
@@ -419,10 +464,16 @@ private fun HomeScreen(
     onOpenAll: () -> Unit,
     onComingSoon: () -> Unit,
     shortcut: FeatureRoute,
+    contentBottomPadding: Dp,
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 20.dp, top = 18.dp, end = 20.dp, bottom = 26.dp),
+        contentPadding = PaddingValues(
+            start = 20.dp,
+            top = 18.dp,
+            end = 20.dp,
+            bottom = 26.dp + contentBottomPadding + NAVIGATION_CONTENT_CLEARANCE,
+        ),
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
         progressiveItem(0) { AppHeader() }
@@ -437,7 +488,6 @@ private fun HomeScreen(
                     FeatureItem("ファイル参照", "圧縮・変換・背景透過", EssentialSymbol.Media, EssentialRed, FeatureRoute.Files),
                     FeatureItem("ミニゲーム", "言葉遊び・マインスイーパー", EssentialSymbol.Game, Color(0xFF9C6BFF), FeatureRoute.MiniGame),
                     FeatureItem("日課", "毎日の目標をポイントに", EssentialSymbol.Routine, Color(0xFF27B99A), FeatureRoute.Routine),
-                    FeatureItem("Pro Film", "写真にカメラの色彩を", EssentialSymbol.Media, EssentialOrange, FeatureRoute.ProFilm),
                 ),
                 onClick = { feature ->
                     feature.route?.let(onOpenFeature) ?: onComingSoon()
@@ -499,10 +549,10 @@ private fun AppHeader() {
                     modifier = Modifier.size(21.dp),
                     description = "Essentialの状態",
                 )
+                }
+                }
             }
         }
-    }
-}
 
 @Composable
 private fun HeroCard(shortcut: FeatureRoute, onClick: () -> Unit) {
@@ -518,20 +568,12 @@ private fun HeroCard(shortcut: FeatureRoute, onClick: () -> Unit) {
             .height(238.dp),
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        listOf(heroLight.copy(alpha = 0.72f), heroShade.copy(alpha = 0.10f)),
-                    ),
-                    radius = size.width * 0.58f,
-                    center = Offset(size.width * 0.94f, size.height * 0.17f),
-                )
-                drawCircle(
-                    color = heroAccent.copy(alpha = 0.24f),
-                    radius = size.width * 0.34f,
-                    center = Offset(size.width * 0.08f, size.height * 0.92f),
-                )
-            }
+            LiquidGlassHeroBackdrop(
+                light = heroLight,
+                shade = heroShade,
+                accent = heroAccent,
+            )
+            LiquidGlassHeroFinish()
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -582,6 +624,185 @@ private fun HeroCard(shortcut: FeatureRoute, onClick: () -> Unit) {
                 }
             }
         }
+    }
+}
+
+private const val LIQUID_GLASS_SHADER_SOURCE = """
+uniform shader contents;
+uniform float2 resolution;
+
+half4 main(float2 coordinate) {
+    float2 uv = coordinate / resolution;
+    float2 radial = uv - float2(0.5, 0.5);
+    float radius = length(radial);
+    float2 direction = normalize(radial + float2(0.0001, 0.0001));
+    float edge = smoothstep(0.18, 0.72, radius);
+    float distortion = 0.018 * edge * edge;
+
+    float2 redUv = clamp(uv + direction * (distortion + 0.004), 0.0, 1.0);
+    float2 greenUv = clamp(uv + direction * distortion, 0.0, 1.0);
+    float2 blueUv = clamp(uv + direction * (distortion - 0.004), 0.0, 1.0);
+
+    half4 redSample = contents.eval(redUv * resolution);
+    half4 greenSample = contents.eval(greenUv * resolution);
+    half4 blueSample = contents.eval(blueUv * resolution);
+    half alpha = max(redSample.a, max(greenSample.a, blueSample.a));
+    half4 refracted = half4(redSample.r, greenSample.g, blueSample.b, alpha);
+
+    float rim = smoothstep(0.60, 0.80, radius);
+    float centerGlow = 1.0 - smoothstep(0.04, 0.74, radius);
+    refracted.rgb += float3(0.035, 0.055, 0.085) * centerGlow;
+    refracted.rgb += float3(0.11, 0.025, 0.12) * rim * edge;
+    return refracted;
+}
+"""
+
+private const val LIQUID_GLASS_NAV_SHADER_SOURCE = """
+uniform shader contents;
+uniform float2 resolution;
+
+half4 main(float2 coordinate) {
+    float2 uv = coordinate / resolution;
+    float2 radial = uv - float2(0.5, 0.5);
+    float radius = length(radial);
+    float2 direction = normalize(radial + float2(0.0001, 0.0001));
+    float edge = smoothstep(0.22, 0.74, radius);
+    float distortion = 0.010 * edge * edge;
+    float2 redUv = clamp(uv + direction * (distortion + 0.002), 0.0, 1.0);
+    float2 greenUv = clamp(uv + direction * distortion, 0.0, 1.0);
+    float2 blueUv = clamp(uv + direction * (distortion - 0.002), 0.0, 1.0);
+    half4 redSample = contents.eval(redUv * resolution);
+    half4 greenSample = contents.eval(greenUv * resolution);
+    half4 blueSample = contents.eval(blueUv * resolution);
+    half alpha = max(redSample.a, max(greenSample.a, blueSample.a));
+    half4 refracted = half4(redSample.r, greenSample.g, blueSample.b, alpha);
+    half sheen = half(1.0 - smoothstep(0.08, 0.78, radius)) * 0.0;
+    refracted.rgb += half3(sheen, sheen, sheen);
+    return refracted;
+}
+"""
+
+@Composable
+@SuppressLint("NewApi")
+private fun LiquidGlassHeroBackdrop(
+    light: Color,
+    shade: Color,
+    accent: Color,
+) {
+    val shape = RoundedCornerShape(36.dp)
+    val shader = remember {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            runCatching { RuntimeShader(LIQUID_GLASS_SHADER_SOURCE) }.getOrNull()
+        } else {
+            null
+        }
+    }
+    val lightTransition = rememberInfiniteTransition(label = "液体ガラスの光")
+    val lightTravel by lightTransition.animateFloat(
+        initialValue = 0.08f,
+        targetValue = 0.92f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(4_600, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "光の移動",
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .clip(shape)
+            .graphicsLayer {
+                compositingStrategy = CompositingStrategy.Offscreen
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && shader != null) {
+                    shader.setFloatUniform(
+                        "resolution",
+                        size.width.toFloat().coerceAtLeast(1f),
+                        size.height.toFloat().coerceAtLeast(1f),
+                    )
+                    renderEffect = RenderEffect
+                        .createRuntimeShaderEffect(shader, "contents")
+                        .asComposeRenderEffect()
+                } else {
+                    renderEffect = null
+                }
+            },
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            drawRect(
+                brush = Brush.linearGradient(
+                    colors = listOf(
+                        Color(0x887F69FF),
+                        Color(0x664A8DFF),
+                        Color(0x6657D7C3),
+                    ),
+                ),
+            )
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(light.copy(alpha = 0.86f), shade.copy(alpha = 0.06f)),
+                ),
+                radius = size.width * 0.62f,
+                center = Offset(size.width * 0.94f, size.height * 0.15f),
+            )
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(accent.copy(alpha = 0.42f), Color.Transparent),
+                ),
+                radius = size.width * 0.42f,
+                center = Offset(size.width * 0.08f, size.height * 0.92f),
+            )
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(Color.White.copy(alpha = 0.22f), Color.Transparent),
+                ),
+                radius = size.width * 0.30f,
+                center = Offset(size.width * lightTravel, size.height * 0.12f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun LiquidGlassHeroFinish() {
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        val stroke = 1.25f
+        val inset = stroke / 2f
+        val cornerRadius = androidx.compose.ui.geometry.CornerRadius(36.dp.toPx())
+        drawRoundRect(
+            brush = Brush.sweepGradient(
+                0.00f to Color.White.copy(alpha = 0.82f),
+                0.18f to Color(0xFFFF6EAA).copy(alpha = 0.52f),
+                0.34f to Color(0xFF8E7CFF).copy(alpha = 0.70f),
+                0.54f to Color(0xFF65E8FF).copy(alpha = 0.56f),
+                0.76f to Color.White.copy(alpha = 0.18f),
+                1.00f to Color.White.copy(alpha = 0.82f),
+            ),
+            topLeft = Offset(inset, inset),
+            size = Size(size.width - stroke, size.height - stroke),
+            cornerRadius = cornerRadius,
+            style = Stroke(width = stroke),
+        )
+        drawRoundRect(
+            brush = Brush.linearGradient(
+                colors = listOf(Color.White.copy(alpha = 0.40f), Color.Transparent),
+            ),
+            topLeft = Offset(inset, inset),
+            size = Size(size.width - stroke, size.height - stroke),
+            cornerRadius = cornerRadius,
+            style = Stroke(width = 0.8f),
+        )
+        drawLine(
+            brush = Brush.linearGradient(
+                colors = listOf(Color.White.copy(alpha = 0.64f), Color.Transparent),
+                start = Offset(size.width * 0.10f, 2.dp.toPx()),
+                end = Offset(size.width * 0.68f, 2.dp.toPx()),
+            ),
+            start = Offset(size.width * 0.12f, 2.dp.toPx()),
+            end = Offset(size.width * 0.70f, 2.dp.toPx()),
+            strokeWidth = 1.8f,
+            cap = StrokeCap.Round,
+        )
     }
 }
 
@@ -743,10 +964,19 @@ private fun RustCoreBanner() {
 }
 
 @Composable
-private fun FeaturesScreen(onOpenFeature: (FeatureRoute) -> Unit, onComingSoon: () -> Unit) {
+private fun FeaturesScreen(
+    onOpenFeature: (FeatureRoute) -> Unit,
+    onComingSoon: () -> Unit,
+    contentBottomPadding: Dp,
+) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 20.dp, top = 22.dp, end = 20.dp, bottom = 28.dp),
+        contentPadding = PaddingValues(
+            start = 20.dp,
+            top = 22.dp,
+            end = 20.dp,
+            bottom = 28.dp + contentBottomPadding + NAVIGATION_CONTENT_CLEARANCE,
+        ),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         progressiveItem(0) {
@@ -812,9 +1042,6 @@ private fun FeaturesScreen(onOpenFeature: (FeatureRoute) -> Unit, onComingSoon: 
                 onClick = { onOpenFeature(FeatureRoute.Routine) },
             )
         }
-        progressiveItem(7) {
-            CategoryPanel("Pro Film", "写真を参照して色調・強度を調整", EssentialSymbol.Media, EssentialOrange) { onOpenFeature(FeatureRoute.ProFilm) }
-        }
     }
 }
 
@@ -873,31 +1100,141 @@ private fun CategoryPanel(
 }
 
 @Composable
-private fun SettingsScreen(
+private fun ProfileScreen(
     darkTheme: Boolean,
     onDarkThemeChange: (Boolean) -> Unit,
     appIcon: AppIconOption,
-    routineLevel: jp.essential.app.feature.routine.RoutineLevel,
+    appLevel: AppLevel,
+    onProfileIconChange: (String) -> Unit,
+    onProfileImagePathChange: (String?) -> Unit,
     onAppIconChange: (AppIconOption) -> Unit,
     motionFps: Int,
     onMotionFpsChange: (Int) -> Unit,
     homeShortcut: FeatureRoute,
     onHomeShortcutChange: (FeatureRoute) -> Unit,
+    contentBottomPadding: Dp,
 ) {
+    val context = LocalContext.current
+    val profileStore = remember { ProfileStore(context.applicationContext) }
+    val progressStore = remember { AppProgressStore(context.applicationContext) }
+    var profileName by remember { mutableStateOf(profileStore.loadName()) }
+    var profileIcon by remember { mutableStateOf(profileStore.loadIcon()) }
+    var profileImagePath by remember { mutableStateOf(profileStore.loadImagePath()) }
+    var claimedRewards by remember { mutableStateOf(progressStore.loadClaimedRewards()) }
+    var rewardsExpanded by rememberSaveable { mutableStateOf(false) }
     val coreVersion = remember { EssentialCore.version() }
+    val profileImagePicker = rememberLauncherForActivityResult(EssentialMediaPickerContract()) { uri ->
+        if (uri != null) {
+            profileStore.saveImage(uri)?.let {
+                profileImagePath = it
+                onProfileImagePathChange(it)
+            }
+        }
+    }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 20.dp, top = 22.dp, end = 20.dp, bottom = 28.dp),
+        contentPadding = PaddingValues(
+            start = 20.dp,
+            top = 22.dp,
+            end = 20.dp,
+            bottom = 28.dp + contentBottomPadding + NAVIGATION_CONTENT_CLEARANCE,
+        ),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         progressiveItem(0) {
-            Text("設定", style = MaterialTheme.typography.headlineLarge)
-            Spacer(Modifier.height(5.dp))
-            Text(
-                "Essentialを、あなたに合う見た目へ。",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("プロフィール", style = MaterialTheme.typography.headlineLarge)
+                Text("名前とアイコン、アプリの進行状況をまとめて管理します。", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Column(
+                    Modifier.fillMaxWidth().glassSurface(28.dp).padding(19.dp),
+                    verticalArrangement = Arrangement.spacedBy(13.dp),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(88.dp), contentAlignment = Alignment.BottomEnd) {
+                            ProfileAvatar(
+                                profileIcon = profileIcon,
+                                imagePath = profileImagePath,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                            Box(
+                                Modifier.size(28.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primary)
+                                    .border(2.dp, MaterialTheme.colorScheme.surface, CircleShape)
+                                    .semantics { contentDescription = "プロフィール画像を選ぶ" }
+                                    .clickable { profileImagePicker.launch(arrayOf("image/*")) },
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text("＋", color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.labelLarge)
+                            }
+                        }
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(profileName.ifBlank { "ゲスト" }, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+                            Text("アプリレベル LV${appLevel.level}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    OutlinedTextField(
+                        value = profileName,
+                        onValueChange = { value ->
+                            profileName = value.take(15)
+                            profileStore.saveName(profileName)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("表示名") },
+                        supportingText = { Text("どすこいのプロフィール名にも同期されます（15文字以内）") },
+                        singleLine = true,
+                    )
+                    Text("プロフィールアイコン", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text("画像を選ぶか、絵文字をプロフィールのアバターに設定できます。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Button(onClick = { profileImagePicker.launch(arrayOf("image/*")) }) {
+                            Text(if (profileImagePath == null) "画像を選ぶ" else "画像を変更")
+                        }
+                        if (profileImagePath != null) {
+                            TextButton(
+                                onClick = {
+                                    profileStore.clearImage()
+                                    profileImagePath = null
+                                    onProfileImagePathChange(null)
+                                },
+                            ) { Text("絵文字に戻す") }
+                        }
+                    }
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("🌱", "🌸", "🔥", "🌙", "⚡", "🧊", "🌹").forEach { icon ->
+                            item(key = icon) {
+                                FilterChip(
+                                    selected = icon == profileIcon && profileImagePath == null,
+                                    onClick = {
+                                        profileIcon = icon
+                                        profileStore.saveIcon(icon)
+                                        profileStore.clearImage()
+                                        profileImagePath = null
+                                        onProfileIconChange(icon)
+                                        onProfileImagePathChange(null)
+                                    },
+                                    label = { Text(icon, style = MaterialTheme.typography.titleMedium) },
+                                )
+                            }
+                        }
+                    }
+                }
+                ProfileLevelCard(totalXp = progressStore.loadXp(), level = appLevel)
+                ProfileRewards(
+                    currentLevel = appLevel,
+                    claimedRewards = claimedRewards,
+                    expanded = rewardsExpanded,
+                    onExpandedChange = { rewardsExpanded = it },
+                    onClaim = { rewardLevel ->
+                        if (appLevel.level >= rewardLevel && rewardLevel !in claimedRewards) {
+                            claimedRewards = progressStore.claimReward(rewardLevel)
+                        }
+                    },
+                )
+                Text("設定", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
+                Text("Essentialを、あなたに合う見た目へ。", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
         progressiveItem(1) {
             Box(
@@ -936,7 +1273,7 @@ private fun SettingsScreen(
         progressiveItem(2) {
             AppIconSettingsCard(
                 selected = appIcon,
-                currentLevel = routineLevel.level,
+                currentLevel = appLevel.level,
                 onSelect = onAppIconChange,
             )
         }
@@ -1026,6 +1363,185 @@ private fun SettingsScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun ProfileAvatar(
+    profileIcon: String,
+    imagePath: String?,
+    modifier: Modifier = Modifier,
+) {
+    val bitmap by produceState<Bitmap?>(initialValue = null, key1 = imagePath) {
+        value = imagePath?.let { path ->
+            withContext(Dispatchers.IO) { decodeProfileAvatar(path) }
+        }
+    }
+    val colors = MaterialTheme.colorScheme
+    BoxWithConstraints(
+        modifier = modifier
+            .graphicsLayer {
+                shadowElevation = 9.dp.toPx()
+                shape = CircleShape
+                clip = false
+            }
+            .background(
+                Brush.sweepGradient(
+                    listOf(colors.primary, colors.tertiary, colors.secondary, colors.primary),
+                ),
+                CircleShape,
+            )
+            .padding(1.dp)
+            .clip(CircleShape)
+            .background(colors.surfaceVariant),
+        contentAlignment = Alignment.Center,
+    ) {
+        val iconFontSize = (minOf(maxWidth, maxHeight).value * 0.60f).coerceIn(16f, 54f).sp
+        if (bitmap != null) {
+            Image(
+                bitmap = bitmap!!.asImageBitmap(),
+                contentDescription = "プロフィール画像",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize().clip(CircleShape),
+            )
+        } else {
+            Text(profileIcon, fontSize = iconFontSize, maxLines = 1)
+        }
+    }
+}
+
+private fun decodeProfileAvatar(path: String): Bitmap? {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeFile(path, bounds)
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+    var sampleSize = 1
+    while (maxOf(bounds.outWidth, bounds.outHeight) / sampleSize > 512) sampleSize *= 2
+    val bitmap = BitmapFactory.decodeFile(path, BitmapFactory.Options().apply { inSampleSize = sampleSize }) ?: return null
+    val rotation = runCatching { ExifInterface(path).rotationDegrees }.getOrDefault(0)
+    if (rotation == 0) return bitmap
+    val rotated = Bitmap.createBitmap(
+        bitmap,
+        0,
+        0,
+        bitmap.width,
+        bitmap.height,
+        Matrix().apply { postRotate(rotation.toFloat()) },
+        true,
+    )
+    if (rotated !== bitmap) bitmap.recycle()
+    return rotated
+}
+
+@Composable
+private fun ProfileLevelCard(totalXp: Int, level: AppLevel) {
+    val shape = RoundedCornerShape(36.dp, 36.dp, 18.dp, 36.dp)
+    Box(
+        modifier = Modifier.fillMaxWidth().clip(shape)
+            .background(Brush.linearGradient(listOf(Color(0xCC21B79B), Color(0xCC5B8DFF), Color(0xAA8D6AFF))))
+            .border(1.dp, Color.White.copy(alpha = 0.56f), shape)
+            .padding(22.dp),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier.size(70.dp).clip(RoundedCornerShape(25.dp)).background(Color.White.copy(alpha = 0.18f)),
+                    contentAlignment = Alignment.Center,
+                ) { Text("LV\n${level.level}", color = Color.White, fontWeight = FontWeight.Black) }
+                Spacer(Modifier.width(16.dp))
+                Column {
+                    Text("アプリXP $totalXp", color = Color.White, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black)
+                    Text(
+                        if (level.level == 60) "MAX LEVEL" else "次のレベルまで ${level.pointsForNextLevel - level.pointsInLevel} XP",
+                        color = Color.White.copy(alpha = 0.82f),
+                    )
+                    if (level.level < 60) {
+                        Text("必要XP ${level.pointsForNextLevel}", color = Color.White.copy(alpha = 0.68f), style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+            EssentialBubblyProgressBar(progress = level.progress, modifier = Modifier.fillMaxWidth())
+            Text("日課とミニゲームのXPが、アプリレベルへ合算されます。", color = Color.White.copy(alpha = 0.78f), style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+@Composable
+private fun ProfileRewards(
+    currentLevel: AppLevel,
+    claimedRewards: Set<Int>,
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
+    onClaim: (Int) -> Unit,
+) {
+    Column(
+        modifier = Modifier.animateContentSize(animationSpec = tween(220, easing = FastOutSlowInEasing)),
+        verticalArrangement = Arrangement.spacedBy(11.dp),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).clickable { onExpandedChange(!expanded) }.padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("レベル報酬", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+                Text(if (expanded) "プロフィールでのみ確認・受取できます" else "タップして報酬一覧を表示", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+            }
+            Text("${claimedRewards.size}/${appRewards.size}", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Black)
+            Spacer(Modifier.width(10.dp))
+            Text(if (expanded) "⌃" else "⌄", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleLarge)
+        }
+        AnimatedVisibility(
+            visible = expanded,
+            enter = expandVertically(animationSpec = tween(240, easing = FastOutSlowInEasing)) + fadeIn(animationSpec = tween(150)),
+            exit = shrinkVertically(animationSpec = tween(170, easing = FastOutSlowInEasing)) + fadeOut(animationSpec = tween(100)),
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(11.dp)) {
+                appRewards.forEach { reward ->
+                    ProfileRewardCard(
+                        reward = reward,
+                        unlocked = currentLevel.level >= reward.level,
+                        claimed = reward.level in claimedRewards,
+                        onClaim = { onClaim(reward.level) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProfileRewardCard(
+    reward: AppReward,
+    unlocked: Boolean,
+    claimed: Boolean,
+    onClaim: () -> Unit,
+) {
+    val shape = RoundedCornerShape(25.dp, 25.dp, 13.dp, 25.dp)
+    Column(
+        modifier = Modifier.fillMaxWidth().clip(shape)
+            .background(if (unlocked) MaterialTheme.colorScheme.surface.copy(alpha = 0.78f) else MaterialTheme.colorScheme.surface.copy(alpha = 0.42f))
+            .border(1.dp, if (unlocked) MaterialTheme.colorScheme.primary.copy(alpha = 0.42f) else Color.White.copy(alpha = 0.28f), shape)
+            .padding(13.dp),
+        verticalArrangement = Arrangement.spacedBy(9.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Image(
+                painter = painterResource(reward.imageRes),
+                contentDescription = reward.title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.size(56.dp).clip(RoundedCornerShape(17.dp)),
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(reward.title, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(reward.description, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+            }
+            Text("LV${reward.level}", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Black)
+        }
+        when {
+            claimed -> Text("✓ 獲得済み", color = Color(0xFF168B74), fontWeight = FontWeight.Black)
+            unlocked -> Button(onClick = onClaim, modifier = Modifier.fillMaxWidth()) { Text("報酬を受け取る") }
+            else -> Text("LV${reward.level}で解放", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
         }
     }
 }
@@ -1250,43 +1766,89 @@ private fun SettingValue(label: String, value: String) {
 @Composable
 private fun EssentialNavigationBar(
     selected: Destination,
+    appIcon: AppIconOption,
+    profileIcon: String,
+    profileImagePath: String?,
     onSelected: (Destination) -> Unit,
 ) {
     val haptics = LocalHapticFeedback.current
     val colors = MaterialTheme.colorScheme
-    val glassShape = RoundedCornerShape(28.dp)
+    val navigationSurface = Color(appIcon.backgroundEnd)
+    val glassShape = RoundedCornerShape(32.dp)
     val selectionPosition by animateFloatAsState(
         targetValue = selected.ordinal.toFloat(),
         animationSpec = spring(dampingRatio = 0.88f, stiffness = 480f),
         label = "ガラスの選択位置",
     )
-    // 背景だけを透過させる。文字・アイコンに親の透明度や消失アニメーションを適用しない。
+
     Box(
-        modifier = Modifier.fillMaxWidth().navigationBarsPadding()
-            .padding(horizontal = 12.dp, vertical = 8.dp)
-            .clip(glassShape)
-            .background(colors.surface.copy(alpha = 0.90f))
-            .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.16f), Color.Transparent)))
-            .border(1.dp, Brush.linearGradient(listOf(Color.White.copy(alpha = 0.65f), colors.outlineVariant.copy(alpha = 0.32f))), glassShape),
+        modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(horizontal = 14.dp, vertical = 8.dp)
+            .height(66.dp)
+            .graphicsLayer {
+                shadowElevation = 20.dp.toPx()
+                shape = glassShape
+                clip = false
+            }
+            .clip(glassShape),
     ) {
+        LiquidGlassNavigationBackdrop(
+            end = Color(appIcon.backgroundEnd),
+        )
         Canvas(Modifier.matchParentSize()) {
+            drawRoundRect(
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        navigationSurface.copy(alpha = NAVIGATION_GLASS_SURFACE_ALPHA),
+                        navigationSurface.copy(alpha = NAVIGATION_GLASS_SURFACE_ALPHA * 0.92f),
+                        Color.Black.copy(alpha = 0.28f),
+                    ),
+                ),
+                topLeft = Offset.Zero,
+                size = size,
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(30.dp.toPx()),
+            )
+            drawRect(
+                brush = Brush.verticalGradient(
+                    colorStops = arrayOf(
+                        0f to Color.Transparent,
+                        0.36f to Color.Black.copy(alpha = 0.04f),
+                        0.68f to Color.Black.copy(alpha = 0.22f),
+                        1f to Color.Black.copy(alpha = 0.34f),
+                    ),
+                    startY = size.height * 0.12f,
+                    endY = size.height,
+                ),
+                topLeft = Offset.Zero,
+                size = size,
+            )
             val cellWidth = size.width / Destination.entries.size
-            val width = minOf(72.dp.toPx(), cellWidth - 16.dp.toPx())
-            val height = 36.dp.toPx()
+            val width = minOf(88.dp.toPx(), cellWidth - 18.dp.toPx())
+            val height = 44.dp.toPx()
             val left = cellWidth * (selectionPosition + 0.5f) - width / 2f
-            val top = 7.dp.toPx()
+            val top = (size.height - height) / 2f
             val radius = androidx.compose.ui.geometry.CornerRadius(height / 2f)
             drawRoundRect(
-                brush = Brush.linearGradient(listOf(colors.secondaryContainer.copy(alpha = 0.94f), colors.primaryContainer.copy(alpha = 0.65f)), Offset(left, top), Offset(left + width, top + height)),
+                brush = Brush.linearGradient(
+                    colors = listOf(
+                        navigationSurface.copy(alpha = 0.08f),
+                        colors.primaryContainer.copy(alpha = 0.24f),
+                        navigationSurface.copy(alpha = 0.08f),
+                    ),
+                    start = Offset(left, top),
+                    end = Offset(left + width, top + height),
+                ),
                 topLeft = Offset(left, top), size = Size(width, height), cornerRadius = radius,
-            )
-            drawRoundRect(
-                color = Color.White.copy(alpha = 0.52f), topLeft = Offset(left, top),
-                size = Size(width, height), cornerRadius = radius, style = Stroke(1.dp.toPx()),
             )
         }
         Row(
-            modifier = Modifier.fillMaxWidth().selectableGroup(),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 4.dp, vertical = 4.dp)
+                .selectableGroup(),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             Destination.entries.forEach { destination ->
                 val isSelected = destination == selected
@@ -1298,16 +1860,17 @@ private fun EssentialNavigationBar(
                     label = "ナビゲーションアイコン",
                 )
                 Column(
-                    modifier = Modifier.weight(1f).clip(RoundedCornerShape(24.dp))
+                    modifier = Modifier.weight(1f).fillMaxSize().clip(RoundedCornerShape(24.dp))
                         .selectable(selected = isSelected, role = Role.Tab, interactionSource = interaction, indication = null) {
                         if (!isSelected) {
                             haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             onSelected(destination)
                         }
-                    }.padding(top = 7.dp, bottom = 10.dp),
+                    },
                     horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
                 ) {
-                    Box(Modifier.height(36.dp), contentAlignment = Alignment.Center) {
+                    Box(Modifier.height(40.dp), contentAlignment = Alignment.Center) {
                         BadgedBox(
                             badge = {
                                 if (destination == Destination.Features) {
@@ -1315,21 +1878,97 @@ private fun EssentialNavigationBar(
                                 }
                             },
                         ) {
-                            EssentialSymbol(
-                                symbol = destination.symbol,
-                                tint = colors.onSurface,
-                                modifier = Modifier
-                                    .size(24.dp)
-                                    .graphicsLayer(scaleX = scale, scaleY = scale),
-                                description = destination.label,
-                            )
+                            if (destination == Destination.Profile) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(28.dp)
+                                        .graphicsLayer(scaleX = scale, scaleY = scale)
+                                        .semantics { contentDescription = destination.label },
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    ProfileAvatar(
+                                        profileIcon = profileIcon,
+                                        imagePath = profileImagePath,
+                                        modifier = Modifier.fillMaxSize(),
+                                    )
+                                }
+                            } else {
+                                EssentialSymbol(
+                                    symbol = destination.symbol,
+                                    tint = colors.onSurface.copy(alpha = 0.98f),
+                                    modifier = Modifier
+                                        .size(24.dp)
+                                        .graphicsLayer(scaleX = scale, scaleY = scale),
+                                    description = destination.label,
+                                )
+                            }
                         }
                     }
-                    Text(destination.label, color = colors.onSurface, style = MaterialTheme.typography.labelMedium,
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                        modifier = Modifier.padding(top = 4.dp))
                 }
             }
+        }
+    }
+}
+
+@Composable
+@SuppressLint("NewApi")
+private fun LiquidGlassNavigationBackdrop(
+    end: Color,
+) {
+    val shape = RoundedCornerShape(32.dp)
+    val shader: RuntimeShader? = remember {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            runCatching { RuntimeShader(LIQUID_GLASS_NAV_SHADER_SOURCE) }.getOrNull()
+        } else {
+            null
+        }
+    }
+    val lightTransition = rememberInfiniteTransition(label = "下部ガラスの光")
+    val lightTravel by lightTransition.animateFloat(
+        initialValue = 0.06f,
+        targetValue = 0.94f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(3_800, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "下部ガラスの反射光",
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .clip(shape)
+            .graphicsLayer {
+                compositingStrategy = CompositingStrategy.Offscreen
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && shader != null) {
+                    shader.setFloatUniform(
+                        "resolution",
+                        size.width.toFloat().coerceAtLeast(1f),
+                        size.height.toFloat().coerceAtLeast(1f),
+                    )
+                    renderEffect = RenderEffect
+                        .createRuntimeShaderEffect(shader, "contents")
+                        .asComposeRenderEffect()
+                } else {
+                    renderEffect = null
+                }
+            },
+    ) {
+        Canvas(Modifier.fillMaxSize()) {
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(end.copy(alpha = 0.10f), Color.Transparent),
+                ),
+                radius = size.width * 0.42f,
+                center = Offset(size.width * lightTravel, size.height * 0.08f),
+            )
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(end.copy(alpha = 0.05f), Color.Transparent),
+                ),
+                radius = size.width * 0.35f,
+                center = Offset(size.width * 0.14f, size.height * 1.08f),
+            )
         }
     }
 }
@@ -1402,17 +2041,14 @@ private fun EssentialSymbol(
         val center = Offset(size.width / 2f, size.height / 2f)
         when (symbol) {
             EssentialSymbol.Home -> {
-                val path = Path().apply {
-                    moveTo(size.width * 0.16f, size.height * 0.48f)
-                    lineTo(size.width * 0.50f, size.height * 0.18f)
-                    lineTo(size.width * 0.84f, size.height * 0.48f)
-                    lineTo(size.width * 0.77f, size.height * 0.48f)
-                    lineTo(size.width * 0.77f, size.height * 0.82f)
-                    lineTo(size.width * 0.23f, size.height * 0.82f)
-                    lineTo(size.width * 0.23f, size.height * 0.48f)
-                    close()
-                }
-                drawPath(path, tint, style = stroke)
+                val roofLeft = Offset(size.width * 0.13f, size.height * 0.47f)
+                val roofTop = Offset(size.width * 0.50f, size.height * 0.14f)
+                val roofRight = Offset(size.width * 0.87f, size.height * 0.47f)
+                drawLine(tint, roofLeft, roofTop, stroke.width, StrokeCap.Round)
+                drawLine(tint, roofTop, roofRight, stroke.width, StrokeCap.Round)
+                drawLine(tint, Offset(size.width * 0.22f, size.height * 0.42f), Offset(size.width * 0.22f, size.height * 0.84f), stroke.width, StrokeCap.Round)
+                drawLine(tint, Offset(size.width * 0.78f, size.height * 0.42f), Offset(size.width * 0.78f, size.height * 0.84f), stroke.width, StrokeCap.Round)
+                drawLine(tint, Offset(size.width * 0.22f, size.height * 0.84f), Offset(size.width * 0.78f, size.height * 0.84f), stroke.width, StrokeCap.Round)
             }
             EssentialSymbol.Grid -> {
                 val itemSize = size.minDimension * 0.25f
@@ -1440,6 +2076,18 @@ private fun EssentialSymbol(
                     )
                     drawLine(tint, start, end, strokeWidth = stroke.width, cap = StrokeCap.Round)
                 }
+            }
+            EssentialSymbol.Profile -> {
+                drawCircle(tint, size.minDimension * 0.19f, Offset(center.x, size.height * 0.34f), style = stroke)
+                drawArc(
+                    color = tint,
+                    startAngle = 200f,
+                    sweepAngle = 140f,
+                    useCenter = false,
+                    topLeft = Offset(size.width * 0.20f, size.height * 0.40f),
+                    size = Size(size.width * 0.60f, size.height * 0.50f),
+                    style = stroke,
+                )
             }
             EssentialSymbol.Spark -> {
                 val path = Path().apply {
@@ -1500,21 +2148,25 @@ private fun EssentialSymbol(
                 drawLine(
                     tint,
                     Offset(center.x, size.height * 0.12f),
-                    Offset(center.x, size.height * 0.64f),
+                    Offset(center.x, size.height * 0.60f),
                     strokeWidth = stroke.width,
                     cap = StrokeCap.Round,
                 )
-                // 矢印先端を一体の面として描き、スクロール中の縮小レイヤーでも欠けないようにする。
-                val arrowHead = Path().apply {
-                    moveTo(size.width * 0.23f, size.height * 0.47f)
-                    lineTo(center.x, size.height * 0.73f)
-                    lineTo(size.width * 0.77f, size.height * 0.47f)
-                    lineTo(size.width * 0.69f, size.height * 0.40f)
-                    lineTo(center.x, size.height * 0.59f)
-                    lineTo(size.width * 0.31f, size.height * 0.40f)
-                    close()
-                }
-                drawPath(arrowHead, tint)
+                // 矢印先端は2本の線で描き、小さなカード内でも形が崩れないようにする。
+                drawLine(
+                    tint,
+                    Offset(size.width * 0.25f, size.height * 0.51f),
+                    Offset(center.x, size.height * 0.75f),
+                    strokeWidth = stroke.width,
+                    cap = StrokeCap.Round,
+                )
+                drawLine(
+                    tint,
+                    Offset(size.width * 0.75f, size.height * 0.51f),
+                    Offset(center.x, size.height * 0.75f),
+                    strokeWidth = stroke.width,
+                    cap = StrokeCap.Round,
+                )
                 drawLine(
                     tint,
                     Offset(size.width * 0.18f, size.height * 0.84f),
@@ -1608,7 +2260,6 @@ private fun FeatureRoute.displayName(): String = when (this) {
     FeatureRoute.Files -> "ファイル参照"
     FeatureRoute.MiniGame -> "ミニゲーム"
     FeatureRoute.Routine -> "日課"
-    FeatureRoute.ProFilm -> "Pro Film"
 }
 
 private fun FeatureRoute.symbol(): EssentialSymbol = when (this) {
@@ -1618,7 +2269,6 @@ private fun FeatureRoute.symbol(): EssentialSymbol = when (this) {
     FeatureRoute.Files -> EssentialSymbol.Media
     FeatureRoute.MiniGame -> EssentialSymbol.Game
     FeatureRoute.Routine -> EssentialSymbol.Routine
-    FeatureRoute.ProFilm -> EssentialSymbol.Media
 }
 
 @Preview(showBackground = true, widthDp = 390, heightDp = 844)
@@ -1632,6 +2282,7 @@ private fun EssentialHomePreview() {
                 onOpenAll = {},
                 onComingSoon = {},
                 shortcut = FeatureRoute.Downloader,
+                contentBottomPadding = 0.dp,
             )
         }
     }

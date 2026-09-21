@@ -52,7 +52,7 @@ class YtDlpDownloadEngine(private val context: Context) {
     }
     suspend fun analyzeImages(url: String): Result<List<ImageCandidate>> = withContext(Dispatchers.IO) {
         runCatching {
-            val safeUrl = validatePublicUrl(url)
+            val safeUrl = resolveTikTokShareUrl(validatePublicUrl(url))
             val discovered = ImageDiscovery().discover(safeUrl)
             if (discovered.isNotEmpty()) return@runCatching discovered
             initializeLibraries()
@@ -85,12 +85,15 @@ class YtDlpDownloadEngine(private val context: Context) {
         onState: (DownloadState) -> Unit,
     ): Result<List<String>> = withContext(Dispatchers.IO) {
         runCatching {
-            validatePublicUrl(selection.url)
-            when (selection.mediaType) {
-                DownloadMediaType.Image -> downloadImages(selection, onState)
+            val safeUrl = validatePublicUrl(selection.url)
+            val effectiveSelection = selection.copy(
+                url = resolveTikTokShareUrl(safeUrl),
+            )
+            when (effectiveSelection.mediaType) {
+                DownloadMediaType.Image -> downloadImages(effectiveSelection, onState)
                 DownloadMediaType.Video,
                 DownloadMediaType.Audio,
-                -> downloadWithYtDlp(selection, onState)
+                -> downloadWithYtDlp(effectiveSelection, onState)
             }
         }.onFailure { error ->
             onState(DownloadState.Failed(error.message ?: "ダウンロードに失敗しました"))
@@ -99,7 +102,10 @@ class YtDlpDownloadEngine(private val context: Context) {
 
     private fun initializeLibraries() {
         YoutubeDL.getInstance().init(context.applicationContext)
-        FFmpeg.getInstance().init(context.applicationContext)
+        // arm64／x86_64はFFmpegKitを使用するため、不要なFFmpegランタイムを展開しない。
+        if (!usesMaintainedFfmpegKit()) {
+            FFmpeg.getInstance().init(context.applicationContext)
+        }
     }
 
     private fun downloadWithYtDlp(
@@ -116,6 +122,9 @@ class YtDlpDownloadEngine(private val context: Context) {
                 addOption("--no-playlist")
                 addOption("--no-part")
                 addOption("--restrict-filenames")
+                if (isTikTokUrl(selection.url)) {
+                    addOption("--referer", "https://www.tiktok.com/")
+                }
                 val template = if (selection.mediaType == DownloadMediaType.Video && usesMaintainedFfmpegKit()) {
                     "%(title).140B-%(id)s-%(format_id)s.%(ext)s"
                 } else {
@@ -139,10 +148,12 @@ class YtDlpDownloadEngine(private val context: Context) {
                 },
             )
 
-            val stagedFiles = if (selection.mediaType == DownloadMediaType.Video && usesMaintainedFfmpegKit()) {
-                listOf(mergeDownloadedStreams(stagingDirectory, selection))
-            } else {
-                stagingDirectory.listFiles().orEmpty().toList()
+            val stagedFiles = when {
+                selection.mediaType == DownloadMediaType.Video && usesMaintainedFfmpegKit() ->
+                    listOf(mergeDownloadedStreams(stagingDirectory, selection))
+                selection.mediaType == DownloadMediaType.Audio && usesMaintainedFfmpegKit() ->
+                    listOf(transcodeDownloadedAudio(stagingDirectory, selection))
+                else -> stagingDirectory.listFiles().orEmpty().toList()
             }
             val completedFiles = stagedFiles
                 .orEmpty()
@@ -254,9 +265,47 @@ class YtDlpDownloadEngine(private val context: Context) {
         Build.SUPPORTED_ABIS.firstOrNull() in setOf("arm64-v8a", "x86_64")
 
     private fun YoutubeDLRequest.addAudioOptions(selection: DownloaderSelection) {
-        addOption("-x")
-        addOption("--audio-format", selection.audioFormat.extension)
-        addOption("--audio-quality", "${selection.audioQuality.bitRate}K")
+        if (usesMaintainedFfmpegKit()) {
+            // FFmpegKit対応ABIでは、変換前の音声だけを取得して端末内で変換する。
+            addOption("-f", "bestaudio/best")
+        } else {
+            addOption("-x")
+            addOption("--audio-format", selection.audioFormat.extension)
+            addOption("--audio-quality", "${selection.audioQuality.bitRate}K")
+        }
+    }
+
+    private fun transcodeDownloadedAudio(
+        stagingDirectory: File,
+        selection: DownloaderSelection,
+    ): File {
+        val inputs = stagingDirectory.listFiles().orEmpty()
+            .filter { it.isFile && it.length() > 0L && it.extension !in setOf("part", "ytdl", "json") }
+        val source = inputs.firstOrNull { hasTrack(it, MediaMetadataRetriever.METADATA_KEY_HAS_AUDIO) }
+            ?: inputs.singleOrNull()
+            ?: error("音声ストリームを取得できませんでした")
+        val output = File(
+            stagingDirectory,
+            "Essential-audio-${System.currentTimeMillis()}.${selection.audioFormat.extension}",
+        )
+        val codec = when (selection.audioFormat) {
+            AudioFormat.Mp3 -> "libmp3lame"
+            AudioFormat.Wav -> "pcm_s16le"
+            AudioFormat.Flac -> "flac"
+        }
+        FfmpegRunner.execute(
+            context,
+            listOf(
+                "-i", source.absolutePath,
+                "-vn",
+                "-c:a", codec,
+                "-b:a", "${selection.audioQuality.bitRate}k",
+                "-y", output.absolutePath,
+            ),
+        )
+        check(output.exists() && output.length() > 0L) { "音声を変換できませんでした" }
+        inputs.filter { it != output }.forEach(File::delete)
+        return output
     }
 
     private fun downloadImages(
@@ -471,6 +520,38 @@ class YtDlpDownloadEngine(private val context: Context) {
         return trimmed
     }
 
+    /** TikTok Liteの短縮共有URLを、yt-dlpが扱える最終公開URLへ解決する。 */
+    private fun resolveTikTokShareUrl(rawUrl: String): String {
+        val uri = runCatching { URI(rawUrl) }.getOrNull() ?: return rawUrl
+        val host = uri.host?.lowercase().orEmpty()
+        val isShortUrl = host == "lite.tiktok.com" ||
+            (isTikTokUrl(rawUrl) && uri.path.orEmpty().startsWith("/t/"))
+        if (!isShortUrl) return rawUrl
+        return runCatching {
+            val connection = (URL(rawUrl).openConnection() as HttpURLConnection).apply {
+                connectTimeout = 15_000
+                readTimeout = 20_000
+                instanceFollowRedirects = true
+                requestMethod = "GET"
+                setRequestProperty("User-Agent", "Mozilla/5.0 (Android) Essential/1.0")
+                setRequestProperty("Accept", "text/html,application/xhtml+xml")
+                setRequestProperty("Accept-Language", "ja,en-US;q=0.8,en;q=0.6")
+                setRequestProperty("Referer", "https://www.tiktok.com/")
+            }
+            try {
+                connection.responseCode
+                connection.url.toString().takeIf { it != rawUrl && isTikTokUrl(it) } ?: rawUrl
+            } finally {
+                connection.disconnect()
+            }
+        }.getOrDefault(rawUrl)
+    }
+
+    private fun isTikTokUrl(rawUrl: String): Boolean {
+        val host = runCatching { URI(rawUrl).host?.lowercase() }.getOrNull() ?: return false
+        return host == "tiktok.com" || host.endsWith(".tiktok.com")
+    }
+
     private fun extractJsonObject(output: String): JSONObject {
         val jsonLine = output.lineSequence()
             .map(String::trim)
@@ -507,6 +588,8 @@ class YtDlpDownloadEngine(private val context: Context) {
         "mov" -> "video/quicktime"
         "mp3" -> "audio/mpeg"
         "aac", "m4a" -> "audio/aac"
+        "wav" -> "audio/wav"
+        "flac" -> "audio/flac"
         "png" -> "image/png"
         "jpg", "jpeg" -> "image/jpeg"
         else -> "application/octet-stream"

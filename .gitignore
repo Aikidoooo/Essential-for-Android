@@ -26,3 +26,8 @@ keystore.properties
 /.kotlin/
 # 廃止機能のローカル復元用バックアップは公開しない。
 /backups/
+# 学習用の巨大原本はGit監視・差分保存の対象外にする。原本自体は削除しない。
+/CameraStyleAI_REAL_DATA_Collection_Kit/DPED_OFFICIAL_MODEL/
+# 学習・ビルドのローカル環境は再生成可能なためGitへ含めない。
+/CameraStyleAI_Codex_Starter/.venv-dped/
+/CameraStyleAI_Codex_Starter/.gradle-home/

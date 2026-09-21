@@ -55,6 +55,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -63,6 +64,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -115,6 +118,13 @@ fun QrScannerScreen(onBack: () -> Unit) {
     var torchEnabled by remember { mutableStateOf(false) }
     var scannedValue by remember { mutableStateOf<String?>(null) }
     var cameraError by remember { mutableStateOf<String?>(null) }
+    val qrPreferences = remember(context) {
+        context.getSharedPreferences("qr_scanner", Context.MODE_PRIVATE)
+    }
+    var autoOpenRecognizedUrls by rememberSaveable {
+        mutableStateOf(qrPreferences.getBoolean("auto_open_urls", false))
+    }
+    val autoOpenUrls by rememberUpdatedState(autoOpenRecognizedUrls)
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -206,7 +216,13 @@ fun QrScannerScreen(onBack: () -> Unit) {
                                     qrHitTarget.set(target)
                                     if (tracker.update(target?.value, android.os.SystemClock.elapsedRealtime())) {
                                         scannedValue = tracker.value
-                                        if (tracker.value != null) haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                                        val detectedValue = tracker.value
+                                        if (detectedValue != null) {
+                                            if (autoOpenUrls) {
+                                                openRecognizedUrl(context, detectedValue)
+                                            }
+                                            haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                                        }
                                     }
                                 },
                             )
@@ -364,6 +380,25 @@ fun QrScannerScreen(onBack: () -> Unit) {
                                         label = { Text("${preset.toInt()}×") },
                                     )
                                 }
+                            }
+                            // 倍率プリセットの直下に、自動URLオープンをAutoチェックとしてまとめる。
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 4.dp),
+                                horizontalArrangement = Arrangement.End,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text("Auto", color = Color.White, style = MaterialTheme.typography.labelLarge)
+                                Checkbox(
+                                    checked = autoOpenRecognizedUrls,
+                                    onCheckedChange = { enabled ->
+                                        autoOpenRecognizedUrls = enabled
+                                        qrPreferences.edit()
+                                            .putBoolean("auto_open_urls", enabled)
+                                            .apply()
+                                    },
+                                )
                             }
                             EssentialBubblySlider(
                                 value = zoomRatio,

@@ -24,11 +24,10 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import androidx.compose.material3.TextButton
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
@@ -38,6 +37,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -74,6 +74,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -476,17 +477,46 @@ internal fun ImageCandidateCard(
     }
     if (showPreview) {
         Dialog(onDismissRequest = { showPreview = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-            Surface(Modifier.fillMaxWidth().padding(16.dp), shape = RoundedCornerShape(28.dp),
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.97f)) {
-                Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(candidate.label, style = MaterialTheme.typography.titleMedium)
-                    Box(Modifier.fillMaxWidth().weight(1f, fill = false).heightIn(min = 180.dp), contentAlignment = Alignment.Center) {
-                        val bitmap = preview
-                        if (bitmap != null) Image(bitmap.asImageBitmap(), "拡大プレビュー", Modifier.fillMaxWidth(), contentScale = ContentScale.Fit)
-                        else if (previewFailed) Text("プレビューを読み込めませんでした")
-                        else CircularProgressIndicator()
-                    }
-                    TextButton(onClick = { showPreview = false }) { Text("閉じる") }
+            val backgroundInteraction = remember { MutableInteractionSource() }
+            BoxWithConstraints(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black)
+                    .clickable(
+                        interactionSource = backgroundInteraction,
+                        indication = null,
+                        onClick = { showPreview = false },
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                val bitmap = preview
+                if (bitmap != null) {
+                    val density = LocalDensity.current
+                    val availableWidth = with(density) { maxWidth.toPx() }
+                    val availableHeight = with(density) { maxHeight.toPx() }
+                    val aspect = bitmap.width.toFloat() / bitmap.height.toFloat()
+                    val imageWidth = minOf(availableWidth, availableHeight * aspect)
+                    val imageHeight = minOf(availableHeight, availableWidth / aspect)
+                    val imageInteraction = remember { MutableInteractionSource() }
+                    Image(
+                        bitmap.asImageBitmap(),
+                        "画像プレビュー",
+                        Modifier
+                            .size(
+                                with(density) { imageWidth.toDp() },
+                                with(density) { imageHeight.toDp() },
+                            )
+                            .clickable(
+                                interactionSource = imageInteraction,
+                                indication = null,
+                                onClick = {},
+                            ),
+                        contentScale = ContentScale.Fit,
+                    )
+                } else if (previewFailed) {
+                    Text("プレビューを読み込めませんでした", color = Color.White)
+                } else {
+                    CircularProgressIndicator(color = Color.White)
                 }
             }
         }

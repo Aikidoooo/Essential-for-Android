@@ -6,20 +6,11 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.expandVertically
 import androidx.compose.animation.scaleIn
-import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -59,19 +50,16 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import jp.essential.app.ui.progressiveItem
 import jp.essential.app.ui.EssentialBubblyProgressBar
 import jp.essential.app.ui.EssentialBubblySlider
-import jp.essential.app.R
+import jp.essential.app.profile.AppLevel
+import jp.essential.app.profile.AppProgressStore
+import jp.essential.app.profile.calculateAppLevel
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.LocalDate
@@ -103,62 +91,10 @@ internal data class RoutineTask(
     val eventDurationDays: Int = 1,
 )
 
-internal data class RoutineLevel(
-    val level: Int,
-    val pointsInLevel: Int,
-    val pointsForNextLevel: Int,
-    val progress: Float,
-)
-
-private data class RoutineReward(
-    val level: Int,
-    val title: String,
-    val description: String,
-    val imageRes: Int,
-)
-
-private val routineRewards = listOf(
-    RoutineReward(16, "Anemo Essential", "アネモカラーのアプリアイコン", R.drawable.routine_reward_lv16),
-    RoutineReward(20, "Geo Essential", "ジオカラーのアプリアイコン", R.drawable.routine_reward_lv20),
-    RoutineReward(25, "Electro Essential", "エレクトロカラーのアプリアイコン", R.drawable.routine_reward_lv25),
-    RoutineReward(30, "Dendro Essential", "デンドロカラーのアプリアイコン", R.drawable.routine_reward_lv30),
-    RoutineReward(35, "Hydro Essential", "ハイドロカラーのアプリアイコン", R.drawable.routine_reward_lv35),
-    RoutineReward(40, "Pyro Essential", "パイロカラーのアプリアイコン", R.drawable.routine_reward_lv40),
-    RoutineReward(50, "Lunar Essential", "月夜と青空のアプリアイコン", R.drawable.routine_reward_lv50),
-    RoutineReward(55, "Cryo Essential", "クライオカラーのアプリアイコン", R.drawable.routine_reward_lv55),
-    RoutineReward(60, "アイコン変更権", "ローズカラーのアプリアイコンと変更権", R.drawable.routine_reward_lv60),
-)
-
-/** 指定レベルから次のレベルへ進むために必要なXPを返す。最大レベルでは0を返す。 */
-internal fun requiredRoutineXp(level: Int): Int {
-    if (level < 1 || level >= 60) return 0
-    val raw = when {
-        level < 16 -> 375 + 118 * (level - 1)
-        level < 40 -> 2375 + 290 * (level - 16)
-        level < 50 -> 10550 + 960 * (level - 40)
-        level < 55 -> 26400 + 2400 * (level - 50)
-        else -> {
-            val offset = level - 55
-            232350 + 26490 * offset + 110 * offset * offset
-        }
-    }
-    return kotlin.math.round(raw / 15.0).toInt()
-}
-
-/** 合計XPから、最大60のレベルと次のレベルまでの進捗を求める。 */
-internal fun calculateRoutineLevel(totalPoints: Int): RoutineLevel {
-    var level = 1
-    var remaining = totalPoints.coerceAtLeast(0)
-    while (level < 60) {
-        val required = requiredRoutineXp(level)
-        if (remaining < required) {
-            return RoutineLevel(level, remaining, required, remaining.toFloat() / required)
-        }
-        remaining -= required
-        level++
-    }
-    return RoutineLevel(60, remaining, 0, 1f)
-}
+/** 既存の日課テストと互換性を保ちながら、アプリレベル計算へ移行する。 */
+internal typealias RoutineLevel = AppLevel
+internal fun requiredRoutineXp(level: Int): Int = jp.essential.app.profile.requiredAppXp(level)
+internal fun calculateRoutineLevel(totalPoints: Int): RoutineLevel = calculateAppLevel(totalPoints)
 
 /** 達成状態をデイリーは日付、ウィークリーはISO週単位で区切る。 */
 internal fun routinePeriodKey(cadence: RoutineCadence, date: LocalDate = LocalDate.now()): String =
@@ -194,6 +130,7 @@ internal fun routineTaskPeriodKey(task: RoutineTask, date: LocalDate = LocalDate
 
 private class RoutineStore(context: Context) {
     private val preferences = context.getSharedPreferences("routine", Context.MODE_PRIVATE)
+    private val progressStore = AppProgressStore(context)
 
     fun loadTasks(): List<RoutineTask> = runCatching {
         val array = JSONArray(preferences.getString("tasks", "[]"))
@@ -223,14 +160,9 @@ private class RoutineStore(context: Context) {
         }
     }.getOrDefault(emptyList())
 
-    fun loadTotalPoints(): Int = preferences.getInt("total_points", 0).coerceAtLeast(0)
+    fun loadTotalPoints(): Int = progressStore.loadXp()
 
-    fun loadClaimedRewards(): Set<Int> = preferences.getStringSet("claimed_rewards", emptySet())
-        .orEmpty()
-        .mapNotNull { it.toIntOrNull() }
-        .toSet()
-
-    fun save(tasks: List<RoutineTask>, totalPoints: Int) {
+    fun save(tasks: List<RoutineTask>) {
         val array = JSONArray()
         tasks.forEach { task ->
             array.put(
@@ -249,11 +181,7 @@ private class RoutineStore(context: Context) {
                     .put("eventDurationDays", task.eventDurationDays),
             )
         }
-        preferences.edit().putString("tasks", array.toString()).putInt("total_points", totalPoints).apply()
-    }
-
-    fun saveClaimedRewards(levels: Set<Int>) {
-        preferences.edit().putStringSet("claimed_rewards", levels.map(Int::toString).toSet()).apply()
+        preferences.edit().putString("tasks", array.toString()).apply()
     }
 }
 
@@ -261,13 +189,14 @@ private class RoutineStore(context: Context) {
 internal fun RoutineScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val store = remember { RoutineStore(context.applicationContext) }
+    val progressStore = remember { AppProgressStore(context.applicationContext) }
     var tasks by remember { mutableStateOf(store.loadTasks()) }
     var totalPoints by remember { mutableStateOf(store.loadTotalPoints()) }
-    var claimedRewards by remember { mutableStateOf(store.loadClaimedRewards()) }
-    var rewardsExpanded by rememberSaveable { mutableStateOf(true) }
+    var selectedCadenceNames by rememberSaveable {
+        mutableStateOf(RoutineCadence.entries.map { it.name }.toSet())
+    }
     var addCadence by remember { mutableStateOf<RoutineCadence?>(null) }
     var editingTask by remember { mutableStateOf<RoutineTask?>(null) }
-    var showPointResetConfirmation by remember { mutableStateOf(false) }
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { }
@@ -277,12 +206,11 @@ internal fun RoutineScreen(onBack: () -> Unit) {
         tasks.forEach { RoutineNotificationScheduler.schedule(context, it) }
     }
 
-    fun save(updatedTasks: List<RoutineTask>, updatedPoints: Int = totalPoints) {
+    fun save(updatedTasks: List<RoutineTask>) {
         tasks.filterNot { previous -> updatedTasks.any { it.id == previous.id } }
             .forEach { RoutineNotificationScheduler.cancel(context, it.id) }
         tasks = updatedTasks
-        totalPoints = updatedPoints
-        store.save(updatedTasks, updatedPoints)
+        store.save(updatedTasks)
         updatedTasks.forEach { RoutineNotificationScheduler.schedule(context, it) }
     }
 
@@ -290,16 +218,9 @@ internal fun RoutineScreen(onBack: () -> Unit) {
         if (!isRoutineTaskActive(task)) return
         val period = routineTaskPeriodKey(task)
         if (task.completedPeriod == period) return
-        save(
-            tasks.map { if (it.id == task.id) it.copy(completedPeriod = period) else it },
-            totalPoints + task.points,
-        )
-    }
-
-    fun claimReward(rewardLevel: Int) {
-        if (level.level < rewardLevel || rewardLevel in claimedRewards) return
-        claimedRewards = claimedRewards + rewardLevel
-        store.saveClaimedRewards(claimedRewards)
+        val updatedTasks = tasks.map { if (it.id == task.id) it.copy(completedPeriod = period) else it }
+        totalPoints = progressStore.addXp(task.points)
+        save(updatedTasks)
     }
 
     BackHandler(onBack = onBack)
@@ -313,20 +234,22 @@ internal fun RoutineScreen(onBack: () -> Unit) {
             RoutineLevelCard(
                 totalPoints = totalPoints,
                 level = level,
-                onResetPoints = { showPointResetConfirmation = true },
             )
         }
         progressiveItem(2) {
-            RoutineRewards(
-                currentLevel = level,
-                claimedRewards = claimedRewards,
-                onClaim = ::claimReward,
-                expanded = rewardsExpanded,
-                onExpandedChange = { rewardsExpanded = it },
+            RoutineCadenceMultiFilter(
+                selectedNames = selectedCadenceNames,
+                onToggle = { cadence ->
+                    selectedCadenceNames = if (cadence.name in selectedCadenceNames) {
+                        selectedCadenceNames - cadence.name
+                    } else {
+                        selectedCadenceNames + cadence.name
+                    }
+                },
             )
         }
         RoutineCadence.entries.forEachIndexed { index, cadence ->
-            progressiveItem(index + 3) {
+            if (cadence.name in selectedCadenceNames) progressiveItem(index + 3) {
                 RoutineSection(
                     cadence = cadence,
                     tasks = tasks.filter { it.cadence == cadence },
@@ -334,6 +257,15 @@ internal fun RoutineScreen(onBack: () -> Unit) {
                     onEdit = { editingTask = it },
                     onComplete = ::complete,
                     onDelete = { task -> save(tasks.filterNot { it.id == task.id }) },
+                )
+            }
+        }
+        if (selectedCadenceNames.isEmpty()) {
+            progressiveItem(3) {
+                Text(
+                    "表示する日課を1つ以上選択してください",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 4.dp),
                 )
             }
         }
@@ -375,26 +307,6 @@ internal fun RoutineScreen(onBack: () -> Unit) {
         )
     }
 
-    if (showPointResetConfirmation) {
-        AlertDialog(
-            onDismissRequest = { showPointResetConfirmation = false },
-            shape = RoundedCornerShape(32.dp),
-            title = { Text("ポイントをリセット", fontWeight = FontWeight.Black) },
-            text = { Text("合計ポイントとレベルを0へ戻します。作成した日課と達成状態は残ります。") },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        save(tasks, 0)
-                        showPointResetConfirmation = false
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                ) { Text("0 ptに戻す") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showPointResetConfirmation = false }) { Text("キャンセル") }
-            },
-        )
-    }
 }
 
 @Composable
@@ -414,8 +326,37 @@ private fun RoutineHeader(onBack: () -> Unit) {
     }
 }
 
+/** 日課の表示対象を複数選択できるフィルター。 */
 @Composable
-private fun RoutineLevelCard(totalPoints: Int, level: RoutineLevel, onResetPoints: () -> Unit) {
+private fun RoutineCadenceMultiFilter(
+    selectedNames: Set<String>,
+    onToggle: (RoutineCadence) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+        Text("表示する日課", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            RoutineCadence.entries.forEach { cadence ->
+                FilterChip(
+                    selected = cadence.name in selectedNames,
+                    onClick = { onToggle(cadence) },
+                    label = { Text(cadence.label) },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+        Text(
+            "複数選択できます",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+        )
+    }
+}
+
+@Composable
+private fun RoutineLevelCard(totalPoints: Int, level: RoutineLevel) {
     val shape = RoundedCornerShape(36.dp, 36.dp, 18.dp, 36.dp)
     Box(
         modifier = Modifier.fillMaxWidth().clip(shape)
@@ -451,113 +392,7 @@ private fun RoutineLevelCard(totalPoints: Int, level: RoutineLevel, onResetPoint
                 modifier = Modifier.fillMaxWidth(),
             )
             Text("レベルが上がるほど、次のレベルに必要なポイントが増えます", color = Color.White.copy(alpha = 0.76f), style = MaterialTheme.typography.bodySmall)
-            TextButton(
-                onClick = onResetPoints,
-                modifier = Modifier.align(Alignment.End),
-                colors = ButtonDefaults.textButtonColors(contentColor = Color.White),
-            ) { Text("ポイントをリセット") }
         }
-    }
-}
-
-@Composable
-private fun RoutineRewards(
-    currentLevel: RoutineLevel,
-    claimedRewards: Set<Int>,
-    onClaim: (Int) -> Unit,
-    expanded: Boolean,
-    onExpandedChange: (Boolean) -> Unit,
-) {
-    Column(
-        modifier = Modifier.animateContentSize(animationSpec = tween(220, easing = FastOutSlowInEasing)),
-        verticalArrangement = Arrangement.spacedBy(11.dp),
-    ) {
-        Row(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).clickable { onExpandedChange(!expanded) }
-                .padding(vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text("レベル報酬", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
-                Text(if (expanded) "到達したレベルの報酬を受け取れます" else "タップして報酬一覧を表示", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-            }
-            Text("${claimedRewards.size}/${routineRewards.size}", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Black)
-            Spacer(Modifier.width(10.dp))
-            RoutineChevron(expanded = expanded)
-        }
-        AnimatedVisibility(
-            visible = expanded,
-            enter = expandVertically(animationSpec = tween(240, easing = FastOutSlowInEasing)) +
-                fadeIn(animationSpec = tween(150)),
-            exit = shrinkVertically(animationSpec = tween(170, easing = FastOutSlowInEasing)) +
-                fadeOut(animationSpec = tween(100)),
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(11.dp)) {
-                routineRewards.forEach { reward ->
-                    val unlocked = currentLevel.level >= reward.level
-                    val claimed = reward.level in claimedRewards
-                    val shape = RoundedCornerShape(25.dp, 25.dp, 13.dp, 25.dp)
-                    Column(
-                        modifier = Modifier.fillMaxWidth()
-                            .clip(shape)
-                            .background(
-                                if (unlocked) MaterialTheme.colorScheme.surface.copy(alpha = 0.78f)
-                                else MaterialTheme.colorScheme.surface.copy(alpha = 0.42f),
-                            )
-                            .border(
-                                1.dp,
-                                if (unlocked) MaterialTheme.colorScheme.primary.copy(alpha = 0.42f)
-                                else Color.White.copy(alpha = 0.28f),
-                                shape,
-                            )
-                            .padding(13.dp),
-                        verticalArrangement = Arrangement.spacedBy(9.dp),
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Image(
-                                painter = painterResource(reward.imageRes),
-                                contentDescription = reward.title,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.size(56.dp).clip(RoundedCornerShape(17.dp)),
-                            )
-                            Spacer(Modifier.width(12.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(reward.title, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Text(reward.description, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-                            }
-                            Text("LV${reward.level}", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Black)
-                        }
-                        when {
-                            claimed -> Text("✓ 獲得済み", color = Color(0xFF168B74), fontWeight = FontWeight.Black)
-                            unlocked -> Button(onClick = { onClaim(reward.level) }, modifier = Modifier.fillMaxWidth()) {
-                                Text("報酬を受け取る")
-                            }
-                            else -> Text("LV${reward.level}で解放", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-/** 日課報酬の展開状態を広いV字で示すインジケーター。 */
-@Composable
-private fun RoutineChevron(expanded: Boolean) {
-    val rotation by animateFloatAsState(
-        targetValue = if (expanded) 180f else 0f,
-        animationSpec = tween(200, easing = FastOutSlowInEasing),
-        label = "日課報酬の折りたたみ矢印",
-    )
-    val color = MaterialTheme.colorScheme.primary
-    Canvas(
-        modifier = Modifier
-            .size(28.dp)
-            .graphicsLayer { rotationZ = rotation },
-    ) {
-        val stroke = 3.6.dp.toPx()
-        drawLine(color, Offset(size.width * 0.12f, size.height * 0.35f), Offset(size.width * 0.5f, size.height * 0.65f), stroke, StrokeCap.Round)
-        drawLine(color, Offset(size.width * 0.5f, size.height * 0.65f), Offset(size.width * 0.88f, size.height * 0.35f), stroke, StrokeCap.Round)
     }
 }
 

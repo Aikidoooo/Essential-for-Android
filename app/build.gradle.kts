@@ -15,8 +15,8 @@ android {
         applicationId = "jp.essential.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 19
-        versionName = "0.5.8"
+        versionCode = 20
+        versionName = "0.5.9"
         buildConfigField("String", "UPDATE_REPOSITORY", "\"$updateRepository\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -51,7 +51,9 @@ android {
         }
         release {
             if (System.getenv("RELEASE_STORE_FILE") != null) signingConfig = signingConfigs.getByName("distribution")
-            isMinifyEnabled = false
+            // 配布版だけコードを縮小し、画像や同梱リソースは削除しない。
+            isMinifyEnabled = true
+            isShrinkResources = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
@@ -109,6 +111,7 @@ dependencies {
     implementation("dev.ffmpegkit-maintained:ffmpeg-kit-full:8.1.7")
     implementation("com.arthenica:smart-exception-common:0.2.1")
     implementation("com.arthenica:smart-exception-java:0.2.1")
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.30.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling:1.7.6")
     debugImplementation("androidx.compose.ui:ui-test-manifest:1.7.6")

@@ -53,7 +53,9 @@ internal class ImageDiscovery {
     private fun open(url: String) = (URL(url).openConnection() as HttpURLConnection).apply {
         connectTimeout = 15_000
         readTimeout = 20_000
+        instanceFollowRedirects = true
         setRequestProperty("User-Agent", "Mozilla/5.0 (Android) Essential/1.0")
+        if (isTikTok(url)) setRequestProperty("Referer", "https://www.tiktok.com/")
     }
 
     private fun readText(connection: HttpURLConnection): String = connection.inputStream.use { input ->

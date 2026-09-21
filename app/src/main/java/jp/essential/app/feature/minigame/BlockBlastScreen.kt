@@ -58,9 +58,11 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
-import kotlinx.coroutines.delay
+import jp.essential.app.profile.AppProgressStore
+import jp.essential.app.profile.blockBlastXp
 import kotlin.math.hypot
 import kotlin.math.roundToInt
+import java.util.UUID
 
 /** 行と列を同時判定してから消去する、8×8のブロックパズル。 */
 internal object BlockBlastRules {
@@ -68,7 +70,8 @@ internal object BlockBlastRules {
         val points: Int,
         val clearStreak: Int,
         val multiplier: Int,
-        val multiplierEndsAt: Long,
+        val multiplierTurnsRemaining: Int,
+        val turnsSinceLastClear: Int,
     )
 
     val shapes = listOf(
@@ -107,29 +110,47 @@ internal object BlockBlastRules {
         .minWithOrNull(compareBy<Pair<Pair<Int, Int>, Float>> { it.second }.thenBy { it.first.second }.thenBy { it.first.first })
         ?.first
 
-    /** 連続消去で倍率を更新し、発動済み倍率は残り時間中の配置得点すべてへ適用する。 */
+    /** 直近のクリアから5ターン以内なら倍率を更新し、時間に依存せず得点へ適用する。 */
     fun scoreMove(
         shapeSize: Int,
         clearedLines: Int,
         previousClearStreak: Int,
         currentMultiplier: Int,
-        currentMultiplierEndsAt: Long,
-        nowMillis: Long,
+        currentMultiplierTurnsRemaining: Int,
+        previousTurnsSinceLastClear: Int,
     ): ScoreResult {
-        val nextStreak = if (clearedLines > 0) previousClearStreak + 1 else 0
-        val activeMultiplier = if (currentMultiplierEndsAt > nowMillis) currentMultiplier.coerceAtLeast(1) else 1
-        val nextMultiplier = if (nextStreak >= 2) nextStreak else activeMultiplier
-        val nextEndsAt = when {
-            nextStreak >= 2 -> nowMillis + 10_000L
-            activeMultiplier > 1 -> currentMultiplierEndsAt
-            else -> 0L
+        val activeMultiplier = if (currentMultiplier > 1 && currentMultiplierTurnsRemaining > 0) {
+            currentMultiplier
+        } else {
+            1
+        }
+        val withinFiveTurns = previousTurnsSinceLastClear <= 5
+        val nextStreak = when {
+            clearedLines > 0 && withinFiveTurns -> previousClearStreak + 1
+            clearedLines > 0 -> 1
+            previousTurnsSinceLastClear < 5 -> previousClearStreak
+            else -> 0
+        }
+        val nextMultiplier = if (clearedLines > 0 && nextStreak >= 2) {
+            nextStreak
+        } else {
+            activeMultiplier
+        }
+        val nextTurnsRemaining = when {
+            clearedLines > 0 && nextStreak >= 2 -> 5
+            activeMultiplier > 1 -> (currentMultiplierTurnsRemaining - 1).coerceAtLeast(0)
+            else -> 0
+        }
+        val nextTurnsSinceLastClear = if (clearedLines > 0) 0 else {
+            (previousTurnsSinceLastClear + 1).coerceAtMost(6)
         }
         val basePoints = shapeSize + clearedLines * clearedLines * 10
         return ScoreResult(
             points = basePoints * nextMultiplier,
             clearStreak = nextStreak,
             multiplier = nextMultiplier,
-            multiplierEndsAt = nextEndsAt,
+            multiplierTurnsRemaining = nextTurnsRemaining,
+            turnsSinceLastClear = nextTurnsSinceLastClear,
         )
     }
 
@@ -263,8 +284,18 @@ internal fun BlockBlastScreen(onBack: () -> Unit) {
     var best by remember { mutableIntStateOf(prefs.getInt("best", 0)) }
     var clearStreak by rememberSaveable { mutableIntStateOf(prefs.getInt("clear_streak", 0)) }
     var multiplier by rememberSaveable { mutableIntStateOf(prefs.getInt("multiplier", 1).coerceAtLeast(1)) }
-    var multiplierEndsAt by rememberSaveable { mutableStateOf(prefs.getLong("multiplier_ends_at", 0L)) }
-    var multiplierRemainingMillis by remember { mutableStateOf((multiplierEndsAt - System.currentTimeMillis()).coerceAtLeast(0L)) }
+    var multiplierTurnsRemaining by rememberSaveable {
+        mutableIntStateOf(prefs.getInt("multiplier_turns_remaining", 0).coerceAtLeast(0))
+    }
+    var turnsSinceLastClear by rememberSaveable {
+        mutableIntStateOf(prefs.getInt("turns_since_last_clear", 6).coerceIn(0, 6))
+    }
+    var gameSessionId by rememberSaveable {
+        mutableStateOf(prefs.getString("game_session_id", null) ?: UUID.randomUUID().toString())
+    }
+    var xpAwardedSessionId by rememberSaveable {
+        mutableStateOf(prefs.getString("xp_awarded_session_id", null))
+    }
     var message by remember { mutableStateOf("ブロックをドラッグして盤面へ置こう") }
     var draggingIndex by remember { mutableIntStateOf(-1) }
     var dragPointer by remember { mutableStateOf<Offset?>(null) }
@@ -298,24 +329,25 @@ internal fun BlockBlastScreen(onBack: () -> Unit) {
     }
     val gameOver = !BlockBlastRules.canPlay(board, hand)
 
-    LaunchedEffect(board, hand, score, clearStreak, multiplier, multiplierEndsAt) {
+    LaunchedEffect(board, hand, score, clearStreak, multiplier, multiplierTurnsRemaining, turnsSinceLastClear, gameSessionId) {
         prefs.edit()
             .putString("board", board.joinToString(","))
             .putString("hand", hand.joinToString(","))
             .putInt("score", score)
             .putInt("clear_streak", clearStreak)
             .putInt("multiplier", multiplier)
-            .putLong("multiplier_ends_at", multiplierEndsAt)
+            .putInt("multiplier_turns_remaining", multiplierTurnsRemaining)
+            .putInt("turns_since_last_clear", turnsSinceLastClear)
+            .putString("game_session_id", gameSessionId)
             .apply()
     }
 
-    LaunchedEffect(multiplierEndsAt) {
-        while (multiplierEndsAt > System.currentTimeMillis()) {
-            multiplierRemainingMillis = (multiplierEndsAt - System.currentTimeMillis()).coerceAtLeast(0L)
-            delay(100L)
+    LaunchedEffect(gameSessionId, gameOver, score) {
+        if (gameOver && xpAwardedSessionId != gameSessionId) {
+            AppProgressStore(context).addXp(blockBlastXp(score))
+            xpAwardedSessionId = gameSessionId
+            prefs.edit().putString("xp_awarded_session_id", gameSessionId).apply()
         }
-        multiplierRemainingMillis = 0L
-        if (multiplier != 1) multiplier = 1
     }
 
     fun resetForNextGame() {
@@ -324,8 +356,9 @@ internal fun BlockBlastScreen(onBack: () -> Unit) {
         score = 0
         clearStreak = 0
         multiplier = 1
-        multiplierEndsAt = 0L
-        multiplierRemainingMillis = 0L
+        multiplierTurnsRemaining = 0
+        turnsSinceLastClear = 6
+        gameSessionId = UUID.randomUUID().toString()
         message = "ブロックをドラッグして盤面へ置こう"
     }
 
@@ -336,19 +369,18 @@ internal fun BlockBlastScreen(onBack: () -> Unit) {
         }
         val (next, lines) = BlockBlastRules.place(board, shape, x, y)
         board = next
-        val now = System.currentTimeMillis()
         val scoreResult = BlockBlastRules.scoreMove(
             shapeSize = BlockBlastRules.shapes[shape].size,
             clearedLines = lines,
             previousClearStreak = clearStreak,
             currentMultiplier = multiplier,
-            currentMultiplierEndsAt = multiplierEndsAt,
-            nowMillis = now,
+            currentMultiplierTurnsRemaining = multiplierTurnsRemaining,
+            previousTurnsSinceLastClear = turnsSinceLastClear,
         )
         clearStreak = scoreResult.clearStreak
         multiplier = scoreResult.multiplier
-        multiplierEndsAt = scoreResult.multiplierEndsAt
-        multiplierRemainingMillis = (multiplierEndsAt - now).coerceAtLeast(0L)
+        multiplierTurnsRemaining = scoreResult.multiplierTurnsRemaining
+        turnsSinceLastClear = scoreResult.turnsSinceLastClear
         score += scoreResult.points
         if (score > best) {
             best = score
@@ -445,9 +477,9 @@ internal fun BlockBlastScreen(onBack: () -> Unit) {
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Medium,
             )
-            AnimatedVisibility(multiplierRemainingMillis > 0L && multiplier > 1) {
+            AnimatedVisibility(multiplierTurnsRemaining > 0 && multiplier > 1) {
                 val multiplierScale by animateFloatAsState(
-                    targetValue = if (multiplierRemainingMillis % 1_000L < 500L) 1.04f else 1f,
+                    targetValue = if (multiplierTurnsRemaining % 2 == 0) 1.04f else 1f,
                     animationSpec = tween(220),
                     label = "倍率の脈動",
                 )
@@ -457,7 +489,7 @@ internal fun BlockBlastScreen(onBack: () -> Unit) {
                     shape = RoundedCornerShape(50),
                 ) {
                     Text(
-                        "${multiplier}倍  ${(multiplierRemainingMillis / 100L) / 10f}秒",
+                        "${multiplier}倍  ${multiplierTurnsRemaining}ターン",
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
                         color = Color(0xFF8A5B00),
                         fontWeight = FontWeight.Black,

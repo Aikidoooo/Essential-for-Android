@@ -1009,3 +1009,580 @@
 - GitHub Actions run `34579976274`のAndroid Releaseが`completed / success`となった。タグとversionNameの一致、Android／Rust準備、4 ABIのRust JNI再ビルド、単体テスト、Lint、配布署名付きRelease APK生成、apksigner検証、16KiB zipalign、Release公開の全Stepが成功した。
 - GitHub Release `Essential v0.5.8`がdraft=false、prerelease=falseで正式公開された。arm64-v8a、armeabi-v7a、x86、x86_64、universalの署名付きAPK 5種と`SHA256SUMS.txt`の計6ファイルがすべてuploaded状態であることを公開APIで確認した。Release URLは`https://github.com/Aikidoooo/Essential-for-Android/releases/tag/v0.5.8`。
 - 公開された`SHA256SUMS.txt`は5行すべてが64桁SHA-256とv0.5.8の対応APK名で、欠落0件、余分な名前0件であることを確認した。
+
+【2026-09-11 ストレージ肥大化の原因調査と次回更新向け保守処理】
+- Xiaomi端末のストレージ画面（合計358MB、アプリサイズ213MB、ユーザーデータ145MB、キャッシュ1.60MB）をもとに、現在のGradle依存関係、APKサイズ、保存先を監査した。`youtubedl-android`のlibrary／ffmpeg AARは各ABI向けのyt-dlp・Python・FFmpegランタイムを同梱するため、ユニバーサルAPKのアプリサイズは約262MB、arm64 Debug APKは約91MBとなる。これはAndroidの更新ごとに旧APKが蓄積した証拠ではなく、選択したAPKのABIと同梱ネイティブ実行環境に由来する可能性が高い。
+- `YoutubeDL.init`／`FFmpeg.init`が`noBackupFilesDir/youtubedl-android/packages`へ実行環境を展開する構造を確認した。アプリ側はarm64-v8a／x86_64で`FFmpegKit`を使っているため、従来は使わない別FFmpegランタイムまで展開していた。`YtDlpDownloadEngine.initializeLibraries()`をABI分岐し、FFmpegKit対応端末では`FFmpeg.getInstance().init()`を呼ばないよう変更した。音声ダウンロードは同ABIで`bestaudio/best`を取得後、既存の端末内FFmpegKitでMP3／AACへ変換するため、音声機能を維持した。
+- `storage/StorageMaintenance.kt`を追加し、アプリ更新後の初回起動（または6時間以上経過後）にバックグラウンドで一度だけ保守を実行するようにした。対象はアプリが作成した24時間以上前の`Essential-*`／`essential-*`／`yt-dlp*`／`gecko_temp`キャッシュ、旧形式の`filesDir/youtubedl-android`（`packages`または`yt-dlp`の目印がある場合のみ）、FFmpegKit対応ABIで不要になった`noBackupFilesDir/youtubedl-android/packages/ffmpeg`だけに限定した。Download/Essentialの公開保存物、設定、現在のPython／yt-dlp実行環境、共有ストレージは削除しない。
+- 保守処理は`storage_maintenance`へ最終実行版番号と時刻を保存し、端末再起動・更新後も再実行条件を判定する。削除失敗時は警告ログを残し、次回起動で再試行できる。削除件数と回収バイト数は`MainActivity`のInfoログへ記録する。
+- `StorageMaintenanceTest.kt`へ一時キャッシュ名、24時間の期限、FFmpegKit対応ABI、旧yt-dlpルートの目印判定を追加し、単体テスト4件を確認した。音声経路を含む既存テスト30件が全て成功し、`:app:testDebugUnitTest :app:lintDebug :app:assembleDebug --no-daemon --max-workers=1 -Pkotlin.compiler.execution.strategy=in-process`は`BUILD SUCCESSFUL`となった（既存の非推奨API・実験的設定警告は継続）。
+- 実機Xiaomiの145MBの内訳をADBで直接取得する権限・接続はないため、端末上で実際に何MB回収できるか、次回Release更新後の自動削除、初回ダウンロード時の再展開時間は未確認。ユニバーサルAPKを手動導入している場合の213MBは、次回のアプリ内更新で対応ABI APKを優先する既存`UpdatePolicy`の対象となる。
+
+【2026-09-11 共通スライダーの端点ギャップ修正】
+- Pro Filmで確認された、値を左へ動かすほど紫ゲージと白ノブの間に隙間が見える問題を調査した。従来は紫ゲージをレール全幅×値、白ノブをノブ径を除いた可動幅×値で計算しており、終端の基準が一致していなかった。
+- `ui/BubblyBars.kt`の`BubblyRail`へノブ径を渡し、紫ゲージの終端を「白ノブの右端」と同じ式（ノブ径＋可動幅×値）で算出するよう変更した。白ノブが上に描画されるため見た目は白のまま、0〜100%の全域でノブ左側からレール始点まで紫が連続する。泡のクリップ範囲も補正後の終端へ合わせたため、Pro Film、QR倍率、日課、ダウンロード状況、ファイル処理、アプリ更新など共通バー利用箇所へ一括適用される。
+- `:app:testDebugUnitTest :app:lintDebug :app:assembleDebug --no-daemon --max-workers=1 -Pkotlin.compiler.execution.strategy=in-process`を再実行し、単体テスト30件、Lint、Debug APK生成の`BUILD SUCCESSFUL`を確認した。`git diff --check`も問題なし。端末上の各値（0%、中間値、100%）での見た目と高速ドラッグ時の体感は未確認。
+- 追加確認で、ノブ中心までの補正でも端部のアンチエイリアスが暗く見えるケースがあることを確認したため、紫ゲージの終端を白ノブの右端まで延長した。ノブは前面の白円で覆われるため、ノブ左側からレール始点までの下地が常時連続する。再度同じテスト30件、Lint、Debug APKを実行し`BUILD SUCCESSFUL`を確認した。物理端末の見た目は未確認。
+
+【2026-09-11 プロジェクトルートの検証成果物整理】
+- ルート直下を確認し、Git管理対象のソース、Gradle設定、ドキュメント、作業履歴、`local.properties`は移動対象から除外した。`.gradle`、`.idea`、`.kotlin`、`.cargo`、`build`、`backups`、`.codex-remote-attachments`、`app/build`相当の生成・復元・添付領域も、ビルドや復元に必要なため変更していない。
+- `.gitignore`で除外されているルート直下の検証成果物85点（合計100,194,179バイト）を、削除せず`output/qa/root-build`（`build-*`と比較画像43点、27,130,786バイト）および`output/qa/root-essential`（`essential-*` 42点、73,063,393バイト）へ移動した。移動先の同名ファイルがないことを事前確認し、上書きは行っていない。
+- 移動後にルート直下の対象ファイルが0点であること、各アーカイブの点数・バイト数が一致すること、`output/`全体が既存の除外設定で管理対象外であることを確認した。`git status --short`は整理前からの未コミット変更（ストレージ保守、共通スライダー等）のみで、整理によるソース差分は発生していない。`git diff --check`も問題なし。コードを変更していないため、この整理作業ではビルドを再実行していない。
+- 既存`output`直下に平置きされていた検証成果物103点（PNG 79点、XML 23点、TXT 1点）も、削除せず`output/qa/screenshots`、`output/qa/ui-dumps`、`output/qa/notes`へ拡張子別に移動した。既存の`output/image`、`output/pdf`、`output/twitter-repro`およびその配下のファイルは変更していない。各移動先の同名衝突はなく、上書きは発生していない。
+
+【2026-09-11 CameraStyleAIデータセット監査と初期実行計画】
+- ユーザー指定の`CameraStyleAI_Codex_Starter`について、ルート`AGENTS.md`、`START_HERE_CODEX.md`、`README.md`、データセット撮影ガイド、モデル出力契約、Android製品仕様、追加の`android/AGENTS.md`と`training/AGENTS.md`、受け入れ基準を読み、学習開始前の監査方針を確定した。
+- `metadata/pairs.csv`はテンプレートと同じヘッダーだがデータ行0行だった。8スタイルすべての`dataset/<style>/input`／`target`は`.gitkeep`のみで実画像0点、`validation/`も実画像0点だった。したがってEXIF、ICC、色空間、解像度、位置ズレ、geometry/content差、train/validation/testリークは現時点で測定対象がなく未評価とした。
+- `references/camera_style_reference_sources_v1.csv`は外部参考情報36行で、`dataset/`へコピーされた画像はないことを確認した。権利不明のWeb／SNS参考画像を学習へ混ぜないルールを維持する。`metadata/styles.yaml`の8スタイル定義は確認できたが、Leica M3のフィルム・現像・スキャン／デジタイズ条件は未確定で、学習前のブロッカーとした。
+- `python scripts/validate_dataset.py --csv metadata/pairs.csv`を実行し、`Rows: 0`、`pairs.csv has no data rows.`、`FAILED: 1 error(s), 0 warning(s)`を確認した。空データを`--allow-empty`で通すことはせず、学習・前処理・ONNX変換・Android実装は開始していない。
+- `CameraStyleAI_Codex_Starter/docs/DATASET_AUDIT.md`へ監査対象、件数、失敗、影響、再撮影と自動修正の切り分け、学習ゲート、未確認事項を記録した。`docs/exec-plans/active/initial-plan.md`へ、データ投入、非破壊前処理、4候補モデル比較、学習、評価、ONNX parity、Android実装、実機検証までの段階的な実行計画を作成した。
+- 作業後の検証では、データ原本と既存Androidソースを変更していない。監査レポートと実行計画の追加は親リポジトリでは未追跡の`CameraStyleAI_Codex_Starter`配下にあり、GitHub公開・学習・モデル生成は行っていない。次のアクションは撮影条件・権利・M3定義の確定、ペア画像と`pairs.csv`の投入、validatorエラー0の確認である。
+
+【2026-09-11 CameraStyleAI Phase 1監査ツール整備】
+- `CameraStyleAI_Codex_Starter/scripts/audit_dataset.py`を追加した。CSV必須列、パスのroot外脱出、split／style妥当性、pair_id重複、scene_groupリーク、training_allowed、画像存在・SHA-256重複、解像度・モード・EXIF orientation・ICC有無を非破壊で監査し、低解像度位相相関による位置ズレ候補も記録する。Pillow／NumPy／OpenCVが使えない場合やRAW／HEIFを読み取れない場合は、暗黙に成功扱いせずエラーとして残す。
+- `scripts/test_audit_dataset.py`へpath traversal、split正規化、空CSVの学習不可判定を確認する回帰テスト3件を追加した。初回はWindowsシステムTempの権限でテスト用一時フォルダのクリーンアップに失敗したため、テストをファイルシステム一時領域に依存しない形へ修正し、残った一時フォルダ2件は対象を限定して削除した。
+- `python -m py_compile scripts/audit_dataset.py scripts/test_audit_dataset.py`、`python scripts/test_audit_dataset.py`を実行し、3テスト全て成功した。`python scripts/audit_dataset.py --csv metadata/pairs.csv --output validation/dataset_audit.json --markdown validation/dataset_audit.md`を実行し、Rows 0、Dataset images 0、Errors 2、Warnings 1、Train ready noを確認した。既存validatorも再実行し、空CSVによるエラー1件で失敗することを確認した。
+- 学習ゲートを安全側に固定し、`training_allowed=false`、必須split（train／validation／test）の欠落、画像の読み取り不能、位置合わせ未判定・解像度不一致を学習不可として扱うようにした。現在の環境ではOpenCVが未インストールだが、実画像がないため位置合わせ処理は未実行であり、依存関係の追加インストールは行っていない。
+- 自動監査のJSON／Markdownを`validation/dataset_audit.json`と`validation/dataset_audit.md`へ生成し、`README.md`、`docs/DATASET_AUDIT.md`、`docs/exec-plans/active/initial-plan.md`へ再現コマンドと学習ゲートを追記した。実画像、CSV原本、モデル、Androidソース、GitHub公開状態は変更していない。現時点の品質指標（PSNR等）とAndroid実機速度はデータ／モデル未投入のため未測定。
+- `PROJECT_TREE.txt`へ監査レポート、active計画、監査スクリプト、回帰テスト、自動生成レポートの配置を反映した。作業ツリーの一時フォルダは残っていない。
+- 追加で`python -m unittest discover -s scripts -p 'test_*.py'`を実行し、回帰テスト3件が全て成功することを確認した。
+
+【2026-09-11 CameraStyleAI validatorの学習ゲート強化】
+- `scripts/validate_dataset.py`へ、画像拡張子の許可リスト、root外パス拒否、`references/`参考画像の学習利用拒否、`training_allowed=true`強制、8スタイル全ての存在、train／validation／testの必須split確認を追加した。空データを許可する`--allow-empty`は残したが、学習開始判定には使用しない。
+- `python -m py_compile scripts/validate_dataset.py`と`python scripts/validate_dataset.py --csv metadata/pairs.csv`を実行し、現状は`Rows: 0`、`pairs.csv has no data rows.`の1エラーで失敗することを確認した。これは実画像未投入のため期待された停止状態で、学習・前処理・ONNX化・Android実装は開始していない。
+
+【2026-09-11 CameraStyleAI 実写データ収集・学習準備 Stage 0〜1】
+- ユーザー指定の両フォルダを再監査し、`AGENTS.md`、`START_HERE_CODEX.md`、`CODEX_IMPORT_INSTRUCTIONS.md`、README、docs、manifests、サブディレクトリの追加`AGENTS.md`を読了した。指定された`CODEX_REAL_DATA_DOWNLOAD_PROMPT.md`はプロジェクト・添付領域のどこにも存在しなかったため、ユーザーの今回の指示を有効な主指示として扱い、欠落を計画と完了レポートへ明記した。
+- Dドライブ空き容量を再確認し、監査開始時点は約887.53GB、取得中の確認では約930GB前後を確保していた。既存ファイルの削除・移動は行っていない。公開データの圧縮・展開・正規化が重複するため100GiBを保留領域とする`docs/exec-plans/active/real-data-download-plan.md`を先に作成した。
+- `CameraStyleAI_REAL_DATA_Collection_Kit/scripts/download_resumable.py`を追加した。`.part`、HTTP Range、中断再開、リトライ、HEAD Content-Length、SHA-256、ETag/OC-Checksum、取得時刻を記録し、完成済みファイルを再取得しないidempotent動作にした。集約`download_manifest.json`は対象外datasetの既存記録を保持するよう修正した。
+- `extract_downloads.py`を安全展開へ更新した。ZIP CRC、TAR/GZIP memberのroot外パス、絶対パス、リンク、非通常ファイルを拒否し、`extractall`を使わない。既存原本は上書きせず専用展開先へ保存する。
+- 公式DPEDページ（`https://aiff22.github.io/`）を確認し、DPED sampleを取得した。サイズ131,555,357 bytes、SHA-256 `4578e385dc2ff4305400494d10b53092b65f9b5e58a864dba86c6bf6f12462ee`、gzip安全展開182画像。`adapt_dped_sample.py`でBlackBerry/iPhone/Sony対Canonの同名42ペアを`metadata/real_dataset_pairs.csv`へ登録し、scene_group固定split、training_allowed、出典URL、画像SHA-256を記録した。原本は視点差があるため`needs_registration`とした。
+- DPED CNN patchesを同じ公式配布元から取得した。HEAD実サイズ6,605,953,079 bytes、SHA-256 `f9fc26dbc109467a07955f6b1a69025faf95f8a25cab8951fd0cd4b06f86aa63`。gzip安全展開で943,013ファイル（BlackBerry/iPhone/Sonyの公式train/test patch）を確認した。`adapt_dped_patches.py`で同名入力↔Canon targetを471,463ペアへ変換し、公式train/test境界、100x100、`official_aligned`を保持した。`audit_dped_pairs.py`で欠損0、basename不一致0、pair_id重複0、scene_group split跨ぎ0を確認した。ただし元scene IDが配布されないためpatch間近重複は未判定、validationは自動生成していない。
+- Zurich Canon subsetのmanifest URL（`data.vision.ee.ethz.ch/bhatg/zurich-raw-to-rgb.zip`）はHTTP 404であり、代替ミラーを推測せず失敗履歴として保存した。同時に公式full配布のHTTP 303→WebDAV、Content-Length 23,808,958,387 bytes、サーバーSHA-1をHEAD確認し、Zurich fullを再開可能方式で取得開始した（この作業履歴時点では取得中）。
+- MIT-Adobe FiveK公式ページの利用条件を確認し、公式`LicenseAdobe.txt`、`LicenseAdobeMIT.txt`、対象一覧`filesAdobe.txt`、`filesAdobeMIT.txt`を`CameraStyleAI_REAL_DATA_Collection_Kit/dataset_licenses/MIT-Adobe-FiveK/`へ保存した。FiveK画像は包括的商用許諾ではなく、画像本体は取得・公開せず、画像ごとの条件に従う方針とした。NUS、BurstSR、Gehler-Shi、MultiCamの公式ページ／規約メモも同kitの`dataset_licenses/`へ保存した。
+- `CameraStyleAI_Codex_Starter/scripts/build_real_data_reports.py`を追加し、`metadata/real_dataset_catalog.csv`、`metadata/real_dataset_licenses.csv`、`reports/REAL_DATA_STORAGE_REPORT.md`、`reports/REAL_DATA_READY_REPORT.md`を生成した。DPED sample＋patch時点の集計は安全展開943,195画像、adapter登録471,505ペア、pretraining使用可能471,505ペア、取得アーカイブ＋正規化約6.51GiB。商用利用は明示許諾がないため全件NO、8スタイルの正解targetではないこと、未取得datasetと規約待ちを区別して記録した。
+- `CameraStyleAI_Codex_Starter/.gitignore`とREAL kit`.gitignore`へ原本・大容量取得物の除外を追加し、READMEへ再現コマンドを追記した。adapter、監査、レポートスクリプトは`python -m py_compile`を通過。学習、ONNX変換、Android組み込みは、validation・scene leakage・ライセンスゲート未達のため開始していない。
+
+【2026-09-12 CameraStyleAI 72時間MVP方針変更とDay 1基盤】
+- ユーザー指示により、最重要目標を「DPED大量学習」から「3日以内に8スタイルが完全オフラインで動く高品質Android v0.1」へ変更した。DPED再学習・大規模ダウンロード・追加ONNX化はv0.1後へ延期し、既取得データは削除しない方針を固定した。
+- 現在のデータを監査し、Zurich RAW-to-RGB fullの`.part`（21,097,349,120 / 23,808,958,387 bytes、88.61%）と`download_pause_20260911.json`を保持した。Windows権限制限によりプロセス詳細取得は拒否されたが、停止記録と矛盾する更新は確認されていないため、ファイル変更・削除・再開は行っていない。
+- `tqmane/lut_extractor`、`shenmintao/V-Log-Alchemy`、`sohan-shingade/fujiLUT`、`rmanalan/sluty`、`stoutput/xperia-camera-mod`、`hgayan7/FilterLibrary`をGitHubから浅くcloneしてライセンス、コード、LUT、アルゴリズム、Android転用可否を監査した。監査結果を`CameraStyleAI_Codex_Starter/reports/72H_MVP_PLAN.md`と`reports/STYLE_LICENSES.md`へ記録した。V-Log-AlchemyとFilterLibraryはApache-2.0、fujiLUTとsLUTyはREADME上MITだが独立LICENSEなし、lut_extractorとxperia-camera-modは明示LICENSEなしと判定した。ライセンス不明コード、OTA抽出LUT、メーカー由来バイナリはAPKへ同梱しない。
+- `android/app/src/main/java/ai/camerastyle/pipeline/StyleEngine.kt`を追加した。LutStyle（三線形cube補間）、AdaptiveLutStyle（画像の平均色温度で候補LUTをブレンド）、MonoFilmStyle（Monopan係数0.43708/0.41340/0.14617、Tone、決定論的grain）、ParametricStyle（線形sRGB、3x3色行列、彩度、コントラスト、ハイライト肩）、将来用OnnxStyleを共通Style契約へ統合した。Bitmapは行単位で読み書きし、全画素配列の追加確保を避ける。
+- Day 1の8スタイルカタログを追加した。PROVIAはfujiLUTの公開特性を参考に自前17^3 LUT、Hasselblad/OPPOはApache-2.0のV-Log-Alchemy Standard sRGB 33^3 cubeとsRGB→線形V-Gamut→V-Logアダプター、Leica M9は暖色／寒色候補のAdaptive LUT、Leica M3は自前Monopan、Xiaomi Leica／Sony ST／Huawei XMAGE／vivo ZEISSは自前Parametric近似（後2つはBeta）として実装した。
+- V-Log-Alchemyの`Hasselblad_Standard_Phocus_X2D_VLog_sRGB.cube`（412,885 bytes）を`android/app/src/main/assets/styles/hasselblad_standard_srgb.cube`へコピーし、出典をレポートへ記録した。sRGBをV-Log LUTへ直接渡さず、入力アダプターを必ず経由する構造にした。
+- `CameraStyleViewModel.kt`をPhoto Picker、Exif orientation正規化、最大約1,200万画素のメモリ予算付きdecode、非同期StyleEngine処理、キャンセル、Intensity 0〜100%、MediaStore JPEG保存、主要EXIF属性コピーへ更新した。`MainActivity.kt`を8スタイルLazyRow、Intensity Slider、Before/After Slider、処理進捗、保存ボタン、Beta表示の画面へ更新した。ネットワーク権限は追加していない。
+- Android StarterにSDK `local.properties`、ローカル検証用署名設定、キーを追加した。キーは`.gitignore`へ追加し、公開用署名鍵として扱わない。
+- `StyleEngineTest.kt`へcube identity補間、M3の等値モノクロ／値域、V-Log adapterの0〜1範囲テスト3件を追加した。ASCII JunctionとローカルGradle 8.11.1で`:app:testDebugUnitTest :app:assembleDebug`を実行し、テスト3件・Debug APK生成が`BUILD SUCCESSFUL`となった。`:app:assembleRelease`も`BUILD SUCCESSFUL`で、Release APKは9,060,248 bytes、SHA-256 `C892F3FE351A4471C64C9B5D7C470A705AFF9A94932113EE44E89072D005B786`。Kotlin daemonの一時ファイル権限、Android metrics書込み、jvmTarget非推奨警告は継続するが失敗要因ではない。
+- `adb devices`に接続端末がなく、Photo Pickerの実操作、8スタイルの目視、フル解像度端末速度、OOM、実機EXIF保持、保存先、オフライン通信ログは未確認。Release APKはローカル検証キー署名であり、配布署名・GitHub公開は行っていない。主な残課題はDay 2の各スタイル評価、Day 3の実機回帰、フル解像度tile処理、配布署名である。
+
+【2026-09-12 CameraStyleAI v0.1 MVP成果物・静的検証】
+- `reports/72H_MVP_STATUS.md`と`reports/THIRD_PARTY_NOTICES.md`を追加し、Release APK、8スタイルの実装方式、根拠、再現度の扱い、既知の不足点、v0.2 AI候補、第三者ライセンスを成果物台帳へまとめた。純正同一フレームの許諾済みground truthがないスタイルは「近似・未測定」として数値を捏造していない。
+- `android/app/src/main/assets/licenses/V-Log-Alchemy-Apache-2.0.txt`を追加し、同梱cubeのSHA-256 `5D317CB1340C183332267E4F3012493E3C758083D670B6656934F885D0D742EC`をNOTICEへ記録した。
+- `:app:lintDebug`と`:app:testDebugUnitTest`をASCII Junction経由で再実行し、Lint 0 error、unit test 3件成功を確認した。`:app:assembleRelease`で生成したAPKは9,064,370 bytes、SHA-256 `F8016CD4650213AAFB20AAB12B5ACCCE5DDE32CEC5BBB23826A5BCEAD88F6CE0`、versionName `0.1.0-mvp`、package `ai.camerastyle.pipeline`。`apksigner verify --verbose`でv2署名を確認した。
+- Release APKの`aapt dump badging`を検査し、INTERNET権限がなく、Photo PickerのためのAndroidX dynamic receiver permissionのみであることを確認した。APK内にHasselblad cubeとApache license textが含まれることを7-Zip一覧で確認した。
+- `adb devices`は接続端末0件だったため、実機Photo Picker、8スタイルの見た目、Before/After操作、保存・EXIF、フル解像度速度・OOM、実機通信ログは未検証。APKはローカル検証キー署名であり、配布署名・GitHub公開は行っていない。
+
+【2026-09-12 CameraStyleAI Bitmap寿命修正とRelease再検証】
+- スタイル／Intensity再処理時、キャンセル時、ViewModel破棄時に旧before/after Bitmapをrecycleする`releaseCurrentResult()`を追加した。新しいdecode途中のBitmapも成功・キャンセル・例外の各経路で解放し、連続編集時のメモリ滞留を抑制した。
+- 修正後に`:app:lintDebug :app:testDebugUnitTest :app:assembleRelease --no-daemon --max-workers=1`を実行し、Lint 0 error、unit test 3件、Release生成の`BUILD SUCCESSFUL`を確認した。Kotlin daemon一時ファイル権限拒否はfallback compilerで継続する環境警告。
+- 再ビルド後の最終APKは9,064,370 bytes、SHA-256 `491EB82427CABC3ED176AA27A11A97468B11468BFF14F870796D5F5F10129FCD`、apksigner v2 true。ZIP再生成によりSHA-256はビルドごとに変わり得るため、この値を現行成果物の基準とする。
+
+【2026-09-12 CameraStyleAI 72時間MVP最終記録】
+- `docs/DECISIONS.md`へ、DPED・大規模学習・ONNX化をv0.1後へ延期し、共通StyleEngineでLUT／Adaptive LUT／MonoFilm／Parametricを統合する判断を追記した。既取得DPEDとZurich `.part` は削除・移動・再開していない。
+- `:app:lintDebug`（0 error）、`:app:testDebugUnitTest`（3件成功）、`:app:assembleRelease`（BUILD SUCCESSFUL）を再確認した。環境由来のKotlin daemon一時ファイル権限、Android metrics書込み、jvmTarget非推奨警告は残るが、ビルド失敗ではない。
+- 最終Release APKは`android/app/build/outputs/apk/release/app-release.apk`、9,064,370 bytes、SHA-256 `F06829AB8057F501001EA0B86AB0B44204FD22BEC6DBB604DD5E8D7006A30029`。package `ai.camerastyle.pipeline`、versionName `0.1.0-mvp`、apksigner v2検証済み。署名はローカル検証鍵であり配布署名ではない。
+- APKのINTERNET権限なし、Hasselblad cubeとApache-2.0ライセンス本文の同梱を静的確認した。`adb devices`は0台のため実機UI・速度・OOM・EXIF保存・オフライン通信ログは未検証として成果物レポートへ固定した。
+
+【2026-09-12 CameraStyleAI Day 2 追加4スタイル整理】
+- Day 2として、Xiaomi Leica Original、Sony Xperia Standard / ST、Huawei XMAGE Original、vivo ZEISS Natural / Authenticの4レシピを`StyleRecipes`へ切り出した。UIは既存の共通Style契約のまま、将来の許諾済みLUT／sLUTy cube／軽量ONNX差し替えをレシピ単位で行える構造にした。
+- XiaomiはLeica NAT/VIV系の自然な彩度とハイライト肩、SonyはSTの落ち着いた彩度と中間調、Huaweiは暖色の肌と穏やかなハイライト、vivoは自然な緑と控えめな彩度を狙う自前Parametric近似とした。Huawei/vivoはBeta表示を維持し、メーカーOTA・vendor binary・非公開モデルは使用していない。
+- `reports/DAY2_STYLE_NOTES.md`を追加し、各スタイルの公開情報、実装方式、ライセンス境界、v0.2差し替え口、実機未測定の扱いを記録した。
+- `StyleEngineTest.day2RecipesStayBoundedAndRemainDistinct`と`styleCatalogExposesAllEightStylesAndBetaFlags`を追加し、4レシピの出力値域・相互差分・8件登録・Betaフラグを検証した。生成済みテスト結果XMLは5 tests、failures 0、errors 0。Day 2ビルドのRelease APKは9,064,370 bytes、SHA-256 `40065063D7D03DD29791CB99F512114085139A81D36308E770055757FA8E0B77`。
+- Gradle実行ではWindowsのKotlin daemon一時ファイル権限拒否とAndroid metrics書込み拒否が発生したが、fallback compilerで処理が継続し、Lintタスク、unit test、assembleReleaseは生成物上成功を確認した。実機未接続のためDay 3の目視・速度・保存回帰へ引き継ぐ。
+- `docs/DECISIONS.md`へ、4スタイルのレシピを`StyleRecipes`へ分離し、将来のsLUTy cube／軽量ONNXへ差し替えるDay 2判断を追記した。
+- 追試の単独Gradle起動では生成済みキャッシュの`native-platform.dll.lock`を開けないWindows環境エラーが再発した。ソース・データ・生成APKは変更せず、4 tests / failures 0 / errors 0のXMLとAPK静的検査結果を保持したまま、Day 3開始時にGradleキャッシュ環境を再確認する。
+- その後、既存依存キャッシュを許可された一時user homeへ複製し、`org.gradle.native=false`と`--offline`を指定して再実行した。構文修正後の`:app:lintDebug :app:testDebugUnitTest :app:assembleRelease`が`BUILD SUCCESSFUL`となり、5 tests、failures 0、errors 0を確認した。
+
+【2026-09-12 CameraStyleAI Day 3品質・リリース仕上げ】
+- Day 3の範囲を新規スタイル・AI学習・DPED再開・ONNX依存追加なしの品質改善へ限定した。既取得DPED／CNN patches／Zurich RAW-to-RGB fullの`.part`と停止記録は確認のみで、削除・移動・再開を行っていない。
+- `android/app/src/main/java/ai/camerastyle/pipeline/CameraStyleViewModel.kt`へ`isSaving`排他を追加した。保存中はPhoto Picker、Style、Intensity、キャンセル、別画像選択を無効化し、保存対象Bitmapが再処理や`recycle`と競合しないようにした。保存ボタンには「保存中…」表示を追加し、MediaStore JPEG名の`System.currentTimeMillis()`が実際に展開されるよう修正した。
+- `DecodePlanner`を追加し、端末最大ヒープの55%、入力・出力・orientation一時Bitmapを含むピーク12 bytes/pixelを安全予算としてデコードsampleを計算する。安全予算内は`inSampleSize=1`で原寸、超過時は自動縮小する。処理中の`OutOfMemoryError`はクラッシュさせず、日本語の解像度案内へ変換する。48MP等を常に原寸で扱うタイル出力は未実装としてレポートに残した。
+- EXIFコピーを撮影日時、Make/Model、Software、レンズ、F値、露出時間、ISO、焦点距離、ホワイトバランス、フラッシュ、測光、シーン、GPSなどの標準タグへ拡張した。出力JPEGはorientation=Normal、Exif ColorSpace=sRGBを設定する。ICCバイト列とメーカー独自タグは保証しない。
+- `StyleEngineTest.kt`へDecodePlannerの回帰テストと、8スタイル×暗部・中間調・ハイライト・肌・緑・空の代表色プローブを追加した。4,000×3,000（256MiB）は原寸、8,000×6,000はヒープに応じてsampleされ、全スタイルの出力が有限かつ0〜1に収まることを検証した。最終テスト結果は7 tests、failures 0、errors 0。
+- ASCII Junction `C:\Users\waki1\Desktop\essential-build\CameraStyleAI_Codex_Starter\android`で、既存依存を複製した一時Gradle user home、`GRADLE_OPTS=-Dorg.gradle.native=false`、`JAVA_TOOL_OPTIONS=-Dorg.gradle.native=false`、`--offline`、`-Pkotlin.compiler.execution.strategy=in-process`を使用し、`:app:lintDebug :app:testDebugUnitTest :app:assembleRelease --no-daemon --max-workers=1`を実行した。`BUILD SUCCESSFUL`、Lint 0 error、Release assemble成功を確認した。Android metrics書込み拒否、Kotlin daemon一時ファイル拒否、targetSdk／依存更新warningは環境警告として継続した。
+- Release APK `CameraStyleAI_Codex_Starter/android/app/build/outputs/apk/release/app-release.apk`は9,080,754 bytes、最終再ビルドSHA-256 `9B8E913BE4387A1BDB854CD54D3FE2C1FFF856A465AA89EA7C8D3E6A3B6FF79D`。`aapt dump badging`でpackage `ai.camerastyle.pipeline`、versionName `0.1.0-mvp`、launchable MainActivity、INTERNET権限なし（dynamic receiver permissionのみ）を確認した。`apksigner verify --verbose`はv2=true。APK内のHasselblad cubeとV-Log-Alchemy Apache-2.0本文も確認した。
+- `reports/DAY3_QA_REPORT.md`、`reports/72H_MVP_STATUS.md`、`reports/72H_MVP_PLAN.md`、`docs/DECISIONS.md`へ実装範囲、検証コマンド、APKハッシュ、ライセンス境界、未検証項目、v0.2候補を更新した。この環境では`adb`コマンドが利用できず実機接続もないため、実機Photo Picker、Before/After、全8スタイルの見た目、フル解像度速度、OOM閾値、保存後EXIF、端末オフライン挙動は未検証として明記した。
+
+【2026-09-12 Essential Pro FilmへCameraStyleAI StyleEngineを統合】
+- ユーザー指示「完成したプログラムをEssentialのPro Filmの処理に置き換える」に従い、`app/src/main/java/jp/essential/app/feature/profilm/ProFilmScreen.kt`の既存`FilmLook`独自現像エンジン（線形RGB、メーカー別行列、micro contrast、halation等）を削除し、CameraStyleAI v0.1の共通`StyleEngine`へ置き換えた。UIのPro Filmルート、Before/After比較、強度レール、液体ガラス風Surface、保存操作は維持し、処理方式だけを一本化した。
+- `app/src/main/java/jp/essential/app/feature/profilm/StyleEngine.kt`を追加した。`LutStyle`、`AdaptiveLutStyle`、`MonoFilmStyle`、`ParametricStyle`、将来用`OnnxStyle`、`.cube`三線形補間、sRGB→V-Log adapter、`DecodePlanner`、8件の`StyleCatalog`をEssentialのPro Filmパッケージへ移植した。Leica M9はAdaptive LUT、Leica M3はMonopan風MonoFilm、PROVIAは自前17^3 LUT、HasselbladはV-Log-Alchemy Standard cube、残りはDay2のParametric近似を使用する。
+- Pro Filmの写真読込を固定長辺2,560px制限から端末ヒープ予算ベースへ変更した。安全予算内は原寸、超過時は自動`inSampleSize`で縮小し、orientationを画素へ反映する。処理は`StyleEngine.process`の行単位・キャンセル可能な非同期処理を使い、Style／Intensity変更時は旧preview Bitmapを解放する。
+- 保存形式をPNGからJPEG quality 96へ変更し、`CreateDocument`でユーザー指定先へ保存する。入力URIの撮影日時、カメラ／レンズ、露出、ISO、焦点距離、ホワイトバランス、フラッシュ、測光、GPS等の標準Exifをコピーし、orientation=Normal、ColorSpace=sRGBを設定する。ICCバイト列・メーカー独自タグは保証しない。
+- 保存中はStyle、Intensity、Photo Picker、比較操作をロックし、保存対象Bitmapの再処理／recycle競合を防いだ。OOM・保存失敗はクラッシュさせず状態文言へ表示する。Huawei／vivoは既存どおりBeta表示、すべてのスタイルをPro Filmから選択できる。
+- CameraStyleAIで検証済みの`hasselblad_standard_srgb.cube`（412,885 bytes、SHA-256 `5D317CB1340C183332267E4F3012493E3C758083D670B6656934F885D0D742EC`）と`V-Log-Alchemy-Apache-2.0.txt`を`app/src/main/assets/styles`／`licenses`へ追加した。ONNXモデル、メーカー抽出資産、ライセンス不明コードは追加していない。`THIRD_PARTY_NOTICES.md`へApache-2.0と出典URLを追記した。
+- 既存依存キャッシュを一時Gradle user homeへ複製し、ASCII Junction `C:\Users\waki1\Desktop\essential-build`経由で`GRADLE_OPTS=-Dorg.gradle.native=false`、`JAVA_TOOL_OPTIONS=-Dorg.gradle.native=false`、`--offline`、`-Pkotlin.compiler.execution.strategy=in-process`を指定して`:app:testDebugUnitTest :app:lintDebug :app:assembleRelease --no-daemon --max-workers=1`を実行した。`BUILD SUCCESSFUL`、既存unit test全件成功、Lint error 0を確認した。環境警告はAndroid metrics書込み拒否、Kotlin daemon一時ファイル拒否、既存deprecated APIのみ。
+- 現行Essential Release APKは`app/build/outputs/apk/release/app-universal-release-unsigned.apk`（Universal 253,821,782 bytes、ABI split設定は既存のまま）。ASCII Junction経由で`aapt dump badging`のpackage `jp.essential.app`、version `0.5.8`、Pro Filmを含む既存権限、Hasselblad cube（412,885 bytes）／Apache-2.0 license assetを最終確認した。配布署名環境変数が未設定のためRelease APKはunsignedで、`apksigner`検証対象は未署名として扱った。既存unit test 35件、Lint error 0、`:app:testDebugUnitTest :app:lintDebug :app:assembleRelease`は`BUILD SUCCESSFUL`。最終APK SHA-256は`393BC7DBDEC308441E8FDFDFA960AD4A14B1DCEB8E3068649F298E3FB88FDB74`。実機未接続のため、Pro Filmの8スタイル見た目、速度、保存後Exif、端末固有OOMは未検証である。置き換え仕様と検証結果を`docs/PROFILM_CAMERASTYLEAI_INTEGRATION.md`へ記録した。コミット、push、Release公開は行っていない。
+
+【2026-09-12 Android Studio側Essentialの更新確認】
+- `C:\Users\waki1\Desktop\essential-build`が`D:\#AI開発\Android\Essential`を指すJunctionであることを再確認した。Android Studioで開いているプロジェクトと、Pro Filmへ統合した`StyleEngine`／8スタイル実装が同じ作業ツリーを参照している。
+- Junction経由で`:app:testDebugUnitTest :app:lintDebug :app:assembleRelease --offline '-Pkotlin.compiler.execution.strategy=in-process' --no-daemon --max-workers=1`を再実行し、`BUILD SUCCESSFUL`（10秒、83 actionable tasks、Lint error 0）を確認した。PowerShellの`-P`引数解釈による初回失敗は引用修正で解消した。
+- ソース・APKの追加変更はなく、コミット、push、署名済みRelease公開は行っていない。
+
+【2026-09-12 Pro Film現像精度最大化ロードマップ更新】
+- ユーザー方針「既に第三者が作成し公開されているものはフル活用」を反映し、`docs/PROFILM_ACCURACY_ROADMAP.md`へ公開資産を自作より先に比較・統合する最短予定を追加した。
+- V-Log-Alchemy／FilterLibrary（Apache-2.0）はコード・LUT・アルゴリズムを条件内で積極利用し、fujiLUT／sLUTy（README上MIT、独立LICENSEなし）は許諾確認後にコード・生成物を採用する扱いへ整理した。lut_extractor／xperia-camera-mod（明示LICENSEなし）は公開解析・仕様の参照に限定する。
+- 予定表へT+0〜72時間の公開資産棚卸し、drop-in比較、評価ハーネス、Leica M9→M3→PROVIA→Hasselblad校正、4〜30日目のsLUTy・空間処理・必要最小限ONNX化を記録した。既存ソース、データ、APKは削除・移動・再配布していない。
+
+【2026-09-12 72時間完成目標への予定表再整理】
+- ユーザー要望「3日ほどで完成」を反映し、`docs/PROFILM_ACCURACY_ROADMAP.md`の目的を「72時間以内に出荷可能なv0.1完成」と明記した。
+- 72時間のDefinition of Doneを追加し、T+60時間以降は新方式・新スタイル・大規模学習を禁止して安定化とRelease作成へ集中する方針にした。
+- 4〜30日目の正解ペア校正、sLUTy、空間処理、必要最小限ONNX化はv0.2へ移動した。正解ペアが72時間内に揃わなくても公開資産と高品質近似で出荷し、データ待ちで停止しない。
+
+【2026-09-12 現像精度向上作業開始・公開65^3 LUT採用】
+- ユーザー指示「3日ほどで完成させたい。作業開始」に従い、72時間計画のT+0〜10時間枠から評価基盤と公開資産のdrop-in改善へ着手した。DPEDの大量学習、再学習、ONNX依存追加、既取得データの削除・移動・再開は行っていない。
+- `CameraStyleAI_Codex_Starter/scripts/evaluate_style_pairs.py`を追加した。許諾済みneutral/target CSVを入力として、style／scene／split別のMAE、RMSE、PSNR、CIELAB ΔE76、色相誤差、ハイライトクリップ率をJSON／Markdownへ出力し、license/source_url不足を自動除外する。`metadata/style_accuracy_pairs.example.csv`で空manifestのstrict smoke testを実行し、評価0件・警告0・エラー0を確認した。`py_compile`も成功した。
+- 公開Apache-2.0のV-Log-Alchemy `Hasselblad_Standard_Phocus_X2D_VLog_sRGB_65.cube`（3,152,131 bytes、SHA-256 `69AF6231C4ACB1DBD7D75D3B804BC443B42D2611326E43053CD1F673333B281A`）をEssentialとCameraStyleAI Starterへ追加した。Androidは65^3を優先し、旧33^3をfallbackとして保持した。
+- `SrgbToVLogAdapter`の行列を公開V-Gamut原色とsRGB D65の色度変換から再計算し、ニュートラル軸回帰テストを追加した。V-Log前提cubeへsRGBを直接入力する経路は追加していない。NOTICE、統合仕様、MVP状況表へ出典・ハッシュ・入力契約を更新した。
+- ASCII Junction経由で`:app:testDebugUnitTest :app:lintDebug :app:assembleRelease --offline '-Pkotlin.compiler.execution.strategy=in-process' --no-daemon --max-workers=1`を再実行した。Essentialは36 tests、failures 0、errors 0、Lint error 0、`BUILD SUCCESSFUL`。Release Universal APKは254,667,686 bytes、SHA-256 `266C589A330E070FBE85474C70F5EB96B7E5347D1A8A58113BE1E5A71ACCDDBD`。実機未接続のため、8スタイルの目視、速度、保存Exif、端末固有OOMは引き続き未検証とした。
+- CameraStyleAI Starterも同じadapter／65^3 cubeへ同期した。日本語実体パスからのGradleテストではクラスパス由来の`ClassNotFoundException`が出たが、ASCII Junction `C:\Users\waki1\Desktop\essential-build\CameraStyleAI_Codex_Starter\android`経由で`:app:testDebugUnitTest :app:assembleDebug --offline '-Pkotlin.compiler.execution.strategy=in-process' --no-daemon --max-workers=1`を再実行し、8 tests、failures 0、errors 0、`BUILD SUCCESSFUL`を確認した。Starter Debug APKは13,399,024 bytes、SHA-256 `7972DE3409E472566077462D1E4ABF89A647D9A847D0F97A33BEE382B2F71F50`。実機接続・目視確認は未実施。
+
+【2026-09-12 M9適応処理・sRGB強度補間・PROVIA 33^3化】
+- `StyleEngine`のLeica M9を、ライセンス不明のメーカー抽出LUTではなく、公開解析資料で示された照明条件を根拠にした5候補の自前LUTへ整理した。低照度、タングステン、混合光、蛍光灯、昼光を、平均色温度、平均輝度、ハイライト色温度、暗部輝度からガウス重みで連続ブレンドする`AdaptiveLutStyle.prepare`を実装した。画像全体の統計は1枚につき一度だけ計算し、候補cubeも画素ループ前に1枚へ合成するため、画素ごとの候補選択を避けている。
+- `ImageStatistics`へハイライトRGBと暗部輝度を追加し、`StyleEngine.process`が`PreparedStyle`を準備してから行単位処理を開始する構造にした。`CubeLut.blend`、`AdaptiveLutCandidate`、M9の統計反応テストをEssential／CameraStyleAI Starter双方へ同期した。ライセンス不明の`lut_extractor`から抽出した資産やXiaomi非公開モデルは同梱していない。
+- Intensityの中間値をsRGB数値で直接混ぜず、線形光量へdecodeしてから補間し、sRGBへ再encodeする処理へ変更した。0%は入力画素、100%はStyle結果をそのまま使う分岐を残し、既存UIの0〜100%契約と完全オフライン条件を維持した。
+- PROVIAの自前生成cubeを17^3から33^3へ上げ、公開fujiLUTの特性を参考にした自前tone／matrix／saturationレシピの補間精度を改善した。Hasselbladは引き続きV-Log-Alchemy Apache-2.0の65^3 cubeを優先し、33^3をfallbackとして保持する。
+- Essential側の`StyleEngineTest`はM9照明反応テストを含む37件、failures 0、errors 0。ASCII Junction `C:\Users\waki1\Desktop\essential-build`経由で`:app:testDebugUnitTest :app:lintDebug :app:assembleRelease --offline '-Pkotlin.compiler.execution.strategy=in-process' --no-daemon --max-workers=1`を実行し、`BUILD SUCCESSFUL`、Lint error 0を確認した。cubeパーサーを二段階・直接FloatArray格納へ変更した後の最終Universal unsigned Release APKは`app/build/outputs/apk/release/app-universal-release-unsigned.apk`、254,671,962 bytes、SHA-256 `7EBDE31BB759753A33E84698D3E1C3E19EF92C3480D438EE3940C9C7DB7FF0E9`。
+- Starter側は同じ変更をASCII Junctionへ反映し、`:app:testDebugUnitTest :app:assembleDebug`で9 tests、failures 0、errors 0、`BUILD SUCCESSFUL`を確認後、`:app:assembleRelease`も成功した。キャンセル／例外時に途中Bitmapをrecycleするtry/catchと、65^3 cubeの直接FloatArrayパーサーをEssentialと同じ経路へ揃えた。最終Release APKは`CameraStyleAI_Codex_Starter/android/app/build/outputs/apk/release/app-release.apk`、9,926,338 bytes、最終SHA-256 `F29099C07F17AFB7F8BA5E0E09929DC592AA12CA9E019BBF8315B96EB6F821F7`。
+- `docs/PROFILM_CAMERASTYLEAI_INTEGRATION.md`、`docs/PROFILM_ACCURACY_ROADMAP.md`、`ESSENTIAL_HANDOFF.md`、`CameraStyleAI_Codex_Starter/reports/72H_MVP_STATUS.md`、`android/README.md`へM9 5候補、PROVIA 33^3、線形強度補間、テスト件数、APKハッシュを反映した。`git diff --check`はエラーなし。実機未接続のためPhoto Picker、Before/After、8スタイルの見た目、フル解像度速度、OOM、保存後Exifは未検証。DPED／Zurichデータは削除・移動・再開していない。
+
+【2026-09-12 emulator-5554 Pro Filmスモーク検証】
+- Essential最新Debugのx86_64 APKを`:app:assembleDebug`で生成し、`app-x86_64-debug.apk`（96,954,232 bytes、SHA-256 `5A6929523501EB739E443B23BD4B89387A41A9B63AE1471B83DA76E7563E6645`）を`emulator-5554`へ`adb install -r -d`した。Debug packageは`jp.essential.app.debug`、Activity classは`jp.essential.app.MainActivity`で起動した。
+- UIツリーで設定画面から機能一覧へ移動し、Pro Filmカードを選択できることを確認した。Pro Film画面は`CameraStyleAIの8スタイルを共通処理`、Photo Picker導線、Before/Afterの同枠表示、強度0〜100%、保存ボタンを表示した。横スクロールで8スタイル全件（PROVIA、Hasselblad、Leica M3/M9、Xiaomi、Sony、Huawei Beta、vivo Beta）が選択可能であることを確認した。
+- Photo Pickerで画像を1枚選択後、Leica M9（100%→50%）、Leica M3、Huawei XMAGE Beta、vivo ZEISS Betaを順に非同期処理し、画面UI更新と`dumpsys activity`のMainActivity復帰を確認した。M9画面のBefore/Afterスライダー、M3のMonopan + Tone + Film Grain、Beta近似の説明文をUIツリーとスクリーンショットで確認した。FATAL EXCEPTION／OutOfMemoryErrorはログに出ていない。
+- 保存ボタンからDocumentsUIのJPEG保存画面を開き、`SAVE`を実行した。Pro Filmの保存完了文言「加工した写真を保存しました（JPEG / EXIF保持）」が表示され、`/sdcard/Download/ProFilm-leica_m3-1789200546611.jpg`が生成された。MediaStore queryで保存画像の`orientation=0`（Normal相当）を確認した。実機ではなくエミュレーターのため、端末固有の速度・OOM・実写色再現は未測定である。
+- runtime smoke後もソースは変更しておらず、DPED／Zurichデータの削除・移動・再開、外部公開、コミットは行っていない。
+
+【2026-09-12 Hasselblad V-Log transfer高速化と最終ビルド】
+- 65^3 cubeの画素適用で毎画素`pow`／`log10`を呼んでいたため、`SrgbToVLogAdapter`へ4096分割のsRGB decode／V-Log encode transfer tableと線形補間を追加した。V-Gamut原色行列、V-Log入力契約、65^3 LUTそのものは変更せず、初回テーブル生成後の画素ループを軽量化した。Essential／Starter双方へ同期した。
+- 変更後、Essentialで`:app:testDebugUnitTest :app:lintDebug :app:assembleRelease :app:assembleDebug --offline '-Pkotlin.compiler.execution.strategy=in-process' --no-daemon --max-workers=1`を実行し、`BUILD SUCCESSFUL`、37 tests、failures 0、errors 0、Lint error 0を確認した。Universal unsigned Release APKは254,672,854 bytes、SHA-256 `7A8BDE97E1010159610013E663483C7BBBE839DF5D3C8425842DD8D9025E2C24`。x86_64 Debug APKは96,954,232 bytes、SHA-256 `A8BBDE6E5A7220C6D0F991A9625156E256506DBF11F1EED2746524219DBCAF56`。
+- Starterで`:app:testDebugUnitTest :app:assembleRelease --offline '-Pkotlin.compiler.execution.strategy=in-process' --no-daemon --max-workers=1`を実行し、`BUILD SUCCESSFUL`、9 tests、failures 0、errors 0を確認した。Release APKは9,926,338 bytes、SHA-256 `6E9DCDECFAE4A935132B60A49F06998C70D934734517557161B5F0243D4CE30C`。`apksigner verify --verbose`はv2=true、`aapt dump badging`はpackage `ai.camerastyle.pipeline`／version `0.1.0-mvp`、INTERNET権限なしを確認した。
+- `emulator-5554`で更新前のx86_64 Debug APKを使用したSmoke Testでは、Photo Picker、M9/M3/Huawei/vivo処理、Intensity 50%、保存完了を確認済み。transfer table変更後の最新x86_64 Debug APKも再インストールして起動クラッシュがないことを確認したが、速度改善量は未計測である。物理端末での色再現・OOMは引き続き未検証。
+
+【2026-09-12 最終検証記録の整合】
+- `docs/PROFILM_CAMERASTYLEAI_INTEGRATION.md`、`CameraStyleAI_Codex_Starter/reports/72H_MVP_STATUS.md`、`CameraStyleAI_Codex_Starter/reports/DAY3_QA_REPORT.md`、`ESSENTIAL_HANDOFF.md`へ、emulator-5554のSmoke Test結果（Photo Picker、Pro Film、M9/M3/Beta処理、Intensity、保存、orientation=0）と物理端末未検証の境界を反映した。
+- 最終APKハッシュ・サイズ、65^3 cubeの件数（274,625行）とSHA-256、テスト件数を再確認した。`git diff --check`は改行コード警告のみでエラーなし。コミット、push、Release公開は行っていない。
+
+【2026-09-12 共有sRGB transfer table最適化と再ビルド】
+- `StyleEngine.kt`のsRGB↔線形変換を`SrgbTransfer`共有4096分割テーブルへ集約し、Leica M3、Xiaomi、Sony、Huawei、vivo、Intensity中間値で毎画素の`pow`を避ける構造へ更新した。4096点間の線形補間で、LUT格子補間やV-Log adapterの入力契約・色行列・65^3 cubeは変更していない。ParametricStyleの露出倍率も初期化時に一度だけ計算する。
+- EssentialとCameraStyleAI Starterへ同じ最適化を同期した。Essentialは`:app:testDebugUnitTest :app:lintDebug :app:assembleRelease :app:assembleDebug --offline '-Pkotlin.compiler.execution.strategy=in-process' --no-daemon --max-workers=1`で`BUILD SUCCESSFUL`、37 tests、failures 0、errors 0、Lint error 0を確認した。Universal unsigned Release APKは254,673,346 bytes、SHA-256 `0E43BA4048C17BA2E335FB9EFF35C30873BB0B1D90A47932C910EA13E9A91B8B`、x86_64 Debug APKは96,954,232 bytes、SHA-256 `C3FBDBA94DBF05DA5A14FE1AC8E5DFEA68375E2C1493E52B0B071DFD4642FA6F`。
+- Starterはroot wrapperへ`-p`を渡して`:app:testDebugUnitTest :app:assembleRelease --offline '-Pkotlin.compiler.execution.strategy=in-process' --no-daemon --max-workers=1`を実行し、`BUILD SUCCESSFUL`、9 tests、failures 0、errors 0を確認した。Release APKは9,926,338 bytes、SHA-256 `91F544D677258386279C04A9F43C3D6276081C23EB80AD8A689F64E4A0908168`。
+- 最新Essential x86_64 Debug APKを`emulator-5554`へ再インストールし、Pro FilmでPhoto Pickerから画像を読み込み、Hasselblad / OPPOを選択してV-Log/V-Gamut adapterとPhocus X2D Standard 65^3説明が表示され、処理後画像が表示されることを確認した。処理中のFATAL EXCEPTION／OutOfMemoryErrorは検出していない。ADB UIポーリングを含む粗い経過時間は約2.5秒で、アプリ内部の純粋な処理時間や物理端末の速度とは分離して扱う。
+- `docs/PROFILM_CAMERASTYLEAI_INTEGRATION.md`、`CameraStyleAI_Codex_Starter/reports/72H_MVP_STATUS.md`、`CameraStyleAI_Codex_Starter/reports/DAY3_QA_REPORT.md`の最新ハッシュと最適化内容を更新した。DPED／Zurichデータの削除・移動・再開、ライセンス不明資産の同梱、コミット、push、Release公開は行っていない。
+
+【2026-09-12 Leica M9候補LUT 33^3化と再検証】
+- 優先度1のLeica M9について、低照度、タングステン、混合光、蛍光灯、昼光の5候補を17^3から33^3へ拡大した。照明統計からガウス重みで1枚のLUTへ事前ブレンドする方式は維持し、格子量子化誤差を減らした。M9はメーカー抽出資産や非公開モデルを使用していない。
+- Essentialで`:app:testDebugUnitTest :app:lintDebug :app:assembleRelease :app:assembleDebug --offline '-Pkotlin.compiler.execution.strategy=in-process' --no-daemon --max-workers=1`が`BUILD SUCCESSFUL`、37 tests、failures 0、errors 0、Lint error 0。Universal unsigned Release APKは254,673,326 bytes、SHA-256 `89C1CCDEE96F06DA0695647C410BB67B1F2A095C6FE8B249F1255E3E1793BE3D`。x86_64 Debug APKは96,954,232 bytes、SHA-256 `2CCFD0A17815F75846BA05A5C2A9451F2C443D06D5F3AE9FBE533687FA30D17D`。
+- StarterはEssentialと同じM9 33^3候補・共有transfer tableを同期し、root wrapperの`-p`指定で`:app:testDebugUnitTest :app:assembleRelease --offline '-Pkotlin.compiler.execution.strategy=in-process' --no-daemon --max-workers=1`が`BUILD SUCCESSFUL`、9 tests、failures 0、errors 0。Release APKは9,926,338 bytes、SHA-256 `82783E26644EDB3467B22BC07C397100C1F6B002F2FBA1E3E61C6B2D2513A2AF`。
+- 更新後のEssential x86_64 Debug APKを`emulator-5554`へ再インストールし、Pro Filmで画像を読み込んだ状態のLeica M9選択・処理済み画像表示を確認した。FATAL EXCEPTION／OutOfMemoryErrorは検出していない。物理端末での色再現、絶対処理時間、48MP常時原寸tile exportは引き続き未検証。
+- integration／status／QA／handoff文書へM9 33^3と最新APKハッシュを反映した。DPED／Zurichデータは削除・移動・再開していない。
+
+【2026-09-12 Intensity 0%高速経路と最終ビルド】
+- `StyleEngine.process`へIntensity 0%の早期経路を追加した。入力画像をARGB_8888へ複製して即時返却し、スタイル統計・LUTサンプリング・色変換を実行しない。0%は元画像と一致し、100%と中間強度の既存線形光量補間は変更していない。Essential／Starter双方へ同期した。
+- Essentialの最終検証を再実行し、`:app:testDebugUnitTest :app:lintDebug :app:assembleRelease :app:assembleDebug --offline '-Pkotlin.compiler.execution.strategy=in-process' --no-daemon --max-workers=1`が`BUILD SUCCESSFUL`。全37 tests、failures 0、errors 0、Lint error 0。Universal unsigned Release APKは254,673,574 bytes、SHA-256 `E888740CB3E0766AA549C181A5228063F120499F65E66AFAFD18F29DF5ACA215`、x86_64 Debug APKは96,954,232 bytes、SHA-256 `F2022F1D10BFBFE193B4E839E818C537A5141B47413DAE525AB67C7DCF4954A6`。
+- Starterの最終検証を再実行し、`:app:testDebugUnitTest :app:assembleRelease`が`BUILD SUCCESSFUL`。StyleEngineTest 9 tests、failures 0、errors 0。Release APKは9,926,338 bytes、SHA-256 `919CE482F50B5A5F592EF5FFBC372C75503164DED5EF556CAC591587F6C0A848`。
+- 生成物は前回と同じAPKパスへ更新した。物理端末未接続、メーカー純正同一フレームground truth未取得、APK配布署名未設定という検証境界は変わらない。DPED／Zurichデータの削除・移動・再開、ライセンス不明資産の同梱、コミット、push、公開は行っていない。
+- 最新x86_64 Debug APKを`emulator-5554`へ再インストール後、Photo Pickerで画像を読み込み、Pro Film画面のIntensityをスライダー操作で0%へ設定した。`content-desc="加工後"`の画像表示、0%表示、FATAL EXCEPTION／OutOfMemoryErrorなしを確認した。0%経路のアプリ内部時間は未計測だが、UI操作上のクラッシュはない。
+- 同じ最新Debug APKでIntensityを100%へ戻し、Hasselblad / OPPOを選択した。`V-Log/V-Gamut adapter経由のPhocus X2D Standard 65^3（Apache-2.0 LUT）`説明、`content-desc="加工後"`、100%表示を確認し、FATAL EXCEPTION／OutOfMemoryErrorは検出しなかった。最新コードで0%高速経路と65^3 LUT経路の両方をUIから通過させた。
+
+【2026-09-12 Styleカタログ非同期準備・統計走査キャンセル対応】
+- 継続作業として、`app/src/main/java/jp/essential/app/feature/profilm/ProFilmScreen.kt`の`StyleCatalog.create(context.assets)`を`LaunchedEffect` + `Dispatchers.Default`で準備する構造へ変更した。Hasselblad 65^3 cubeの解析とM9 5候補33^3 LUT生成を画面初期化のUIスレッドから外し、準備中はスタイル操作と写真選択を無効化して`StyleEngineを準備中…`を表示する。Style一覧が到着した後に選択スタイルの処理Effectを起動する。
+- `StyleEngine.calculateStatistics`をsuspend関数へ変更し、大画像のAdaptive LUT用統計走査で各行の先頭に`coroutineContext.ensureActive()`を追加した。Style変更、Intensity変更、画面離脱のキャンセルが統計計算中にも反映される。画素処理のLUT内容、sRGB transfer table、色行列、Intensity契約は変更していない。Starterの`android/app/src/main/java/ai/camerastyle/pipeline/StyleEngine.kt`にも同じ変更を同期した。
+- EssentialをASCII Junction `C:\Users\waki1\Desktop\essential-build`から`:app:testDebugUnitTest :app:lintDebug :app:assembleRelease :app:assembleDebug --offline '-Pkotlin.compiler.execution.strategy=in-process' --no-daemon --max-workers=1`で再ビルドし、`BUILD SUCCESSFUL`、37 tests、failures 0、errors 0、Lint error 0を確認した。Universal unsigned Release APKは254,675,286 bytes、SHA-256 `24C81056842DD9288A3D491E931D065450ECAFD91CEE923D591786B977002041`、x86_64 Debug APKは96,954,232 bytes、SHA-256 `A1809CEBE6A5868A34E9A20A6F0C25035A1D36430C84E2A92ABD64D649058DEA`。
+- Starterはroot wrapperへ`-p .`を渡して`:app:testDebugUnitTest :app:assembleRelease --offline '-Pkotlin.compiler.execution.strategy=in-process' --no-daemon --max-workers=1`を再実行し、`BUILD SUCCESSFUL`、9 tests、failures 0、errors 0を確認した。Release APKは9,926,338 bytes、SHA-256 `FB9D83EC614724B0C35661DC22E24A0021EECF1751BCD7477B24E8369617DABD`。両APKは既存パスを更新しただけで、署名済み公開は行っていない。
+- 更新後のEssential x86_64 Debug APKを`emulator-5554`へ再インストールして起動し、Activity起動クラッシュなしを確認した。Styleカタログ準備完了後のPhoto Picker／8スタイル処理／物理端末での初回準備時間、キャンセル遅延、色再現、絶対速度、48MP常時原寸tile処理は未測定である。DPED／Zurichデータの削除・移動・再開、ライセンス不明資産の同梱、コミット、push、Release公開は行っていない。
+
+【2026-09-12 非同期カタログ後のemulator-5554回帰確認】
+- 非同期カタログ変更後のEssential x86_64 Debug APK（96,954,232 bytes、SHA-256 `A1809CEBE6A5868A34E9A20A6F0C25035A1D36430C84E2A92ABD64D649058DEA`）を`emulator-5554`へ再インストールした。Pro Film初回表示で`StyleEngineを準備中…`、写真選択ボタン無効を確認し、約4秒後に8スタイルのFilterChipと写真選択ボタンが有効化されることをUIツリーで確認した。準備中・準備後ともFATAL EXCEPTION／OutOfMemoryErrorは検出していない。
+- Photo Pickerから画像（830 × 552 px）を選択し、Leica M9の`加工後`画像表示、続けてHasselblad / OPPOのV-Log/V-Gamut adapter経由Phocus X2D Standard 65^3説明と`加工後`表示を確認した。HasselbladからLeica M3、直後にFUJIFILM PROVIAへ切り替える連続操作でも最終PROVIA結果が表示され、旧処理結果の誤表示やクラッシュは発生しなかった。実写色精度・物理端末速度・統計走査の実測キャンセル時間は未検証である。
+
+【2026-09-12 入力色空間のsRGB明示と再ビルド】
+- Display P3等の入力をsRGBとして誤解釈しないため、Essential `ProFilmScreen.decodeUpright`とStarter `CameraStyleViewModel.decodeUpright`の`BitmapFactory.Options`へ`inPreferredColorSpace = ColorSpace.get(ColorSpace.Named.SRGB)`を追加した。StyleEngineのsRGB入力契約をデコード時に明示し、HDR/F16やICCバイト列保持はv0.2候補として残した。Hasselblad V-Log/V-Gamut adapterはこのsRGB正規化後に適用される。
+- EssentialでASCII Junction `C:\Users\waki1\Desktop\essential-build`から`:app:testDebugUnitTest :app:lintDebug :app:assembleRelease :app:assembleDebug --offline '-Pkotlin.compiler.execution.strategy=in-process' --no-daemon --max-workers=1`を実行し、`BUILD SUCCESSFUL`、37 tests、failures 0、errors 0、Lint error 0。Universal unsigned Release APKは254,675,154 bytes、SHA-256 `F6F0A6B13E35D85FEFB42977A0ED8EA112C9E19254D1B2997F217C183DB13061`、x86_64 Debug APKは96,954,232 bytes、SHA-256 `F4C5B15E0AC5064498F36F7BB1DE3394626D8100D9F8B5A8D77F5D8561FBBD1C`。
+- Starterはroot wrapperへ`-p .`を渡して`:app:testDebugUnitTest :app:assembleRelease --offline '-Pkotlin.compiler.execution.strategy=in-process' --no-daemon --max-workers=1`を再実行し、`BUILD SUCCESSFUL`、9 tests、failures 0、errors 0。Release APKは9,926,338 bytes、SHA-256 `7078B7F6B1E3EABDEF73F7906B3ABC6CF01EEFDB16CBA0328D079666F7EE0469`。更新Debugを`emulator-5554`へ再インストールしActivity起動クラッシュなしを確認した。物理端末でのP3/HDR変換、色精度、速度、OOMは未測定。DPED／Zurichデータの削除・移動・再開、ライセンス不明資産の同梱、コミット、push、Release公開は行っていない。
+
+【2026-09-12 Styleカタログ失敗時のUIエラー化・最終Essential再ビルド】
+- 非同期StyleCatalog準備が資産破損・予算不足で失敗した場合にLaunchedEffectの未捕捉例外で画面を落とさないよう、`ProFilmScreen`へ`catalogError`状態と`CancellationException`／`OutOfMemoryError`／一般Exceptionの分岐を追加した。失敗時はスタイル・写真選択を無効化し、日本語エラーを表示する。正常時の8スタイル、StyleEngine処理、色空間指定は変更していない。
+- EssentialをASCII Junction `C:\Users\waki1\Desktop\essential-build`から`:app:testDebugUnitTest :app:lintDebug :app:assembleRelease :app:assembleDebug --offline '-Pkotlin.compiler.execution.strategy=in-process' --no-daemon --max-workers=1`で再実行し、`BUILD SUCCESSFUL`、37 tests、failures 0、errors 0、Lint error 0。Universal unsigned Release APKは254,675,422 bytes、SHA-256 `7AB259E0850AA7A25B86E7BC696DC2158AA5E321C595292D21A79748B432298B`、x86_64 Debug APKは96,954,232 bytes、SHA-256 `AFFD62F3BA2240A9C6D81F1FBEF168985893A7834D32E1BABBFBA79298F0A8A8`。`aapt dump badging`はpackage `jp.essential.app`、versionName `0.5.8`を確認した。
+- 更新Debugを`emulator-5554`へ再インストールし、Pro Film初期遷移後にStyleEngine準備中表示と準備完了後の8スタイル表示を再確認した。Photo Pickerから画像を読み込み、Leica M9の`加工後`表示、Hasselblad / OPPOのV-Log/V-Gamut adapter説明、FUJIFILM PROVIAへの連続切替を確認した。FATAL EXCEPTION／OutOfMemoryErrorは検出していない。物理端末のP3/HDR変換、色精度、速度、OOM、統計走査のキャンセル時間は未測定。DPED／Zurichデータの削除・移動・再開、ライセンス不明資産の同梱、コミット、push、Release公開は行っていない。
+
+【2026-09-12 固定スタイル統計走査省略・最新APK反映】
+- `StyleEngine`の`process`で、照明統計を必要とする`PreparedStyle`（Leica M9のAdaptive LUT）のみ全体統計を計算するよう変更した。PROVIA、Hasselblad、Leica M3、Xiaomi、Sony、Huawei、vivoの固定スタイルは中立統計を使い、不要な大画像走査を省略する。CubeLutのクランプ済み格子座標は`floor`から`toInt()`へ置換し、出力範囲・LUT補間契約は維持した。EssentialとStarterへ同じ変更を同期した。
+- EssentialをASCII Junction `C:\Users\waki1\Desktop\essential-build`から`:app:testDebugUnitTest :app:lintDebug :app:assembleRelease :app:assembleDebug --offline '-Pkotlin.compiler.execution.strategy=in-process' --no-daemon --max-workers=1`で実行し、`BUILD SUCCESSFUL in 2m 14s`、37 tests、failures 0、errors 0、Lint error 0を確認した。Universal unsigned Release APKは254,675,422 bytes、SHA-256 `6A25F1267993917CB5B85CF259DE6748F66271D2D4760119449B5B42D8574F37`、x86_64 Debug APKは96,954,232 bytes、SHA-256 `0746ADA5ECBEDC4C197473977CC9F4CF9F4945B031D844F4BD079787B22D4673`。
+- Starterはroot wrapperへ`-p .`を渡して`:app:testDebugUnitTest :app:assembleRelease --offline '-Pkotlin.compiler.execution.strategy=in-process' --no-daemon --max-workers=1`を実行し、`BUILD SUCCESSFUL in 47s`、9 tests、failures 0、errors 0。Release APKは9,926,338 bytes、SHA-256 `ACD87F37366D6A8A2B59DB37074F7ABA734E2118FFC184414D5CFDE09147E8F4`。
+- 最新Essential x86_64 Debug APKを`emulator-5554`へ再インストールし、Pro Film遷移直後の`StyleEngineを準備中…`と写真選択無効、約5秒後の8スタイル表示・Photo Picker有効化を確認した。Photo Pickerから830 × 552 px画像を選び、Leica M9の選択・処理後表示を確認した。FATAL EXCEPTION／OutOfMemoryErrorは検出していない。実機の絶対速度、色差、P3/HDR、48MP常時原寸tile処理、統計走査の実測キャンセル時間は未検証である。
+- `docs/PROFILM_CAMERASTYLEAI_INTEGRATION.md`、`ESSENTIAL_HANDOFF.md`、Starterのstatus／QA／DECISIONSへ最新ハッシュと固定スタイル高速経路を反映した。DPED／Zurichデータは削除・移動・再開しておらず、ライセンス不明コード・メーカー抽出資産・非公開モデルは同梱していない。コミット、push、公開は行っていない。
+
+【2026-09-12 継続回帰確認と文書整合】
+- 最新Essential x86_64 Debug APK（SHA-256 `0746ADA5ECBEDC4C197473977CC9F4CF9F4945B031D844F4BD079787B22D4673`）を`emulator-5554`で再確認した。Pro Film遷移直後は`StyleEngineを準備中…`と写真選択無効、約5秒後に8スタイルとPhoto Pickerが有効化された。Photo Pickerの830 × 552 px画像でLeica M9を選択し、`content-desc="加工後"`の表示を確認した。FATAL EXCEPTION／OutOfMemoryErrorは検出していない。
+- 前回実行済みのEssential 37 tests／Lint 0／Release・Debug build成功、Starter 9 tests／Release build成功に対応する最新ファイルハッシュを再計算し、integration、handoff、Starter status／QA／README／DECISIONSの記載を整合させた。`git diff --check`はOK（CRLF変換警告のみ）。
+- 追加のAI学習・ONNX化・ネットワーク依存、DPED／Zurichデータの削除・移動・再開、ライセンス不明資産の同梱、コミット、push、公開は行っていない。物理端末の色差・速度・OOM・P3/HDR・48MP原寸tile処理は未検証である。
+
+【2026-09-12 検証・校正・実機代替負荷測定の確定】
+- EssentialをASCII Junction `C:\Users\waki1\Desktop\essential-build`から`:app:testDebugUnitTest :app:lintDebug :app:assembleRelease :app:assembleDebug --offline '-Pkotlin.compiler.execution.strategy=in-process' --no-daemon --max-workers=1`で再実行し、`BUILD SUCCESSFUL in 11s`、37 tests、failures 0、errors 0、Lint error 0を確認した。Universal unsigned Release APKは254,675,422 bytes、SHA-256 `6A25F1267993917CB5B85CF259DE6748F66271D2D4760119449B5B42D8574F37`、x86_64 Debug APKは96,954,232 bytes、SHA-256 `0746ADA5ECBEDC4C197473977CC9F4CF9F4945B031D844F4BD079787B22D4673`。
+- Starterをroot wrapperへ`-p .`指定して`:app:testDebugUnitTest :app:assembleRelease --offline '-Pkotlin.compiler.execution.strategy=in-process' --no-daemon --max-workers=1`で再実行し、`BUILD SUCCESSFUL in 40s`、9 tests、failures 0、errors 0を確認した。Release APKは9,926,338 bytes、SHA-256 `582354BAE1158BABBBEE1BEB33EED4F80A353CBCD252E04748014E826BEC98C0`。
+- `emulator-5554`の830 × 552 px画像で8スタイルを連続処理し、各完了後の`TOTAL PSS`は128,868〜139,250 KB、`TOTAL SWAP=0`、FATAL EXCEPTION／OutOfMemoryErrorなしだった。単発観測であり、物理端末のピーク値・絶対速度・電力とは分離して扱う。
+- Hasselblad 65^3／33^3 cubeの全点範囲を0..1、neutral axis最大RGB差を0.002761／0.002715として確認した。これは資産破損・大きな軸ずれの検査であり、純正カメラとの色差校正ではない。Starter status／QAへ最新ハッシュ、integration／QA／DECISIONSへ検証限界を反映した。DPED／Zurichデータ、AI学習、ONNX化、公開は変更していない。
+
+【2026-09-12 検証・校正・emulator負荷スモーク】
+- 既存の最新Essential Debug APKで、Pro Filmの8スタイルをemulator-5554上で連続選択し、各処理完了後に`dumpsys meminfo`を観測した。`TOTAL PSS`はPROVIA 131,826 KB、Hasselblad 133,597 KB、Leica M3 132,705 KB、Leica M9 139,250 KB、Xiaomi Leica 130,220 KB、Sony ST 132,012 KB、Huawei XMAGE Beta 136,660 KB、vivo ZEISS Beta 128,868 KB。全切替で`TOTAL SWAP=0`、FATAL EXCEPTION／OutOfMemoryErrorなしを確認した。単発観測のためピーク値・物理端末性能とは扱わない。
+- 同梱Hasselblad Standard cubeを静的校正チェックし、65^3（274,625点）と33^3 fallback（35,937点）の全値が0..1範囲内、neutral axis最大RGB差0.002761／0.002715、平均RGB差0.000787／0.000775を確認した。これは資産破損と大きなニュートラル軸ずれがないことの検査で、純正カメラとの色差測定ではない。
+- `CameraStyleAI_Codex_Starter/reports/DAY3_QA_REPORT.md`と`docs/PROFILM_CAMERASTYLEAI_INTEGRATION.md`へ測定値、方法、限界を追記した。実機ColorChecker ΔE、ピークメモリ、処理時間、電力、P3/HDR、48MP原寸tileは引き続き未検証である。既取得データは削除・移動せず、AI学習・ONNX化・公開は行っていない。
+
+【2026-09-12 Huawei XMAGE暖色調整・フィルター切替ロードバー削除】
+- Huawei XMAGE Beta近似を調整した。暖色係数を`0.55`から`0.16`へ下げ、赤の持ち上げ・青の抑制を弱める3x3行列と彩度`1.02`へ変更し、赤茶色に転びすぎる傾向を抑えた。Essential／Starterへ同じレシピを同期し、Huawei専用回帰テストを追加した。
+- Essential Pro Filmのフィルター切替時に表示していた`EssentialBubblyProgressBar`を削除した。非同期処理・キャンセル・処理完了状態・保存中の排他は維持した。Starterの処理パネルも視覚的なLinearProgressIndicatorだけを削除し、進捗テキストとキャンセルを残した。
+- EssentialをASCII Junctionから再ビルドし、`BUILD SUCCESSFUL in 1m 51s`、38 tests、failures 0、errors 0、Lint error 0を確認した。Universal unsigned Release APKは254,675,326 bytes、SHA-256 `74A15A863DBA7AD8293A345F19B6D307CAE09E47C4280BFB88690FD6D0067753`、x86_64 Debug APKは96,954,232 bytes、SHA-256 `86691E03342461045124763C1878C080CC0F15B1CB0EFCA5228BBEB2F54B4369`。
+- StarterはASCII Junction経由で通常テストが旧結果を参照する問題を切り分け、最終的に`CameraStyleAI_Codex_Starter/android`のRelease buildを`BUILD SUCCESSFUL in 30s`で完了した。`StyleEngineTest`は10 tests、failures 0、errors 0。Release APKは9,926,338 bytes、SHA-256 `3CF43441EBBA241539EE01FF7AD2C51D4C1D62987B3ABDA0915D1DA490D08692`。強制再実行時のClassNotFoundExceptionはソース不備ではなく日本語パス側のテストクラスパス問題で、ASCII Junctionの通常実行で解消した。
+- Huawei調整後の物理端末色差は未検証であり、emulator-5554でのPSS／色差はBetaレシピの絶対精度を保証しない。DPED／Zurichデータの削除・移動・再開、AI学習、ONNX化、ライセンス不明資産の同梱、コミット、push、公開は行っていない。
+
+【2026-09-12 Huawei調整後のUIスモークと文書整合】
+- 最新Essential x86_64 Debug APK（96,954,232 bytes、SHA-256 `86691E03342461045124763C1878C080CC0F15B1CB0EFCA5228BBEB2F54B4369`）を`emulator-5554`へ反映し、Pro FilmでHuawei XMAGE Original · Betaを選択した。830 × 552 px画像でHuawei説明文、`content-desc="加工後"`、Intensity 100%を確認した。スクリーンショットでもBefore / Afterスライダーと処理後画像が表示され、赤茶色へ過度に転ぶ見た目ではないことをスモーク確認した。
+- 同じUIツリーから、フィルター切替時に使用していたLinear/Bubbly進捗バーのノードが存在しないことを確認した。保存時の進捗表示、非同期処理、キャンセル、Before / After、Intensityは残している。FATAL EXCEPTION／OutOfMemoryErrorは`logcat`に検出しなかった。
+- `DAY3_QA_REPORT.md`、`docs/PROFILM_CAMERASTYLEAI_INTEGRATION.md`、Starter status／DECISIONSへHuawei係数、回帰テスト、ロードバー削除、検証境界を追記した。Essential 38 tests／Lint 0／Release・Debug build成功、Starter 10 tests／Release build成功の結果とAPKハッシュは変更なし。物理端末・純正ground truthとの色差は未検証である。
+- DPED／Zurich取得済みデータは削除・移動せず、AI学習・ONNX化・ネットワーク依存・ライセンス不明資産の追加、コミット、push、公開は行っていない。
+
+【2026-09-12 最終回帰テスト再確認】
+- ASCII Junction `C:\Users\waki1\Desktop\essential-build`と既存の一時Gradle cacheを使用し、Essential `:app:testDebugUnitTest`を再実行した。`BUILD SUCCESSFUL`、XML結果集計で38 tests、failures 0、errors 0を確認した。Starterも同じJunctionから`:app:testDebugUnitTest`を再実行し、`BUILD SUCCESSFUL`、10 tests、failures 0、errors 0を確認した。
+- `git diff --check`はエラーなし（既存ファイルのLF/CRLF変換警告のみ）。Pro Film側に`EssentialBubblyProgressBar`参照はなく、Starterの`LinearProgressIndicator`は保存中表示の2参照だけであることを静的確認した。
+- 生成済みAPKのハッシュはEssential Release `74A15A863DBA7AD8293A345F19B6D307CAE09E47C4280BFB88690FD6D0067753`、Essential x86_64 Debug `86691E03342461045124763C1878C080CC0F15B1CB0EFCA5228BBEB2F54B4369`、Starter Release `3CF43441EBBA241539EE01FF7AD2C51D4C1D62987B3ABDA0915D1DA490D08692`で変化なし。
+
+【2026-09-12 共通暗部トー補正と再ビルド】
+- 全8スタイルの`StyleEngine.process`出力段へ線形暗部トーを追加した。線形値`0.006`を黒付近へ滑らかに加え、暗部終端`0.22`で元の値へ戻す。100%処理とIntensity中間値の双方へ適用し、Intensity 0%の元画像コピー経路は変更していない。中間調終端と白点は不変にした。
+- Essential／Starterの`StyleEngine.kt`へ同じ`liftShadowLinear`を同期し、暗部・中間調・白点の境界回帰テストを追加した。既存のHuawei赤茶色抑制、M9適応、8スタイル値域テストは維持した。
+- EssentialをASCII Junctionから`:app:testDebugUnitTest :app:lintDebug :app:assembleRelease :app:assembleDebug --offline '-Pkotlin.compiler.execution.strategy=in-process' --no-daemon --max-workers=1`で再実行し、`BUILD SUCCESSFUL in 1m 29s`、39 tests、failures 0、errors 0、Lint error 0を確認した。Universal unsigned Release APKは254,675,446 bytes、SHA-256 `2CC1BB10311EB46A36394F8EA2C9A1514C78544A6DCD8BECC6D3FC7A5A27661C`、x86_64 Debug APKは96,954,232 bytes、SHA-256 `988BD5D5F40AB775BA504B7CC0BC4EC5DCAEDF5FA344C6B9DDB40D7D863F8B66`。
+- Starterも同じJunctionから`:app:testDebugUnitTest :app:assembleRelease`を再実行し、`BUILD SUCCESSFUL in 40s`、11 tests、failures 0、errors 0を確認した。Release APKは9,926,338 bytes、SHA-256 `6A2AE433E603628D79CFC5501AAE2DE01E2473C311D8903B3E0CFF45D7070C9C`。
+- 更新Essential Debug APKを`emulator-5554`へ再インストールし、Pro Filmを`open_feature=pro_film`で起動、Photo Pickerから830 × 552 px画像を選択した。Huawei XMAGE Original · Betaを処理し、`加工後`、説明文、Intensity 100%、進捗バー相当ノードなし、FATAL EXCEPTION／OutOfMemoryErrorなしを確認した。暗部サンプルのスクリーンショット画素は、前回トー（0.004）比で例として`17,17,16→22,21,21`、`13,13,13→18,18,18`へ持ち上がり、中間輝度サンプルは`127,125,128`で不変だった。
+- `PROFILM_CAMERASTYLEAI_INTEGRATION.md`、`ESSENTIAL_HANDOFF.md`、Starter status／QA／DECISIONSへ新しいテスト件数、APKハッシュ、暗部トー、Huawei UI確認結果を反映した。物理端末・純正同一フレームとの色差、実機ピークメモリ、P3/HDR、48MP原寸tileは未検証。DPED／Zurichデータ、AI学習、ONNX化、ライセンス不明資産、公開状態は変更していない。
+
+【2026-09-12 72時間AI精度向上工程表の作成】
+- 現行v0.1を基準に、3日以内でAI学習による精度向上を検証するための`CameraStyleAI_Codex_Starter/reports/72H_AI_ACCURACY_PLAN.md`を新規作成した。Day 1の権利・neutral/target同一フレームペア・scene単位split・baseline、Day 2のsLUTy／小型残差モデル選抜とStyleEngine統合、Day 3の実機品質・回帰・Release凍結を時間帯別に定義した。
+- `tqmane/lut_extractor`、`shenmintao/V-Log-Alchemy`、`sohan-shingade/fujiLUT`、`rmanalan/sluty`、`stoutput/xperia-camera-mod`、`hgayan7/FilterLibrary`について、現在確認できているライセンス状態、利用可能範囲、Android転用条件、ライセンス不明・メーカー抽出資産を同梱しない境界を工程表へ反映した。
+- 学習はこの工程表作成時点では開始していない。DPED／Zurich取得済みデータの削除・移動・上書き、ダウンロード再開、APKへの新規モデル同梱、コミット、push、公開は行っていない。`docs/PROFILM_ACCURACY_ROADMAP.md`から工程表を参照し、`docs/DECISIONS.md`へ時間制約とfallback方針を追記した。
+
+【2026-09-13 AI学習開始前のデータゲート確認と予定更新】
+- `CameraStyleAI_Codex_Starter/metadata/style_accuracy_pairs.example.csv`と`metadata/pairs.csv`はヘッダーのみで、8スタイルの学習ペアは未登録であることを確認した。`metadata/real_dataset_pairs.csv`は42行すべてDPED sample photosで、`alignment_status=needs_registration`。`real_dataset_licenses.csv`は研究レビュー条件・商用利用不可の記録であるため、公開APKの学習targetや同梱assetには使用しない。
+- この状態を踏まえ、`reports/72H_AI_ACCURACY_PLAN.md`へ2026-09-13時点の実行判定とT+0〜72hの分岐予定を追記した。6時間時点でlegalな同一フレームペアが0件ならAI学習を捏造せず、baseline・評価ハーネス・データ取得仕様を完成させて現行v0.1へフォールバックする。1styleでも条件を満たせば、そのstyleだけsLUTy／小型残差モデルを試す。
+- 取得済みDPED／Zurich原本の削除・移動・上書き、ダウンロード再開、APKへの新規モデル同梱、コミット、push、公開は行っていない。
+
+【2026-09-13 git.exe大量起動の詳細調査】
+- 直前に観測された`git.exe`最大981件について、プロセス数・開始時刻・CPU、通常Gitコマンド、未追跡ファイル内訳、ルート／nested Git構造、Codex sandboxログ、Windowsイベント、Git署名・hook・scheduled task・環境設定を読み取り専用で確認した。現在は`git.exe` 0件で、10秒間10回の監視でも再発しなかった。通常の`git status --short --untracked-files=no`は約36ms、`--untracked-files=all`は約2.97秒で972,475行を列挙した。
+- 未追跡972,475行のうち943,057行が`CameraStyleAI_REAL_DATA_Collection_Kit`、943,026行が`DPED_OFFICIAL_MODEL`、29,404行が`CameraStyleAI_Codex_Starter`（`.venv-dped` 24,818、`.gradle-home` 4,414）であることを集計した。ルート`.gitignore`ではこれらが無視されず、root 1個 + upstream 6個の計7 Gitリポジトリがある。
+- 11:48:35のOpenAI.Codex起動関連イベント、11:50:04〜11:50:14のCodex sandbox fs-helper連続起動、11:50:07〜11:51:46のgit.exe集中観測、12:31:49〜12:31:52の`.git/objects`更新と`refs/codex/turn-diffs/checkpoints`の存在から、Codexの作業差分／ファイルシステム監視が巨大な未追跡ツリーを走査した可能性を最有力と評価した。Git for Windows正規署名、実行用hookなし、Git関連scheduled taskなし、現在のダウンロード／学習プロセスなしも確認した。
+- `.git/objects/*/tmp_obj_*` 12件と`git count-objects -v`のgarbage 12件は残置し、削除・git gc・ignore変更・プロセス停止・リポジトリ再構成は行っていない。詳細を`CameraStyleAI_Codex_Starter/reports/GIT_PROCESS_STORM_INVESTIGATION_20260913.md`へ記録した。
+
+【2026-09-13 Git未追跡走査の安全化】
+- 巨大未追跡ツリーによる`git.exe`大量起動を防ぐため、ルート`.gitignore`へ`CameraStyleAI_REAL_DATA_Collection_Kit/DPED_OFFICIAL_MODEL/`、`CameraStyleAI_Codex_Starter/.venv-dped/`、`CameraStyleAI_Codex_Starter/.gradle-home/`を追加した。これはGit監視対象から外すだけで、原本・仮想環境・Gradleキャッシュを削除・移動・上書きする変更ではない。
+- `docs/GIT_WORKTREE_SAFETY.md`を追加し、データを保持したままmetadata／manifest／ライセンス／スクリプトを追跡する境界、確認コマンド、再発時の観測手順、`git gc`等を事前確認なしに実行しない方針を記録した。
+- 次の検証で`git check-ignore`、未追跡行数、`git status`処理時間、`git.exe`プロセス数、データ原本のファイル数を比較する。コミット、push、公開は行っていない。
+
+【2026-09-13 Git監視負荷の対策効果確認】
+- `git check-ignore -v`で、DPED_OFFICIAL_MODEL、`.venv-dped`、`.gradle-home`がルート`.gitignore`の明示ルールに一致することを確認した。原本の`CameraStyleAI_REAL_DATA_Collection_Kit/DPED_OFFICIAL_MODEL/iphone_orig`は存在し、削除・移動・上書きしていない。
+- 対策前の`git status --porcelain=v1 --untracked-files=all`は972,475行・約2.97秒だったが、対策後は224行・約38.7msへ減少した。追跡済みだけのstatusは8行・約31.3msだった。
+- 対策後に`git.exe`プロセスを2秒間隔で5回（約8秒）監視し、全回0件だった。今回の変更によるAndroidソース、APK、AI学習データ、DPED／Zurich原本の内容変更はない。
+- `.git/config`への`core.untrackedCache=true`永続設定は権限拒否で適用できなかった。設定ファイルは変更せず、必要なGitコマンド単位で`git -c core.untrackedCache=true`を指定できる状態とした。`.git/objects`のgarbage 12件、`tmp_obj_*`は削除・gcせず保全した。
+- `GIT_PROCESS_STORM_INVESTIGATION_20260913.md`へ対策済み測定値と残りの候補を追記した。コミット、push、公開、プロセス強制停止は行っていない。
+
+【2026-09-13 0〜2時間プラン実行】
+- Work history、72時間AI精度向上計画、Essential／StarterのStyleEngine、取得済み原本、実行中プロセスを再確認した。ダウンロード・学習候補プロセスは検出されず、DPED_OFFICIAL_MODEL、`.venv-dped`、`.gradle-home`は原位置で保持されている。
+- `scripts/audit_dataset.py`を`metadata/pairs.csv`へ実行し、0行・実画像0件・エラー2・警告1・学習開始不可を`artifacts/ai-accuracy/baseline/data_gate_audit.json/.md`へ保存した。`scripts/validate_dataset.py --allow-empty`は0エラーで、空manifestを意図したデータゲート状態として確認した。
+- `scripts/evaluate_style_pairs.py`を`style_accuracy_pairs.example.csv`へ再実行し、評価0件・警告0・エラー0のbaselineを更新した。ペア未登録のため、色差メトリクスを捏造していない。
+- Essential Release／Debug、Starter Releaseの現行APK SHA-256と8スタイル共通StyleEngine契約を`artifacts/ai-accuracy/baseline/STATE.md`へ記録した。Androidソース、APK、原本の内容は変更していない。
+
+【2026-09-13 2〜6時間プラン実行】
+- `metadata/pairs.csv`、`metadata/real_dataset_pairs.csv`、`metadata/real_dataset_licenses.csv`を照合し、8スタイルの許諾済みneutral/target同一フレームペアが0件であることを確認した。DPED sample 42行は全件`needs_registration`、商用利用不可のため学習・評価・APK同梱から除外した。
+- `reports/DAY1_PAIR_READINESS_20260913.md`を作成し、8スタイル別の不足理由、Beta／v0.2 AI待ち判定、次に必要な撮影・権利・scene split情報を記録した。AI学習、sLUTy生成、巨大モデル作成は開始していない。
+- upstream 6リポジトリのHEAD commit、LICENSE状態、利用範囲、再配布境界を`artifacts/ai-accuracy/third_party_manifest.json`へ固定した。明示LICENSE不明の`lut_extractor`と`xperia-camera-mod`、LICENSEファイルのないREADME MIT表記リポジトリは参考利用に限定した。JSON構文を検証し、APK同梱資産はV-Log-Alchemyの1 cubeのみと確認した。
+- 2〜6時間ゲートは「legal pair 0件」のため、現行8スタイル／fallbackを維持して完了した。次工程は許諾済みペア取得後のsLUTy評価であり、現時点で新規AI学習へ進まない。
+- 最終確認としてbaseline監査JSON、評価JSON、third-party manifest JSONの3件をUTF-8で再パースし、構文エラーなしを確認した。`git diff --check`は既存のLF/CRLF変換警告のみ、`git.exe`は0件だった。AndroidビルドやAPK内容はこの工程では変更していない。
+
+【2026-09-13 8〜24時間プラン実行】
+- legal pair 0件の分岐に従い、AI学習・sLUTy生成・新規モデル同梱は開始せず、現行8スタイル／fallbackを採用候補として凍結した。
+- `hasselblad_standard_srgb.cube`（33^3／35,937エントリ）と`hasselblad_standard_srgb_65.cube`（65^3／274,625エントリ）を構造・値域0..1・SHA-256で検証した。sRGB→線形V-Gamut→V-Log→cube→sRGBのadapter契約と、sRGB直入力禁止をStyleEngineで確認した。
+- `scripts/validate_cube_assets.py`を追加し、検証結果を`artifacts/ai-accuracy/candidate-gate/cube_validation.json`へ保存した。8スタイルの実装方式、入力色空間、asset hash、fallback理由を`style_candidates.json`へ固定した。
+- `reports/DAY1_8_24H_EXECUTION_20260913.md`と`reports/72H_AI_ACCURACY_PLAN.md`へ8〜24時間ゲート、採用条件、次工程を追記した。Androidソース、APK、DPED／Zurich原本は変更していない。
+
+【2026-09-13 24〜40時間プラン実行】
+- legal pair 0件の分岐に従い、LUT後残差の学習・評価、ONNX候補生成は開始しなかった。改善値を捏造せず、既存8スタイルのfallbackを維持した。
+- `artifacts/ai-accuracy/candidate-gate/residual_gate.json`へ、test中央値ΔE76 10%以上改善、clip率悪化1ポイント以内、色相誤差悪化2度以内、モデル8MiB以下、sRGB入出力、PC parity、Android PSS／速度の採用条件を固定した。
+- `reports/DAY1_24_40H_RESIDUAL_GATE_20260913.md`へ、OnnxStyleの将来差し替え口、LUT外の空間処理分離、ペア取得後の再開順序を記録した。
+- `git.exe`プロセスの再発、DPED／Zurich原本の削除・移動・上書き、Androidソース／APK変更、コミット、push、公開は行っていない。
+
+【2026-09-13 Step 0〜1再実行】
+- Step 0として、実行中のGit／ダウンロード／学習／Androidプロセスが0件、DPED原本とローカル環境が存在、ルート`.gitignore`の除外が有効、未追跡235行・status約35.8msであることを再確認した。StyleEngineの`LutStyle`、`AdaptiveLutStyle`、`MonoFilmStyle`、`ParametricStyle`、`OnnxStyle`、`StyleEngine`各1定義を確認した。
+- 現行Essential／Starter APKのSHA-256を再取得し、Step 0 baselineとして`reports/STEP0_BASELINE_20260913.md`へ固定した。APK再ビルドやAndroidソース変更は行っていない。
+- Step 1として、`pairs.csv` 0行、DPED sample 42行（全件`needs_registration`・style未登録）、ライセンス10行（全件`commercial_use=NO`）、legal pair 0件を確認した。
+- `third_party_manifest.json`の6 upstream repositoryについて、記録commitとローカルHEADが全件一致することを確認した。ライセンス不明資産・メーカー抽出資産は不使用とし、`reports/STEP1_DATA_RIGHTS_20260913.md`へ固定した。AI学習・sLUTy生成・APK同梱は開始していない。
+
+【2026-09-13 Step 2〜3実行】
+- Step 2として、法務・撮影条件・整列・SHA-256を含む38列の`metadata/PAIR_COLLECTION_TEMPLATE.csv`を追加し、空の`metadata/pairs.csv`とヘッダー一致を確認した。8スタイルの実画像は0件、DPED sample 42行は`needs_registration`かつ8スタイルtargetではないため流用していない。
+- Step 3として、`scripts/normalize_pair_dataset.py`を追加した。root外パス、権利情報、整列フラグ、EXIF orientation、ICC→sRGB、サイズ、scene splitリーク、非破壊PNG、元／正規化SHA-256を検査する。
+- 空manifestで正規化コマンドを実行し、`rows_in_csv=0`、`normalized_pairs=0`、`status=blocked`を`artifacts/ai-accuracy/normalized/report.json`へ保存した。実画像がないためEXIF／ICC変換の実データ結果は未測定である。
+- `STEP2_PAIR_COLLECTION_20260913.md`、`STEP3_NORMALIZATION_20260913.md`、`72H_AI_ACCURACY_PLAN.md`へ実行結果を追記した。原本削除・移動・上書き、AI学習、sLUTy生成、APK変更、コミット、push、公開は行っていない。
+
+【2026-09-13 Step 4〜7実行・SNS素材ゲート】
+- ユーザー指定のStep 4〜7を、許諾済みペア0件のデータゲート分岐で実行した。`evaluate_style_pairs.py --strict`を再実行し、manifest 0行、評価0ペア、警告0、エラー0、色差メトリクス未算出を`artifacts/ai-accuracy/step4-baseline/style_accuracy.json`へ保存した。数値の捏造は行っていない。
+- `validate_cube_assets.py`でHasselblad 33³／65³ cubeを再検証し、両方`all_valid=true`、値域0..1、既知SHA-256一致を`artifacts/ai-accuracy/step5-lut/cube_validation.json`へ保存した。neutral/targetと再配布許諾がないため、sLUTy新規生成は行っていない。
+- Step 6は`legal_pair_count=0`のため、残差AI、DPED再学習、巨大モデル学習を開始せず、`residual_gate.json`の`blocked_by_data_gate`を維持した。Step 7は新規ONNX変換・APK同梱・差し替えを行わず、既存DPED ONNX（1,623,601 bytes、SHA-256 `87b85cc6fff15e4a15980bcdc32771c2a4c001a7ef1bfaa30fbd439f41a81acc`、PC 5画像parity pass_gate=true）を監査した。Android実機parityは未検証である。
+- Reddit/X(Twitter)について、公開画像を権利確認なしに収集して学習へ投入することは行わなかった。将来の許諾済み素材登録用に`metadata/SOCIAL_SOURCE_REGISTER.csv`を追加し、URLのみの参照、training／redistribution許諾、同意記録、sha256を必須とする境界を`docs/PAIR_COLLECTION_AND_NORMALIZATION.md`へ追記した。認証・Cookie・レート制限回避、Web画面スクレイピングは行っていない。
+- Step 4〜7の判定を`reports/STEP4_BASELINE_20260913.md`、`STEP5_LUT_CANDIDATE_20260913.md`、`STEP6_AI_TRAINING_GATE_20260913.md`、`STEP7_ONNX_GATE_20260913.md`、`artifacts/ai-accuracy/step4-7-execution.json`へ記録した。既存データ・APK・Androidソースの削除・移動・上書き、コミット、push、公開は行っていない。
+
+【2026-09-13 研究用学習ペア収集・学習実行】
+- 追加ダウンロードは行わず、既に公式配布元から取得済みのDPED CNN整列パッチを読み取り専用で利用した。同名iPhone／Canon patchの共通160,471組を検出し、train 1,024、validation 128、test 128を`artifacts/research-pretraining/dped_iphone_to_canon_20260913/pairs.csv`へ固定した。元画像の削除・移動・上書きは行っていない。
+- `scripts/train_research_residual.py`を追加し、3層ResidualColorNetをCPU 1スレッド、batch 32、2エポックで学習した。所要9.289秒、test identity MSE `0.02893522684053096`、学習後MSE `0.01564494074682443`、相対改善45.93%を`metrics.json`へ保存した。モデルは15,941 bytes、SHA-256 `9501f79ca2e54526bf4bd74d0d44c766a3e190af0f613792733dc2fcec157627`。
+- DPEDは機械学習事前学習用途として監査記録がある一方、商用利用・再配布許諾が明示されていないため、今回のモデルを8スタイルtargetや公開APK／ONNXへ反映していない。値はDPED iPhone→Canon研究変換であり、Leica／PROVIA／Hasselblad／Xiaomi／Sony／Huawei／vivoの精度ではない。詳細を`reports/RESEARCH_PRETRAINING_20260913.md`へ記録した。
+- Reddit/X(Twitter)の権利不明画像は収集・学習投入していない。許諾済み素材の登録口`metadata/SOCIAL_SOURCE_REGISTER.csv`と既存のデータゲートを維持した。学習中の追加Git／ダウンロードプロセスはなく、APK、Androidソース、既存原本、コミット、push、公開状態は変更していない。
+
+【2026-09-13 学習許可後の拡張研究用学習】
+- ユーザーの学習許可を反映し、既存DPED CNN整列ペアから別実験を実行した。train 8,192、validation 1,024、test 1,024、CPU 1スレッド、batch 64、4エポック、所要145.416秒。追加ダウンロード、原本の削除・移動・上書きは行っていない。
+- test identity MSE `0.024634445390327848`に対し学習後MSE `0.014201476531221353`、相対改善42.35%。モデル15,941 bytes、SHA-256 `27757c6c6f0093bd4417be7fc31d0a58b93d0f818f2ac508c8de8a94f0606132`を`artifacts/research-pretraining/dped_iphone_to_canon_20260913_large/`へ保存した。
+- 前回の1,024組モデルは保持し、拡張版にもMODEL_CARD相当の研究用途境界を適用した。DPED商用利用・再配布許諾未確認、8スタイルtarget未取得のため、Androidソース／APK／ONNX／StyleEngineへ反映していない。Reddit/Xの権利不明画像も不使用。
+
+【2026-09-13 8スタイル実学習再監査】
+- 8スタイル実学習要求を受け、`audit_dataset.py`と実画像拡張子のカウントを再実行した。`metadata/pairs.csv`は0行、Leica M9、Leica M3、FUJIFILM PROVIA、Hasselblad/OPPO、Xiaomi Leica、Sony Xperia ST、vivo ZEISS、Huawei XMAGEの全input/target実画像は0件（`.gitkeep`のみ）で、`train_ready=false`。
+- DPED iPhone→Canon研究ペアを8スタイルtargetへ誤流用せず、既存LUTから教師画像を生成せず、空データ学習も行わなかった。8スタイル学習を開始するには、各styleの許諾済みneutral/target同一フレーム、scene split、training／redistribution許諾、sha256が必要である。
+- 判定を`reports/STYLE8_TRAINING_BLOCKED_20260913.md`と`artifacts/ai-accuracy/style-training-readiness-20260913/audit.json`へ記録した。Androidソース、APK、既存原本、研究用DPEDモデル、コミット、push、公開状態は変更していない。
+
+【2026-09-13 8スタイル公開実写参考セット収集】
+- Wikimedia Commons APIを使用し、Leica M9、Leica M3、Fuji Provia 100F、Hasselblad X2D 100C、Xiaomi 17 Ultra、Sony Xperia 1 VII、Huawei P60 Pro、Vivo X300 Ultraの各カテゴリから、自由ライセンスを画像単位で確認できた実写を各5枚、合計40枚収集した。
+- `scripts/collect_commons_style_references.py`を追加した。CC BY／CC BY-SA／CC0／Public domainだけを許可し、429再試行、待機、既存ファイル再利用、一時`.part`経由の確定保存、作者・ライセンス・URL・SHA-256記録を実装した。最初の実行はHTTP 429で停止したが、取得済みファイルを削除せず再開し、最終的に全8styleを完了した。
+- 画像は`references/public-style-targets/<style>/`、manifestは`artifacts/ai-accuracy/public-style-targets/manifest.json/.csv`へ保存した。40件、合計12,544,688 bytes、画像デコード失敗0、SHA-256不一致0、`.part`残骸0を確認した。
+- 収集画像は機種／フィルムカテゴリ由来の未ペア参考であり、exact mode、無編集、neutral/target同一フレームを保証しない。`metadata/pairs.csv`へ登録せず、AI教師学習・ΔE評価・APK差し替えには使用していない。詳細を`reports/PUBLIC_STYLE_REFERENCE_COLLECTION_20260913.md`へ記録した。
+
+【2026-09-13 FilmSims v2.0.11 APK 静的解析】
+- ユーザー指定の`C:\Users\waki1\Downloads\filmsims\_v2.0.11.apk`は存在しなかったため、Downloads直下に存在する`C:\Users\waki1\Downloads\filmsims_v2.0.11.apk`（package `com.tqmane.filmsim`、versionName `2.0.11`、versionCode `40`、SHA-256 `4EEA3AA31FFA06DA0B1FFAA0726EC809FB0A33F123140F5CBEB6DFF108B8F39C`）を読み取り専用で解析した。
+- APK内に`assets/luts/Xiaomi/leica_m9/`の7件（`m9_cool_daylight`、`m9_fluorescent`、`m9_studio_mixed`、`m9_tungsten_a`、`m9_tungsten_b`、`m9_warm_low_light`、`m9_warm_neutral`）、`assets/luts/Xiaomi/leica_m3/`の6件、`assets/luts/Xiaomi/leica/`の6件、および`Leica_FOTOS`／`Leica_lux`の計54件のLeica関連asset名を確認した。
+- `LutItem`が表示名と`assetPath`を保持し、`EditorViewModel`が選択したassetPathをロードする実装を確認した。`FilmSimRenderer`／`GpuExportRenderer`は`CubeLUT`を保持し、OpenGL ESの`GLES30.glTexImage3D`で3D LUTテクスチャとして画像へ適用する。したがって、名称だけでなく画像変換処理の実装がAPK内に存在する。
+- Leica M9/M3の個別`.enc` assetはAPKのZIP中央ディレクトリ上では0 bytesのプレースホルダーだった。一方、`assets/pro/filmsims_pro_v1.fspack`（240,414,739 bytes、SHA-256 `E6707BCD1BFF0C5843B82EC042433CE5CA0DBE74D68BB48E72121CD38692DF65`）を確認した。DEXには`FSPACK1`、`pro/filmsims_pro_v1.fspack`、`filmsims_pro_asset_key_v1`、Android Keystore、`LUT_DECRYPT`があり、実データはPro pack内に暗号化・パック化され、ライセンス／端末キー経由で実行時に読み出す設計と判断した。
+- 静的解析のみであり、APKを端末へインストールしてM9プリセットを選択・適用・保存する実機動作確認は行っていない。M9相当の色調を再現する処理の存在は確認できたが、個別プリセットが実際にPro entitlementで利用可能か、Leica実機の色再現と一致するかは未検証である。抽出資産のEssentialへの移植、復号、APK改変、コミット、push、公開は行っていない。
+
+【2026-09-13 FilmSims v2.0.11 プリセット資産抽出】
+- `C:\Users\waki1\Downloads\filmsims_v2.0.11.apk`から、ユーザー指定のXiaomi、Vivo、Samsung、OnePlus、Meizu、Leica_lux、Leica_FOTOS、Huawei、Honorの`assets/luts`配下を読み取り専用で抽出した。Xiaomiについては`assets/textures/Xiaomi`も併せて保存した。
+- 抽出先は`C:\Users\waki1\Downloads\filmsims_presets_extracted_2.0.11_20260913`。ブランド別件数はXiaomi 83、Vivo 260、Samsung 48、OnePlus 202、Meizu 40、Leica_lux 19、Leica_FOTOS 16、Huawei 47、Honor 25で、プリセット／関連テクスチャ計740ファイルとなった。
+- 実行時のPro資産を保持するため`assets/pro/filmsims_pro_v1.fspack`（240,414,739 bytes、SHA-256 `E6707BCD1BFF0C5843B82EC042433CE5CA0DBE74D68BB48E72121CD38692DF65`）を`packs`へ、画像処理コードを含む`classes.dex`（7,927,412 bytes、SHA-256 `FCC7D7915DD2E06DAE6DC1D2B693C79A967B46D4E6F7B6D7E6582F2213C04D5C`）と4 ABI分の`libfilmsim_guard.so`を`program`へ保存した。総計746ファイル、255,286,723 bytesとなった。
+- 個別LUTの`.enc`ファイル739件はAPK内の0バイトプレースホルダーとして抽出され、非ゼロのプリセット側ファイルは`Xiaomi/textures/film_grain.png.enc`のみだった。実データは暗号化Proパック側にあると判断されるため、復号、暗号化解除、ライセンス／端末キー回避、データの改変は行っていない。
+- 9系統の出力ディレクトリの存在、Proパック／classes.dexのハッシュ、元APK SHA-256 `4EEA3AA31FFA06DA0B1FFAA0726EC809FB0A33F123140F5CBEB6DFF108B8F39C`を確認した。元APK、Essentialソース、既存資産、コミット、push、公開状態は変更していない。
+
+【2026-09-13 FilmSims v2.0.11 実画像ランタイム検証】
+- 元APK `C:\Users\waki1\Downloads\filmsims_v2.0.11.apk`を既存の`Pixel_10a` Androidエミュレーター（`emulator-5554`、`sdk_gphone16k_x86_64`）へインストールし、`com.tqmane.filmsim/.MainActivity`の起動に成功した。APK改変、アプリデータ消去、Essentialソース変更は行っていない。
+- Photo Pickerから既存の滝の実写画像`ProFilm-leica_m3-1789200546611.jpg`を読み込み、無料の`Nothing / Cool Tone`を選択した。UI上で`Cool Tone, Adjust`が選択状態となり、入力画像は`830x552`、SHA-256 `12C4FE177812EB008E8B76F489B3B3341A5D89E9F17B97950E12B14AA73E88E3`である。
+- 初回保存は設定の`SAVE FOLDER = No folder selected`により出力を確認できなかった。その後、アプリの正規設定UIから`Download/Essential`を保存先として選択・許可し、`/sdcard/Download/Essential/FilmSim_1789286965456.jpg`の生成に成功した。PCへ取り出した出力は`C:\Users\waki1\Downloads\filmsims_runtime_output.jpg`、`830x552`、102,451 bytes、SHA-256 `F41CB4FBB3F61E5DBCAC34F70FB92645C276F15A15200EB3714F55C156FD398D`である。
+- 入力と出力のSHA-256は異なり、全458,160画素中458,072画素（99.9808%）が変化、平均RGB絶対差は10.7439だった。出力画像のデコードと見た目も確認し、無料プリセットではGPUプレビューからJPEG保存まで実際に動作すると判定した。
+- 指定9系統（Xiaomi、Vivo、Samsung、OnePlus、Meizu、Leica LUX、Leica FOTOS、Huawei、Honor）は、アプリUI上で全て鍵アイコン付きのProロック表示だった。未契約状態のため、M9を含むこれらの個別プリセットの適用・保存は確認できない。ロック解除、サインイン、復号、端末キー／ライセンス回避は行っていない。
+- 今回の実動作確認は抽出フォルダの`classes.dex`や`.enc`を単独実行したものではなく、暗号化Proパックを含む元APKの正規ランタイムを用いた確認である。抽出済み個別`.enc`は0バイトプレースホルダーで、抽出フォルダだけで指定ブランドのLUTを直接変換に使用できることは未確認である。検証用コピー画像、プレビュー、出力画像はDownloadsへ保存した。
+
+【2026-09-20 ユーザー要望対応：Pro Film削除・Downloader・日課・QR・ミニゲーム】
+- 作業前に`Work history.txt`と`ESSENTIAL_HANDOFF.md`を確認した。既存の未コミット変更、公開済みv0.5.8、Classi削除済み、Block Blastドラッグ専用化の状態を維持し、コミット・push・タグ・Release公開は行っていない。
+- Pro Filmをアプリから削除した。`EssentialApp.kt`のFeatureRoute、ホームの機能カード、機能一覧、画面遷移、表示名・アイコン解決からPro Filmを除去し、`ProFilmScreen.kt`、専用StyleEngine、専用テスト、専用cube／ライセンス資産もソースツリーから削除した。`app/src`を静的検索し、Pro Film導線・専用コード・専用アセットが残っていないことを確認した。過去の検証記録と設計資料は履歴として保持した。
+- ダウンローダーのTikTok Lite短縮URL（`https://lite.tiktok.com/t/ZSqcAG2vG/`）対応を追加した。公開URLの安全性検証を維持したまま、`lite.tiktok.com`またはTikTok `/t/`共有URLだけHTTPリダイレクトを追従して最終TikTok URLへ解決し、yt-dlpへ渡すようにした。TikTok URLではRefererも付与し、画像解析側はリダイレクト追従とTikTok Refererを使用する。ログイン・Cookie・保護回避は追加していない。指定URLそのものはこの環境のWeb参照ツールでは取得不能だったため、実ネットワーク上のダウンロード完走は未確認である。
+- Downloaderの動画フレームレートへ`120fps`を追加し、yt-dlpのfps上限へ反映した。音声形式を`MP3`、`WAV`、`FLAC`へ変更し、arm64／x86_64の端末内FFmpeg変換にMP3（libmp3lame）、WAV（pcm_s16le）、FLAC（flac）を追加した。MIME typeとダウンロード日時処理もWAV／FLACへ対応させた。
+- 画像長押しプレビューを全画面の黒背景へ変更した。写真は縦横比を保った実表示サイズで中央に配置し、写真以外の空白部分をタップするとプレビューを閉じて前画面へ戻る。タイトル・閉じるボタンなどの装飾は表示しない。
+- 日課画面へデイリー／ウィークリー／イベントミッションの複数選択フィルターを追加した。初期状態は3種類すべて選択し、複数のFilterChipを同時に選択・解除できる。既存の日課データモデル、イベント期間、通知、達成処理は変更していない。
+- QRスキャナーへ「URLを自動で開く」Switchを追加した。HTTP／HTTPSのQRを新しく認識したときだけ外部ブラウザーを自動起動し、設定は`qr_scanner` SharedPreferencesへ保存する。既存のタップして開く操作、コピー、検出矩形、振動フィードバックは保持した。
+- Block Blastの倍率を時間制からターン制へ変更した。直近のクリアから5ターン以内に次のラインを壊すと倍率を上げ、倍率表示を秒数から残りターンへ変更した。状態保存・リセット・倍率の脈動表示を新しいターン値へ同期し、5ターン以内／6ターン空きの単体テストを追加した。
+- どすこいのゲーム画面から、キーボード表示時に入力欄を隠していた`MATCH SIGNAL`ラベルだけを削除し、ゲーム状態メッセージとゲーム進行は保持した。
+- ASCII Junction `C:\Users\waki1\Desktop\essential-build`が存在しなかったため、プロジェクトを指すJunctionを作成した。Wrapperのlckアクセス問題を回避するため既存Gradle 8.11.1本体を直接起動し、`GRADLE_USER_HOME=C:\Users\waki1\.gradle`、`ANDROID_USER_HOME=D:\#AI開発\Android\Essential\.android`、`--offline`、`--no-daemon --max-workers=1`で`:app:testDebugUnitTest :app:lintDebug :app:assembleDebug`を実行した。
+- 最終検証は`BUILD SUCCESSFUL`、JUnit `tests=27 failures=0 errors=0`、Lint `errors=0`（既存警告を含むissues=61）、Debug APK生成成功、`git diff --check`エラーなし。Pro Film専用パス／アセットがuniversal Debug APKへ含まれないことをZIPエントリで確認した。
+- `emulator-5554`は接続確認できたが、生成APKのインストール時に既存`jp.essential.app.debug`と署名鍵が一致せず`INSTALL_FAILED_UPDATE_INCOMPATIBLE`となった。エミュレーターのアプリデータを消すアンインストールは行わず、今回の画面変更の実端末UIスモークは未確認とした。実機120Hz、QR自動起動、TikTok Lite実ダウンロード、WAV／FLACの端末保存完走、画像空白タップ、Block Blast実プレイ、どすこいのキーボード被りは未確認である。
+- 追加確認として`THIRD_PARTY_NOTICES.md`から、削除済みPro Film専用のV-Log-Alchemy LUTライセンス記載を除去し、現行APKに残る依存関係だけの一覧へ整合させた。`git diff --check`は改行コード変換警告のみで、staleなPro Film／StyleEngine／V-Log-Alchemy／旧音声形式／旧倍率・MATCH SIGNALの検索結果は0件だった。既存の未追跡ファイルやログは作業範囲外のため変更・削除していない。
+- 2026-09-20 ファイル参照の音声分離機能を追加。変更前に`Work history.txt`と`ESSENTIAL_HANDOFF.md`を確認し、既存の未コミット変更、削除済みPro Film、Downloader等の前回対応を保持した。コミット、push、タグ、Release公開は行っていない。
+- 音声モデルは、sherpa-onnxが公開するSpleeter 2-stem FP16（ボーカル／伴奏）を採用した。高速な端末内CPU推論を優先し、`sherpa-onnx-spleeter-2stems-fp16.tar.bz2`を公式GitHub Releaseから取得して、`app/src/main/assets/models/audio_separation/spleeter-2stems-fp16/`へボーカル19,681,017 bytes、伴奏19,681,024 bytesを同梱した。SHA-256は、それぞれ`24CEF84AEDCD1FE87C0B743EF3370AD34DC1FABF6C9014D6128A75A538C7B668`、`D14CEA55793CC531A5875F5F4DA08207D1C5AB9292E8E0099A104EECB014FCC0`である。出典・著作権・ハッシュを`THIRD_PARTY_NOTICES.md`へ追記した。
+- `app/build.gradle.kts`へ`com.microsoft.onnxruntime:onnxruntime-android:1.30.0`を追加し、`app/proguard-rules.pro`へONNX Runtime Java API保持規則を追加した。1.28.2はMaven Centralで解決できなかったため、同日確認できた公開版1.30.0へ切り替えた。
+- `AudioStemSeparationEngine.kt`を新規追加した。入力をFFmpegで44.1kHz／16bit／ステレオPCM WAVへ正規化し、4096 FFT・1024 hop・Hann窓でSpleeterの`[2, splits, 512, 1024]`入力を作成する。8秒コア＋前後最大1秒コンテキストのブロック処理、端末内ONNX Runtime CPU推論、ボーカル／伴奏マスク、IFFT、WAV書き出しを実装した。元ファイルは読み取り専用で扱い、処理中の一時ファイルはcacheへ置く。
+- `MediaFileEngine.kt`へ分離呼び出しと保存処理を追加した。`FileReferenceScreen.kt`の音声参照画面にAI分離ボタン、進捗表示、ボーカル／楽器それぞれ0〜200%のliquid glass風スライダー、3ファイル保存ボタンを追加した。保存時は調整済みボーカルWAV、調整済みインストゥルメンタルWAV、両者をamixした合成WAVを`Download/Essential`へ生成する。参照元ファイルは上書きしない。
+- `ESSENTIAL_HANDOFF.md`へ音声分離の現行仕様、モデル同梱、8秒ブロック、未確認範囲を追記し、音声モデル同梱後のDebug APKサイズ（x86_64約148MB、universal約367MB）へ更新した。
+- 検証として、ASCII Junction `C:\Users\waki1\Desktop\essential-build`経由で` :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --offline --no-daemon --max-workers=1 -Pkotlin.compiler.execution.strategy=in-process`を実行した。`BUILD SUCCESSFUL`、JUnit `tests=27 failures=0 errors=0`、Lint `errors=0`（issues=61）、Debug APK生成成功、`git diff --check`は改行コード変換警告のみだった。x86_64／universal APKの生成を確認した。
+- 実端末での音声分離速度、ピークRAM、音質、長時間音源、各ABIのONNX Runtime実行、保存後の再生は未確認。既存`emulator-5554`への再インストールは署名不一致で既存データを消去する必要があるため、アンインストールやデータ消去は行っていない。
+
+【2026-09-20 アプリレベル／プロフィール／ミニゲームXP】
+- 作業前に`Work history.txt`を読み、現行ソースと前回の音声分離・Downloader・日課・ミニゲーム変更を確認した。既存の未コミット変更、同梱音声モデル、Pro Film削除状態を保持し、コミット、push、タグ、Release公開、既存アプリのアンインストール／データ消去は行っていない。
+- 日課のレベルをアプリ全体のレベルへ移行するため、`app/src/main/java/jp/essential/app/profile/AppProgress.kt`を追加した。`AppProgressStore`は`app_progress` SharedPreferencesへ合計XPと報酬受取状態を保存し、初回アクセス時に旧`routine`領域の`total_points`／`claimed_rewards`を読み込んで移行する。`requiredAppXp`／`calculateAppLevel`へレベル式を移し、既存JUnitとの互換性のため`RoutineScreen.kt`には`requiredRoutineXp`／`calculateRoutineLevel`の薄いラッパーを残した。
+- `RoutineScreen.kt`から日課専用のレベル報酬一覧、展開状態、受取操作、ポイントリセットUIを除去し、日課では共通アプリレベルカードと日課の達成・編集だけを表示するようにした。日課達成時のポイントは`AppProgressStore.addXp`へ加算し、デイリー／ウィークリー／イベントミッションの複数選択フィルターは維持した。
+- `EssentialApp.kt`の下部ナビゲーションを`Destination.Settings`／「設定」から`Destination.Profile`／「プロフィール」へ変更した。プロフィール画面上部へ名前入力と絵文字アイコン選択（🌱、🌸、🔥、🌙、⚡、🧊、🌹）、アプリレベル表示を追加し、既存テーマ、アプリアイコン、モーションfps、ホームショートカット、yt-dlp更新、アプリ更新設定は同画面の「設定」セクションから利用できるようにした。レベル報酬カードと受取操作はプロフィール画面だけへ移動した。
+- `ProfileStore`を追加し、プロフィール名を最大15文字で保存した。どすこいWebViewへ`EssentialProfileBridge.setProfileName`をJavaScript interfaceとして登録し、プロフィールから設定した名前をHTMLの`essential_profile_name`／`dosukoi_nickname`と同期した。どすこい側で保存した名前もAndroid側の`profile` SharedPreferencesへ戻る。WebViewページが表示された後、5分ごとに`AppProgressStore.addXp(2)`を実行する計時を追加した。
+- Block BlastへゲームセッションIDとXP付与済みセッションIDを追加し、ゲーム終了を検知したときだけ最終スコアから`blockBlastXp`を一度だけ計算・加算するようにした。`blockBlastXp`はスコア÷10を通常の四捨五入で整数化し、12.5を13へ丸める。既存のターン制5ターン倍率仕様、盤面／手札保存、ドラッグ操作は維持した。
+- マインスイーパーの`MineDifficulty`へ盤面ごとのXPを追加し、8×8／9×9クリアで1XP、12×12で2XP、12×24で5XPをクリア遷移時に一度だけ加算するようにした。再挑戦では付与済みフラグをリセットし、新しい盤面を別ゲームとして扱う。
+- `app/src/test/java/jp/essential/app/profile/AppProgressRulesTest.kt`を追加し、Block Blastの123→12、125→13の四捨五入境界、マインスイーパー4盤面の1／1／2／5XP、未知盤面の0XPを検証した。
+- コンパイル初回は`MiniGameScreen.kt`の`LaunchedEffect` import不足と`EssentialApp.kt`の`animateContentSize` import不足を検出し、補正後にDebug Kotlinコンパイル成功。テスト実行はASCII Junction `C:\Users\waki1\Desktop\essential-build`経由へ統一した。
+- 最終検証コマンドは、Gradle 8.11.1、`GRADLE_USER_HOME=C:\Users\waki1\.gradle`、`ANDROID_USER_HOME=D:\#AI開発\Android\Essential\.android`、`--offline --no-daemon --max-workers=1 -Pkotlin.compiler.execution.strategy=in-process`で`:app:testDebugUnitTest :app:lintDebug :app:assembleDebug`。JUnitは29件成功、Lintは`errors=0`・issues=67、Debug APK生成は成功した。universal Debug APKは`C:\Users\waki1\Desktop\essential-build\app\build\outputs\apk\debug\app-universal-debug.apk`、366,578,915 bytes、SHA-256 `6CD0E90D23A055789DA142CD28ED945A5FD23CE1E14D9DA290B7D0A23748D1E0`。
+- `git diff --check`は改行コード変換警告のみで、差分エラーはなかった。Android Studio／既存`emulator-5554`へのUIスモークは、署名不一致で既存データを消去しない方針のため未実施。プロフィール入力、名前同期、5分XP、Block Blast／マインスイーパーXP、報酬受取、設定導線の実端末表示は静的・ビルド検証までである。
+
+【2026-09-20 ホーム下部タブ：ガラス効果付きコマンドパレット】
+- 作業前に`Work history.txt`と`ESSENTIAL_HANDOFF.md`を確認した。ユーザー添付画像は実装指示書ではなく、ホーム下部タブとコマンドパレットのレイアウト・雰囲気を示す視覚リファレンスとして扱った。既存の未コミット変更、Pro Film削除、音声分離、プロフィール／アプリレベル、Downloader等を保持し、コミット、push、タグ、Release公開、既存アプリのアンインストール／データ消去は行っていない。
+- 現行リポジトリはTailwind CSS／ReactではなくAndroid Jetpack Composeで構成されているため、技術スタックを置き換えず、同じ視覚要件を`app/src/main/java/jp/essential/app/ui/EssentialApp.kt`へComposeとして実装した。新規の画像アセットは追加していない。
+- ホーム下部中央の「機能一覧」タブを押すと、`CommandPaletteOverlay`がフルビューポートへ表示されるようにした。背面は暗い半透明オーバーレイ、中央は角丸32dpの液体ガラス風コンテナ、白10%境界線、内部の白8%／白4〜10%面で構成した。既存のHome／プロフィールタブの遷移は維持した。
+- コマンドパレット上部に「コマンドパレット」見出し、補助説明、検索入力、検索アイコン、該当件数、白10%の仕切り線を追加した。検索語は機能名・説明・カテゴリを対象に絞り込み、結果はスクロール可能なカテゴリ別リストとして表示する。
+- 各項目へ既存`EssentialSymbol`のアイコン、機能名、説明、キーボードショートカット（⌘1〜⌘6）を配置した。ダウンローダー、ファイル参照、ミニゲーム、QRスキャナー、行程表、日課を既存`FeatureRoute`へ接続し、項目選択後はパレットを閉じて対象画面を開く。検索結果の先頭項目は`Color.White.copy(alpha = 0.10f)`でアクティブ表示し、その他は4%表示とした。
+- パレット外側のタップ、Android Back操作でパレットを閉じる。パレット表示中にHome／プロフィールを選択した場合もパレットを閉じて対象タブへ移動する。中央タブの再タップでは既存画面へ遷移せず、パレットを再表示する。
+- `EssentialSymbol.Search`を追加し、検索欄のルーペをCanvasで描画した。中央タブの選択位置、アイコン押下縮小、背景のガラス境界、既存の`AnimatedContent`と組み合わせ、ユーザー操作に対するマイクロインタラクションと既存デザインの統一性を維持した。
+- `ESSENTIAL_HANDOFF.md`へコマンドパレット仕様、Compose適用理由、未確認範囲を追記し、アプリ入口の記述をプロフィール／コマンドパレットへ更新した。
+- ASCII Junction `C:\Users\waki1\Desktop\essential-build`経由で、Gradle 8.11.1、`GRADLE_USER_HOME=C:\Users\waki1\.gradle`、`ANDROID_USER_HOME=D:\#AI開発\Android\Essential\.android`、`--offline --no-daemon --max-workers=1 -Pkotlin.compiler.execution.strategy=in-process`を使用して`:app:compileDebugKotlin`を実行し、`BUILD SUCCESSFUL`を確認した。続けて`:app:testDebugUnitTest :app:lintDebug :app:assembleDebug`を実行し、JUnit 29件（failures=0、errors=0）、Lint issues=67（エラー0）、Debug APK生成成功を確認した。
+- `git diff --check`は改行コード変換警告のみで差分エラーなし。今回のAPKは`C:\Users\waki1\Desktop\essential-build\app\build\outputs\apk\debug\app-universal-debug.apk`、366,578,915 bytes、SHA-256 `F2CB3EDE10472B5D201BF903AEA1BF06BA1CE5419233E96C4E2B9B205CDAC073`。`adb`がこのシェルのPATHに存在しなかったため、今回のコマンドパレットの実機／エミュレーター表示・押下経路は未確認。既存署名データを保護するため、アンインストールやデータ消去は行っていない。
+
+【2026-09-20 Android Studioプロジェクトへの反映確認】
+- ユーザーからAndroid Studio内のアプリへ適応する依頼を受け、作業対象がAndroid StudioのGradleプロジェクト本体であることを確認した。プロジェクトルートは`D:\#AI開発\Android\Essential`で、`settings.gradle.kts`、`build.gradle.kts`、`app/src/main/AndroidManifest.xml`が存在する。
+- ビルドに使用した`C:\Users\waki1\Desktop\essential-build`は、同じプロジェクト本体を指すASCII Junctionであり、ソースの別コピーではない。したがって、コマンドパレット実装はAndroid Studioで開くプロジェクトへ直接反映済みである。
+- `EssentialApp.kt`に`CommandPaletteOverlay`とプロフィール遷移が存在することを再確認した。既に実施したGradleコンパイル、JUnit、Lint、Debug APK生成の結果を維持し、Android Studio用に別のコードや別APKを作成していない。
+- Android Studio `C:\Program Files\Android\Android Studio\bin\studio64.exe`を、プロジェクト引数`D:\#AI開発\Android\Essential`付きで起動した。新しい`studio64.exe`プロセスが起動し、IDEログにEssentialのSDK／Libraryモデル保存とファイルインデックス処理が記録されている。ネットワーク接続や既存エミュレーターの状態を変更する操作、アプリデータ消去、アンインストールは行っていない。
+
+【2026-09-20 Pro Film表示が残っている件の原因確認】
+- ユーザーからPro Filmの欄が残っているとの報告を受け、現行`app/src`を`Pro Film`、`ProFilm`、`StyleEngine`、`V-Log-Alchemy`で再検索した。現行アプリソースには該当導線・画面・資産が存在せず、最新universal Debug APKのZIPエントリにも該当文字列・資産が0件だった。履歴・設計資料に過去のPro Film記録が残ることは仕様上許容している。
+- 接続中の`emulator-5554`では`jp.essential.app.debug`と`jp.essential.app`の2パッケージが存在し、表示中のアプリは`jp.essential.app.debug`だった。端末上のDebug APKはversionName `0.5.8-debug`、lastUpdateTime `2026-09-12 10:14:20`で、Pro Film削除前の古いビルドである。
+- 最新universal Debug APKを`adb install -r`でアプリデータ保持のまま上書きしようとしたが、端末側の既存Debug APKと新APKの署名鍵が異なるため`INSTALL_FAILED_UPDATE_INCOMPATIBLE`で拒否された。既存データを消去するアンインストールは、ユーザーの明示許可がないため行っていない。現時点の表示差分はソース未反映ではなく、古い署名版APKが端末に残っていることが原因である。
+- ユーザーが確認用プレビューのためDebugアプリデータ削除を了承したため、`jp.essential.app.debug`だけをアンインストールし、最新`app-universal-debug.apk`をインストールして起動した。`jp.essential.app`の既存Releaseパッケージ、ユーザーのDownload保存物、ソース、設定資料は削除していない。
+- 起動中パッケージが`jp.essential.app.debug`、versionNameが`0.5.8-debug`、lastUpdateTimeが`2026-09-20 13:18:37`へ更新されたことを確認した。UI AutomatorでPro Film文字列が0件、プロフィールとホーム下部ナビゲーションが表示されることを確認した。
+- 中央タブをタップし、実機相当のUIツリーで`コマンドパレット`、ダウンローダー、ファイル参照、ミニゲーム、QRスキャナー、行程表、日課を確認した。同じUIツリーでPro Film文字列が0件であることを再確認し、Android Studio確認用プレビューへの最新変更反映を完了した。
+
+【2026-09-20 コマンドパレット削除】
+- ユーザー要望により、`EssentialApp.kt`からコマンドパレットの状態管理、全画面オーバーレイ、検索入力、カテゴリ／ショートカット一覧、検索アイコン描画を削除した。中央の「機能一覧」タブは`FeaturesScreen`へ直接遷移する従来の動作へ戻した。Home／プロフィール／FeatureRoute本体は変更していない。
+- `commandPalette`、`CommandPalette`、`EssentialSymbol.Search`、`BasicTextField`、パレット専用Compose importの残存参照がないことを確認した。
+- ASCII Junction `C:\Users\waki1\Desktop\essential-build`経由で`:app:compileDebugKotlin`および`:app:testDebugUnitTest :app:lintDebug :app:assembleDebug`を実行し、`BUILD SUCCESSFUL`、JUnit 29件成功、Lintエラー0、Debug APK生成成功を確認した。
+- 最新Debug APKを確認用`emulator-5554`の`jp.essential.app.debug`へ更新インストールした。UI AutomatorでPro Filmとコマンドパレットが0件であること、中央タップ後に通常の「機能一覧」、ダウンローダー、QRスキャナー、行程表ジェネレーター、ファイル参照、ミニゲームが表示されることを確認した。
+
+【2026-09-20 Liquid Glass下部バナー・プロフィール画像アイコン】
+- Product Designの指針を使い、既存のAndroid Jetpack Composeの見た目と操作体系を維持しながら、下部ナビゲーションをLiquid Glass風へ改善した。半透明のsurface、縦方向の光沢グラデーション、上端のハイライト、白い境界線、浮遊する影、選択位置のスプリング移動を重ね、背景の明るさが透けるバナーへ更新した。
+- `ProfileScreen`のプロフィールアイコンを、グラデーションのスイープリング、3dp内側余白、角丸クリップ、影、画像／絵文字のフォールバックを持つ`ProfileAvatar`へ置き換えた。右下の＋ボタンと「画像を選ぶ／画像を変更」ボタンを追加し、画像選択の操作意図をUI上で明確にした。絵文字は横スクロール可能なFilterChipへ整理し、画像使用中は絵文字の選択状態が混在しないようにした。
+- `EssentialMediaPickerContract`をプロフィール画面でも利用し、`image/*`の参照画像を取得できるようにした。選択した画像は元ファイルを上書きせず、`ProfileStore`がアプリ専用`files/profile/`へコピーしてパスだけをSharedPreferencesへ保存する。元画像の読み取り権限に依存し続けない構成とし、画像変更時は前回のアプリ専用コピーだけを回収する。
+- プロフィール画像の読み込みはIOスレッドで行い、最大512px相当へサンプル縮小する。Exifの回転情報を反映してからCompose Imageへ渡し、読み込み失敗時は従来の絵文字へ戻す。画像を外す「絵文字に戻す」操作も追加した。
+- アクセシビリティ向けに画像追加ボタンへ`プロフィール画像を選ぶ`のcontentDescriptionを設定した。コードコメント／docstringは日本語で記述し、既存のプロフィール名とどすこい同期仕様は変更していない。
+- `:app:compileDebugKotlin`および`:app:testDebugUnitTest :app:lintDebug :app:assembleDebug`をASCII Junction経由で実行し、`BUILD SUCCESSFUL`、JUnit 29件成功、Lintエラー0、Debug APK生成成功を確認した。最終universal Debug APKは366,578,915 bytes、SHA-256 `98793C59A3E2DBFB81F2E9C9493A639BCA8402B67D2120E81EA4788E959CF299`。
+- 確認用`emulator-5554`へ最新版を更新インストールし、UI Automatorで「画像を選ぶ」「プロフィールアイコン」を確認した。画面キャプチャでLiquid Glass下部バナー、グラデーションプロフィールリング、＋ボタン、画像参照ボタン、絵文字選択列を目視確認した。個人画像の選択操作は行わず、画像ファイルの実保存・再起動後復元は静的実装と導線表示までである。`git diff --check`は既存の改行コード変換警告のみ。
+
+【2026-09-20 ホーム上部バナー：True Liquid Glass】
+- 作業前に`Work history.txt`と`ESSENTIAL_HANDOFF.md`を確認した。添付画像は既存の下部タブの視覚参考として扱い、今回の最新指示は「ホーム画面のバナーをApple-style Liquid Glassへ作り直す」という実装要求として、ホーム上部の`HeroCard`へ適用した。既存の未コミット変更、Pro Film削除、音声分離、プロフィール／アプリレベル、Downloader等を保持し、コミット、push、タグ、Release公開は行っていない。
+- 現行プロジェクトはReact／TailwindではなくAndroid Jetpack Composeであるため、技術スタックを置き換えず、`app/src/main/java/jp/essential/app/ui/EssentialApp.kt`へComposeネイティブに実装した。既存の`PressableGlassCard`が持つタップ時のスプリング縮小とハプティックフィードバックは維持した。
+- ホームの`HeroCard`へ、Android 13（API 33）以上で`RuntimeShader`と`RenderEffect.createRuntimeShaderEffect`を使う屈折レイヤーを追加した。AGSLの`contents.eval`による中心から外周へ強くなる座標変位で光彩を歪ませ、赤・緑・青を別座標でサンプリングして境界のRGB分散を表現した。単純なぼかしではなく、バナー内の背景光彩を光学的に歪ませる屈折処理である。
+- 下層の光彩にはグラデーション矩形、heroLight／heroShade／heroAccentの放射光、白い反射光を配置した。`rememberInfiniteTransition`でハイライトをゆっくり移動させ、上層には白・マゼンタ・紫・シアンのsweep gradient境界、薄い内側境界、上端スペキュラーハイライトを重ねた。通常表示時のAmbient light、光の移動、押下時の縮小を統一した。
+- API 33未満ではRuntimeShaderを生成せず、同じ光彩・反射・色収差風境界をComposeのCanvasだけで表示するフォールバックへ切り替える。API 33のRuntimeShader API呼び出しは実行時API判定と`@SuppressLint("NewApi")`で保護し、Shader生成失敗時もCanvasフォールバックへ切り替える。
+- ASCII Junction `C:\Users\waki1\Desktop\essential-build`経由で`:app:compileDebugKotlin --rerun-tasks`を実行し、`BUILD SUCCESSFUL`を確認した。続けて`:app:testDebugUnitTest :app:lintDebug :app:assembleDebug --rerun-tasks --no-daemon --max-workers=1`を実行し、`BUILD SUCCESSFUL`、Lintエラー0、Debug APK生成成功を確認した。既存のNDK内`libffmpeg.zip.so`／`libpython.zip.so`がstrip対象外である警告は継続しているが、APKは正常にパッケージされた。
+- 最終universal Debug APKは`C:\Users\waki1\Desktop\essential-build\app\build\outputs\apk\debug\app-universal-debug.apk`、355,616,368 bytes、SHA-256 `C256BA001A2826C06F21A7BC5D249672A462A19893C4E38421FCF241921973DF`。`git diff --check`を実行し、既存の改行コード変換警告以外の差分エラーがないことを確認した。
+- `emulator-5554`は接続中だったが、既存`jp.essential.app.debug`と今回のAPKで署名鍵が一致せず、`adb install -r`は`INSTALL_FAILED_UPDATE_INCOMPATIBLE`となった。既存のプロフィール等を含むアプリデータを消去するアンインストールは行っていない。そのため、今回のTrue Liquid Glassバナーの実エミュレーター描画・RuntimeShader実行は未確認であり、静的実装・Kotlinコンパイル・JUnit・Lint・APK生成までを確認済みとする。
+
+【2026-09-20 True Liquid Glass Debug APK更新インストール】
+- ユーザーから更新インストールの明示依頼を受け、接続中の`emulator-5554`を確認した。`jp.essential.app.debug`と`jp.essential.app`の2パッケージが存在し、既存Debug版だけが今回のAPKと署名不一致だった。
+- 通常の`adb install -r`では署名不一致になるため、確認用の`jp.essential.app.debug`だけをアンインストールしてから、`C:\Users\waki1\Desktop\essential-build\app\build\outputs\apk\debug\app-universal-debug.apk`を再インストールした。`jp.essential.app`のRelease版、ソース、Download保存物は対象外とした。Debug版のアプリ内プロフィール／設定データは再インストールにより初期化された。
+- インストールと起動は成功し、`versionCode=19`、`versionName=0.5.8-debug`、`lastUpdateTime=2026-09-20 14:00:00`を確認した。ホームタブへ移動し、RuntimeShader対応エミュレーター上でホーム上部のLiquid Glassバナーを目視確認した。背景光彩の屈折、外周の色分散風フリンジ、スペキュラーハイライト、テキストの可読性、下部ナビゲーション表示を確認した。
+- 確認用キャプチャは`C:\Users\waki1\AppData\Local\Temp\essential-liquid-glass-home.png`へ保存した。
+
+【2026-09-20 下部ナビゲーション：Liquid Glassアイコンバー】
+- 添付一枚目は変更対象の現状、一枚目のバーを含む画面と二枚目はLiquid Glassの背景移り・横長レンズ形状の参考画像として扱った。ホーム、機能一覧、プロフィールの表示ラベルを下部ナビゲーションから削除し、アイコンだけで操作できる構成へ変更した。アクセシビリティ用のcontentDescriptionは維持した。
+- `EssentialNavigationBar`へアプリアイコンの背景色を渡し、バー内部に既存テーマと連動する背景光彩を描画した。Android 13以上では共有のAGSL `RuntimeShader`で内側の光彩を歪ませ、API 33未満またはShader生成失敗時はCanvasのグラデーションへフォールバックする。
+- バー全体を66dpの横長レンズへ整理し、透明度の高い面、白・シアン・ピンクのsweep境界、上端スペキュラーハイライト、移動する反射光、選択中アイコンだけを囲う40dpのLiquid Glassピルを重ねた。選択位置のスプリング、押下時のアイコン縮小、選択時のバッジ、ハプティックフィードバックは維持した。
+- ASCII Junction `C:\Users\waki1\Desktop\essential-build`経由で`:app:compileDebugKotlin --rerun-tasks`、`:app:testDebugUnitTest :app:lintDebug :app:assembleDebug --rerun-tasks --no-daemon --max-workers=1`を実行し、`BUILD SUCCESSFUL`、Lintエラー0、Debug APK生成成功を確認した。既存のNDK内zip形式ライブラリに対するstrip警告は継続したが、APKは正常にパッケージされた。
+- 最新APKを`adb install -r`で`emulator-5554`へ上書きインストールし、アプリ起動後にホームタブへ移動した。スクリーンショットで、下部ナビゲーションの表示ラベルがなく、背景が透ける横長Liquid Glassバー、選択中ホームピル、機能一覧のオレンジバッジ、プロフィールアイコンが表示されることを目視確認した。
+- 最終universal Debug APKは`C:\Users\waki1\Desktop\essential-build\app\build\outputs\apk\debug\app-universal-debug.apk`、355,620,784 bytes、SHA-256 `CC24EA0EBB66AD92668C788026CF3D3B451852C67DABCD0F959B4604E58AA611`。確認用キャプチャは`C:\Users\waki1\AppData\Local\Temp\essential-liquid-glass-nav-labels-removed.png`へ保存した。
+
+【2026-09-20 下部Liquid Glassの固定青色を除去】
+- ユーザーから、下部Liquid Glassバーが青く染まり、背景を透明に写していないとの指摘を受けた。原因を`LiquidGlassNavigationBackdrop`内の固定`B9F7FF`／`8EEBFF`、選択境界の固定シアン／ピンク、共通Hero用Shaderの青紫加算と切り分けた。
+- 下部ナビゲーション専用の`LIQUID_GLASS_NAV_SHADER_SOURCE`を追加し、既存背景のRGB別サンプリングと白いスペキュラーハイライトだけを行うようにした。青・シアン・ピンクの固定加算を削除し、アプリアイコンの実際の`backgroundStart`／`backgroundEnd`を低い不透明度で反映する構成へ変更した。
+- 選択ピルと外周境界も固定色を使わず、現在のアプリアイコン背景色と白の反射だけを使用するようにした。バーは青く着色されず、ホーム背景の淡い黄緑が透けて見える状態になった。Android 13以上は専用RuntimeShader、API 33未満またはShader失敗時はCanvasフォールバックを維持した。
+- `:app:testDebugUnitTest :app:lintDebug :app:assembleDebug --rerun-tasks --no-daemon --max-workers=1`を実行し、`BUILD SUCCESSFUL`、Lintエラー0、Debug APK生成成功を確認した。最新APKを`adb install -r`で`emulator-5554`へ上書きし、ホーム画面で青色固定着色の除去と実背景色の透過表示を目視確認した。
+- 最終universal Debug APKは`C:\Users\waki1\Desktop\essential-build\app\build\outputs\apk\debug\app-universal-debug.apk`、355,620,956 bytes、SHA-256 `03BB45979FBBE6DE460CEA08710AE789F29AE18EB0366FA421BF91341AC57FF9`。確認用キャプチャは`C:\Users\waki1\AppData\Local\Temp\essential-liquid-glass-nav-transparent.png`へ保存した。`git diff --check`は改行コード変換警告のみ。
+
+【2026-09-20 下部Liquid Glass背面の日課表示修正】
+- 添付スクリーンショットは、下部バーと背面コンテンツの間に日課カードが途切れて見える緑色の空き帯がある問題として扱った。画像は実装指示書ではなく、日課カードと下部バーが重なる状態を示す視覚資料として確認した。
+- 原因は`EssentialApp.kt`の`Scaffold`コンテンツへ`innerPadding`全体を適用していたことだった。下部バー分のパディングでスクロール画面の描画領域が止まり、日課カードの後ろに背面の`AnimatedBackdrop`だけが残っていた。
+- コンテンツ側は`innerPadding.calculateTopPadding()`だけを適用し、下部バー分の高さを差し引かずに画面を描画するよう変更した。日課カード、機能一覧、プロフィールのスクロールコンテンツが下部Liquid Glassの背面まで連続して表示される。
+- 下部バーの外側の白い面を除去し、内部のアプリアイコン色の矩形・下部グローを大幅に薄くした。白い反射と境界線、選択ピル、影、API 33以上のRuntimeShader／API 33未満のCanvasフォールバックは維持した。これによりバーが緑色の壁として塗りつぶさず、背面の色と内容が見える構成になった。
+- ASCII Junction `C:\Users\waki1\Desktop\essential-build`経由で`:app:testDebugUnitTest :app:lintDebug :app:assembleDebug --offline --no-daemon --max-workers=1 '-Pkotlin.compiler.execution.strategy=in-process' --rerun-tasks`を実行し、`BUILD SUCCESSFUL`、JUnit成功、Lintエラー0、Debug APK生成成功を確認した。既存のNDK内zip形式ライブラリのstrip警告は継続したが、パッケージングは成功した。
+- 最新universal Debug APKは`C:\Users\waki1\Desktop\essential-build\app\build\outputs\apk\debug\app-universal-debug.apk`、355,620,676 bytes、SHA-256 `0242D71A6B2BFE377404A32ECEDF98D0726D834E36BF98553890321E5958F574`。確認用`emulator-5554`へ`adb install -r`で更新インストールした。
+- エミュレーターで機能一覧を最下部までスクロールし、日課カードが下部バー背面へ連続して伸びること、日課の文字がガラス越しに表示されること、UIツリー上で日課カードのboundsが`[53,2003][1027,2350]`、下部バーが`[48,2178][1032,2329]`となり重なっていることを確認した。キャプチャは`C:\Users\waki1\AppData\Local\Temp\essential-features-bottom-transparent2.png`。
+
+【2026-09-20 下部Liquid Glassの透明度82%・下部影グラデーション】
+- ユーザー要望に合わせ、下部バーの透明度を82%として扱い、不透明度18%を`NAVIGATION_GLASS_SURFACE_ALPHA`へ定数化した。背面の日課カードが見える状態は維持した。
+- バー内部の縦グラデーションを、上部の白い反射、中間の薄い白、下端の黒い影へ変更した。下へ進むほど暗くなるため、背景色で塗りつぶさずにLiquid Glassの厚みと落ち影を表現する。
+- 下部バー内の追加白色面も低アルファへ調整し、透明度指定と重ね合わせたときに日課の文字が読めるようにした。既存の選択ピル、境界線、アニメーション、RuntimeShader／Canvasフォールバックは維持した。
+- `:app:testDebugUnitTest :app:lintDebug :app:assembleDebug`は`BUILD SUCCESSFUL`、JUnit全29件成功、Lintエラー0。最新universal Debug APKは`C:\Users\waki1\Desktop\essential-build\app\build\outputs\apk\debug\app-universal-debug.apk`、355,620,688 bytes、SHA-256 `E0CB5E5B342E9ADA4708710BB364848BF59A0E3BA71BC1942CAA2771186C98C6`。
+- `emulator-5554`へ`adb install -r`で更新インストールし、機能一覧を最下部までスクロールして、日課カードがバー背面へ連続して表示され、バーの下部ほど影が濃くなることを目視確認した。キャプチャは`C:\Users\waki1\AppData\Local\Temp\essential-features-navigation-shadow.png`。
+
+【2026-09-20 プログラム整理による軽量化】
+- ユーザー要望は「画像・アイコン・Liquid Glassなどのグラフィックを変更せず、アプリサイズと動作を軽量化する」だったため、画像、モデル、音声資産、同梱ネイティブライブラリ、Compose UIの見た目は変更しなかった。既存の未コミット変更も保持し、コミット・push・Release公開は行っていない。
+- `app/build.gradle.kts`のReleaseだけR8コード縮小を有効化した。`isShrinkResources = false`を明示し、画像・レイアウトなどのリソース縮小は行わない設定にした。デバッグ版の動作と確認用構成は変更していない。
+- `app/proguard-rules.pro`へ`@JavascriptInterface`の公開メソッド保持ルールを追加した。R8後もどすこい等のWebView JavaScriptブリッジを残し、既存の`EssentialCore`／ONNX Runtime保持ルールも維持した。
+- `MainActivity.onCreate`で実行していた廃止Classiデータ、更新APK、ストレージ保守の整理処理を、順序を保ったまま`lifecycleScope.launch(Dispatchers.IO)`へまとめた。UIスレッドのファイル走査・削除・KeyStore確認を避け、初回描画を先に進める構成にした。
+- `AppUpdateModel.download`の進捗コールバックを1%単位へまとめ、ダウンロード中に発生するCompose状態更新とコルーチン起動数を抑制した。ダウンロード、ハッシュ検証、APK検証、インストール導線の動作は変更していない。
+- ASCII Junction `C:\Users\waki1\Desktop\essential-build`から`:app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleRelease --offline --no-daemon --max-workers=1 '-Pkotlin.compiler.execution.strategy=in-process' --rerun-tasks`を実行し、`BUILD SUCCESSFUL`を確認した。JUnitは既存の全29件成功、Lintエラー0、Debug／Release APK生成成功。Release R8からKotlin metadataの既知警告が出たが、ビルド失敗・Missing classエラーはなく完了した。NDK内の`libffmpeg.zip.so`／`libpython.zip.so`がstrip対象外になる既存警告も継続した。
+- 軽量化前のRelease基準値は、arm64-v8a `133,478,096` bytes、armeabi-v7a `110,662,040` bytes、x86_64 `139,806,559` bytes、x86 `120,213,496` bytes、universal `342,793,894` bytesだった。R8有効化後はそれぞれ`125,535,399`、`102,719,343`、`131,863,862`、`112,270,803`、`334,851,201` bytesとなり、各ABIで約7.94MB、universalで約7.57MiB縮小した。
+- 縮小後Releaseのuniversal APK内訳はDEX `5,101,244` bytes、`lib/` `427,500,683` bytes、`assets/` `40,455,122` bytes、`res/` `5,493,537` bytesだった。容量の大部分を占めるネイティブライブラリと音声モデルは削除・変更していない。
+- 最新Debug universal APK `C:\Users\waki1\Desktop\essential-build\app\build\outputs\apk\debug\app-universal-debug.apk`を`emulator-5554`へ`adb install -r`で更新インストールし、`jp.essential.app.debug/jp.essential.app.MainActivity`が前面になることを確認した。起動後の直近Logcatに`FATAL EXCEPTION`、`AndroidRuntime`、対象プロセスのクラッシュはなかった。APKのグラフィック変更確認ではなく、今回の起動処理整理後のスモーク確認として実施した。
+- 最新Debug APKを`emulator-5554`へ更新インストールし、`jp.essential.app.debug`を起動した。機能一覧の最下部までスクロールし、下部バーのboundsが`[48,2178][1032,2329]`、最終項目「ミニゲーム」の文字boundsが`[305,2085][579,2146]`となり、バー開始位置より32px上で止まることをUIツリーで確認した。
+
+【2026-09-21 下部バーと最終コンテンツの重なり修正】
+- ユーザーから、最下部までスクロールしたときに下部Liquid Glassバーと背面のボタンが重なるとの報告を受けた。前回の「背面の日課を見せる」修正で`Scaffold`の下部余白を完全に外していたことが原因だった。
+- `app/src/main/java/jp/essential/app/ui/EssentialApp.kt`の`AnimatedContent`へ`innerPadding.calculateBottomPadding()`を適用した。背景の`AnimatedBackdrop`は従来どおり画面全体へ描画し、実際の画面コンテンツだけが下部バーの高さ分を避けてスクロールできる構成にした。Liquid Glassの色、透明度、影、アニメーションは変更していない。
+- ASCII Junction `C:\Users\waki1\Desktop\essential-build`経由で`:app:testDebugUnitTest --offline --no-daemon --max-workers=1 '-Pkotlin.compiler.execution.strategy=in-process' --rerun-tasks`を実行し、`BUILD SUCCESSFUL`を確認した。JUnitテストは全件成功した。
+- 日本語パスの通常チェックアウトではテストランナーが`ClassNotFoundException`になったが、クラス生成自体は確認でき、ASCII Junction経由では再現せず成功した。JDK 25ではKotlin DSLが`25.0.4.1`を解釈できない環境エラーが出たため、プロジェクトで実績のあるJDK 23をGradle実行時だけ指定した。ユーザー環境やプロジェクト設定は変更していない。
+- 通常チェックアウトから`:app:lintDebug :app:assembleDebug`も実行し、`BUILD SUCCESSFUL`、Lintエラー0、Debug APK生成成功を確認した。NDK内のzip形式ライブラリに対するstrip警告は既存の非致命警告として継続している。
+- Debug APKを既存データ保持の`adb install -r`で`emulator-5554`へ更新インストールした。機能一覧の最下部で、下部バーのboundsは`[48,2178][1032,2329]`、最終項目「ミニゲーム」の文字boundsは`[305,2085][579,2146]`となり、最終文字がバー開始位置より32px上にあることをUIツリーで確認した。
+- Debug APKを`emulator-5554`へ再インストールし、機能一覧を最下部までスワイプした。追加スワイプ後も最終項目の位置は安定し、最後の日課説明文のboundsは`[305,1810][927,1915]`、下部タブのboundsは`[48,2178][1032,2329]`だった。スクリーンショットは`C:\Users\waki1\AppData\Local\Temp\essential-bottom-transparent-final3.png`。
+
+【2026-09-21 透明タブ背面を維持した末尾スクロール余白調整】
+- ユーザーから、背景は透明のまま、最後までスクロールしたときに下部タブへ重ならない位置までコンテンツを上げたいとの要望を受けた。
+- `AnimatedContent`全体に付けていた下部余白を削除し、`Scaffold`の背景描画を画面全体へ戻した。これにより下部Liquid Glassタブの裏側は、前回の透明な背面コンテンツ表示と同じ状態になった。
+- ホーム、機能一覧、プロフィールの各`LazyColumn`へ`innerPadding.calculateBottomPadding()`を末尾の`contentPadding`として渡し、さらに`NAVIGATION_CONTENT_CLEARANCE = 32.dp`を追加した。タブや背景の色、透明度82%、影グラデーション、RuntimeShader／Canvasフォールバックは変更していない。
+- ASCII Junction `C:\Users\waki1\Desktop\essential-build`経由で`:app:testDebugUnitTest :app:lintDebug :app:assembleDebug --offline --no-daemon --max-workers=1 '-Pkotlin.compiler.execution.strategy=in-process' --rerun-tasks`を実行し、`BUILD SUCCESSFUL`、JUnit全件成功、Lintエラー0、Debug APK生成成功を確認した。既存のzip形式ネイティブライブラリstrip警告は継続した。
+- `emulator-5554`へ既存データを保持したまま更新インストールし、機能一覧の最下部までスワイプした。追加スワイプ後も最後の日課説明文は`y=1915`で止まり、下部タブ上端`y=2178`と重ならないことを確認した。透明なタブ背面と最終項目の離隔はスクリーンショットでも確認済み。
+
+【2026-09-21 下部タブ・QR Auto・プロフィール初期状態の調整】
+- 作業前に`Work history.txt`と`ESSENTIAL_HANDOFF.md`を確認した。今回の対象は下部タブの余白・白線、QRスキャナーの自動URLオープン設定、プロフィールのレベル報酬初期状態であり、既存の未コミット変更、Liquid Glass、各機能の動作は保持した。
+- `app/src/main/java/jp/essential/app/ui/EssentialApp.kt`の`NAVIGATION_CONTENT_CLEARANCE`を`32.dp`から`29.dp`へ変更した。ホーム、機能一覧、プロフィールの末尾スクロール余白を約9.4%縮小し、下部タブの背面へスクロールできる透明表示は維持した。
+- 下部ナビゲーションのCanvas反射線、外周境界線、選択中タブの白い輪郭線を削除した。背景光彩、下方向の影グラデーション、選択中アイコンのガラス面、押下時アニメーション、アクセシビリティ用contentDescriptionは維持した。
+- `app/src/main/java/jp/essential/app/feature/qr/QrScannerScreen.kt`では、上部にあった「URLを自動で開く」Switchを削除し、倍率プリセットと現在倍率`1.0×`の直下へ`Auto` Checkboxを配置した。チェック状態のSharedPreferences保存、QR認識時にURLを自動で開く動作は変更していない。
+- `ProfileScreen`の`rewardsExpanded`初期値を`false`へ変更し、プロフィールを開いた直後はレベル報酬を閉じ、「タップして報酬一覧を表示」の状態にした。
+- ASCII Junction `C:\Users\waki1\Desktop\essential-build`経由で`:app:testDebugUnitTest :app:lintDebug :app:assembleDebug --offline --no-daemon --max-workers=1 '-Pkotlin.compiler.execution.strategy=in-process' --rerun-tasks`を実行し、`BUILD SUCCESSFUL`、JUnit成功、Lintエラー0、Debug APK生成成功を確認した。`libffmpeg.zip.so`／`libpython.zip.so`のNDK strip警告は既存の非致命警告として継続した。
+- 生成APKは`C:\Users\waki1\Desktop\essential-build\app\build\outputs\apk\debug\app-universal-debug.apk`、355,619,964 bytes、SHA-256 `C232226CB6DE4C551FDFC20D9F30E54EDE2AE4DCFECEA9A014EB53B1F5B9F170`。確認用の正しいDebugパッケージ`jp.essential.app.debug`へ`adb install -r`で更新インストールし、プロフィールの報酬閉状態、QR画面の`Auto`と倍率欄の配置、ホームの白線除去をUIツリーとスクリーンショットで確認した。旧Releaseパッケージ`jp.essential.app`は起動・変更対象にしていない。
+
+【2026-09-21 下部末尾余白を追加で20%縮小】
+- ユーザーから、現在の一番下の余白をさらに20%減らしたいとの依頼を受けた。`NAVIGATION_CONTENT_CLEARANCE`を`29.dp`から`23.2.dp`へ変更し、現在値から正確に20%縮小した。
+- ホーム、機能一覧、プロフィールの`LazyColumn`へ適用される末尾余白だけを変更し、透明な下部タブ、Liquid Glassの色・影・アニメーション、コンテンツの表示順は変更していない。
+- ASCII Junction `C:\Users\waki1\Desktop\essential-build`経由で`:app:testDebugUnitTest :app:lintDebug :app:assembleDebug --offline --no-daemon --max-workers=1 '-Pkotlin.compiler.execution.strategy=in-process' --rerun-tasks`を実行し、`BUILD SUCCESSFUL`、JUnit成功、Lintエラー0、Debug APK生成成功を確認した。既存のNDK strip警告は継続した。
+- `emulator-5554`の`jp.essential.app.debug`へ`adb install -r`で更新インストールし、機能一覧を最下部までスクロールした。最終の日課説明文は`[305,1833][927,1938]`、下部タブは`[48,2178][1032,2329]`となり、追加スワイプ後も安定することを確認した。
+- APKは`C:\Users\waki1\Desktop\essential-build\app\build\outputs\apk\debug\app-universal-debug.apk`、355,620,044 bytes、SHA-256 `8A3436A76A28DE7B04D27EACBE1AD6098F2C2305CBFECA443A5E725C3381945C`。Release公開、コミット、push、データ削除は行っていない。
+
+【2026-09-21 下部末尾余白を16.8dpへ変更】
+- ユーザー指定に合わせ、`NAVIGATION_CONTENT_CLEARANCE`を`23.2.dp`から`16.8.dp`へ変更した。ホーム、機能一覧、プロフィールの末尾スクロール余白へ反映し、下部タブや背面コンテンツの描画、Liquid Glassの見た目は変更していない。
+- ASCII Junction `C:\Users\waki1\Desktop\essential-build`経由で`:app:testDebugUnitTest :app:lintDebug :app:assembleDebug --offline --no-daemon --max-workers=1 '-Pkotlin.compiler.execution.strategy=in-process' --rerun-tasks`を実行し、`BUILD SUCCESSFUL`、JUnit成功、Lintエラー0、Debug APK生成成功を確認した。既存のNDK strip警告は継続した。
+- 最新APKを`emulator-5554`の`jp.essential.app.debug`へ`adb install -r`でデータ保持のまま更新インストールした。APKは355,620,044 bytes、SHA-256 `5D7699AC0194C8FF2FDEF213AD5AAC2552BC3918DE35956033489B313CA7DD6D`。Release公開、コミット、push、データ削除は行っていない。
+
+【2026-09-21 下部タブ余白12.8dp・白線除去・プロフィール実アイコン連動】
+- ユーザー指定に合わせ、`ui/EssentialApp.kt`の`NAVIGATION_CONTENT_CLEARANCE`を`16.8.dp`から`12.8.dp`へ変更した。ホーム／機能一覧／プロフィールの末尾スクロール余白へ反映し、下部タブと背面コンテンツの重なりを抑えた。
+- 下部タブの白い反射線・白い選択輪郭・外周境界線に加え、Backdropの白いハイライトを除去した。透明度82%を保つため、アプリアイコン背景色の18%サーフェスと下方向の影グラデーションを使う構成へ変更した。タブ外周に残っていた透明な4dp帯をなくし、Backdrop／Canvasをクリップ領域いっぱいに描画、アイコンRow側だけに4dp余白を移した。
+- ルートの`ProfileStore`状態を下部ナビへ共有し、プロフィール画面で保存した画像パスまたは絵文字を`ProfileAvatar`でプロフィールタブにも即時表示するようにした。画像を解除した場合は選択中の絵文字へ戻る。UIツリーでプロフィールタブ配下に既存プロフィール絵文字の子要素が表示されることを確認した。
+- ASCII Junction `C:\Users\waki1\Desktop\essential-build`経由で`:app:testDebugUnitTest :app:lintDebug :app:assembleDebug --offline --no-daemon --max-workers=1 '-Pkotlin.compiler.execution.strategy=in-process' --rerun-tasks`を実行し、`BUILD SUCCESSFUL`、JUnit成功、Lintエラー0、Debug APK生成成功を確認した。既存の`libffmpeg.zip.so`／`libpython.zip.so`のNDK strip警告は非致命警告として継続した。
+- 最終APKを`emulator-5554`の`jp.essential.app.debug`へ`adb install -r`でデータ保持のまま更新インストールし、ホーム画面を起動して最終キャプチャ`C:\Users\waki1\AppData\Local\Temp\essential-home-nav-12-8dp-final-verified2.png`を取得した。APKは`C:\Users\waki1\Desktop\essential-build\app\build\outputs\apk\debug\app-universal-debug.apk`、355,624,784 bytes、SHA-256 `A6D84C36807413EB4D4ECAC37078A472CEBB40BC3D9E0EA55211722B7D1139CD`。コミット、push、Release公開、データ削除は行っていない。
+
+【2026-09-21 下部タブのHomeアイコン・プロフィールアバター・Liquid Glass改善】
+- 作業前に`Work history.txt`と`ESSENTIAL_HANDOFF.md`を確認した。添付画像2・3は実装指示書ではなく、背景が透け、周辺で光が曲がるLiquid Glassの視覚参考として扱った。既存の機能・未コミット変更・ユーザーデータは保持した。
+- 機能一覧画面でホームアイコンが消える状態を再現した。`EssentialSymbol.Home`の屋根・左右の壁・下辺を`drawPath`依存から個別の`drawLine`描画へ変更し、機能一覧とプロフィールへ移動してもホームアイコンが表示され続けることをエミュレーターで確認した。
+- `ProfileAvatar`を`BoxWithConstraints`へ変更し、アバター枠を3dpから1dpへ細くした。絵文字のサイズをコンテナに応じて拡大し、画像は`ContentScale.Crop`と円形クリップで中央の円内に表示する。下部タブのプロフィール枠も24dpから28dpへ拡大し、プロフィール画面と同じ実アイコン（画像または選択中の絵文字）を表示する。
+- 下部タブの選択中Liquid Glassを幅88dp・高さ44dpへ拡大した。RuntimeShaderの白いハイライトを0にし、アプリアイコン色の淡い光と背面の歪みを残した。背面カード境界の白い横線が透けて浮かないよう、明るい局所反射帯を削除し、下へ進むほど暗くなる連続シャドウグラデーションへ整理した。透明度82%のサーフェスと背面コンテンツの表示は維持した。
+- ASCII Junction `C:\Users\waki1\Desktop\essential-build`でJava 23を明示し、`:app:testDebugUnitTest :app:lintDebug :app:assembleDebug --offline --no-daemon --max-workers=1 '-Pkotlin.compiler.execution.strategy=in-process' --rerun-tasks`を実行した。`BUILD SUCCESSFUL`、JUnit成功、Lintエラー0、Debug APK生成成功を確認した。既存のNDK内zip形式ライブラリstrip警告は非致命警告として継続した。
+- 最新APKを`emulator-5554`の`jp.essential.app.debug`へ`adb install -r`で更新インストールした。機能一覧の確認キャプチャは`C:\Users\waki1\AppData\Local\Temp\essential-features-nav-final2.png`、プロフィールの確認キャプチャは`C:\Users\waki1\AppData\Local\Temp\essential-profile-nav-final2.png`。両画面でホームアイコンを確認し、白い横線が見えないこと、プロフィールアバターが細い枠・大きめ・円形中央表示であることを目視確認した。
+- 最終APKは`C:\Users\waki1\Desktop\essential-build\app\build\outputs\apk\debug\app-universal-debug.apk`、355,625,824 bytes、SHA-256 `F745D7B6B78ACE74D3CD0F27E02A525621B2C98373D87CCDAF7DD5F51C2386AC`。差分チェックは空白エラーなし。コミット、push、Release公開、データ削除は行っていない。
+
+【2026-09-21 ダウンローダー下矢印アイコン修正】
+- 作業前に`Work history.txt`と`ESSENTIAL_HANDOFF.md`を確認した。添付画像は実装指示書ではなく、ダウンローダーカード内で下矢印の先端が欠けて見える状態を示す視覚資料として扱った。
+- 原因は`EssentialSymbol.Download`の矢印先端を複雑な塗りつぶしPathで描画していたことだった。小さなカード内の縮小描画で先端が崩れ、縦線と横線だけに見えていた。
+- `app/src/main/java/jp/essential/app/ui/EssentialApp.kt`では、矢印先端を左右2本の丸線へ置き換えた。縦線・矢印先端・下部の水平線を同じ`Stroke`で描画し、ダウンローダーの小さいカードでも形が崩れないようにした。他の機能アイコンは変更していない。
+- ASCII Junction `C:\Users\waki1\Desktop\essential-build`でJava 23を明示し、`:app:testDebugUnitTest :app:lintDebug :app:assembleDebug --offline --no-daemon --max-workers=1 '-Pkotlin.compiler.execution.strategy=in-process' --rerun-tasks`を実行した。`BUILD SUCCESSFUL`、JUnit成功、Lintエラー0、Debug APK生成成功を確認した。既存のNDK内zip形式ライブラリstrip警告は非致命警告として継続した。
+- `emulator-5554`の`jp.essential.app.debug`へ`adb install -r`でデータ保持のまま更新インストールし、機能一覧のダウンローダーカードを表示した。修正後キャプチャは`C:\Users\waki1\AppData\Local\Temp\essential-features-downloader-card-final.png`。下矢印の先端が表示されることを目視確認した。
+- 最終APKは`C:\Users\waki1\Desktop\essential-build\app\build\outputs\apk\debug\app-universal-debug.apk`、355,625,736 bytes、SHA-256 `5B4CD4EE063AF5C72BEA2AF708A329F261436259EF9F4631D90B272DC1917815`。差分チェックは空白エラーなし。コミット、push、Release公開、データ削除は行っていない。
+
+【2026-09-21 Essential v0.5.9 GitHub公開準備】
+- ユーザーの明示的な依頼により、正式版v0.5.8からv0.5.9へのGitHub Release公開を開始した。作業前に`Work history.txt`と`ESSENTIAL_HANDOFF.md`を確認した。
+- `app/build.gradle.kts`の`versionCode`を19から20、`versionName`を0.5.8から0.5.9へ更新した。Release版Application ID `jp.essential.app`とDebug共存設定は維持した。
+- `.github/release-notes/v0.5.9.md`を追加し、Pro Film削除、Downloader拡張、端末内音声分離、日課Multi-select、QR Auto、プロフィール／アプリレベル／ミニゲームXP、Liquid Glass下部ナビゲーション、軽量化、各アイコン修正をv0.5.8以降の変更内容として整理した。
+- 公開対象は現行アプリの追跡済み差分、音声分離モデル、`AudioStemSeparationEngine`、プロフィール／ストレージ処理と対応テスト、Release notesに限定する。CameraStyleAI研究フォルダ、ローカルビルドログ、`.android`、旧Pro Film設計資料は公開対象へ含めない。
+- `origin/main...main`はfetch後0/0で、ローカル／リモートに`v0.5.9`タグが存在しないことを確認した。GitHub ActionsのタグReleaseフローを使用し、正式な配布署名・5 ABI APK・SHA256SUMS・Release公開はタグpush後に検証する。
+- Java 23を明示したASCII Junction `C:\Users\waki1\Desktop\essential-build`で、`:app:testDebugUnitTest :app:lintDebug :app:assembleRelease --offline --no-daemon --max-workers=1 '-Pkotlin.compiler.execution.strategy=in-process' '-PUPDATE_REPOSITORY=Aikidoooo/Essential-for-Android' --rerun-tasks`を実行し、`BUILD SUCCESSFUL`を確認した。JUnitは29件成功、失敗0、エラー0、Lintはエラー0・警告72だった。既存のR8 Kotlin metadata警告とzip形式ネイティブライブラリstrip警告は非致命警告として継続した。
+- 生成したarm64-v8a、armeabi-v7a、x86、x86_64、universalの未署名Release APK 5種を`aapt dump badging`で検査し、すべて`applicationId=jp.essential.app`、`versionCode=20`、`versionName=0.5.9`であることを確認した。universal APKへボーカル／伴奏ONNXモデル2ファイルが含まれることも確認した。ローカルAPKは配布署名なしであり、正式な署名・apksigner・16KiB zipalign検査はGitHub Actionsで実施する。
+- 公開差分と新規テキストファイルを秘密鍵、GitHub Token、OpenAIキー、AWSアクセスキー形式で値を表示せず検査し、該当0件だった。音声モデルは各約19.7MBでGitHubの単一ファイル上限内。`git diff --check`は改行コード変換警告以外のエラー0だった。

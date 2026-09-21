@@ -7,9 +7,13 @@ import android.service.quicksettings.TileService
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.mutableStateOf
 import java.security.KeyStore
 import jp.essential.app.ui.EssentialRoot
+import jp.essential.app.storage.StorageMaintenance
 import jp.essential.app.update.GitHubUpdateRepository
 
 class MainActivity : ComponentActivity() {
@@ -75,9 +79,19 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        cleanupRetiredClassiData()
-        // 更新によるプロセス終了で結果通知が戻らない場合も、旧APKと.partを次回起動で回収する。
-        GitHubUpdateRepository(applicationContext).cleanupAfterAppStart()
+        // 起動直後のファイル整理をUIスレッドから外し、初回描画を先に進める。
+        lifecycleScope.launch(Dispatchers.IO) {
+            cleanupRetiredClassiData()
+            // 更新によるプロセス終了で結果通知が戻らない場合も、旧APKと.partを次回起動で回収する。
+            GitHubUpdateRepository(applicationContext).cleanupAfterAppStart()
+            val result = StorageMaintenance.runIfNeeded(applicationContext)
+            if (result.reclaimedBytes > 0L) {
+                android.util.Log.i(
+                    "MainActivity",
+                    "ストレージ保守で${result.reclaimedBytes}バイトを回収しました（${result.removedEntries}項目）",
+                )
+            }
+        }
         enableEdgeToEdge()
         val preferences = getSharedPreferences("appearance", MODE_PRIVATE)
         homeShortcut.value = preferences.getString("home_shortcut_feature", FEATURE_DOWNLOADER) ?: FEATURE_DOWNLOADER
