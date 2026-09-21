@@ -445,3 +445,10 @@ requiredXP(L) = round(raw / 15)
 - `app/proguard-rules.pro`で該当コンストラクタだけを保持する。修正後R8 mappingで`JarMarker.<init>()`が残ることを確認済み。
 - Unit Test 36件成功、Lintエラー0、R8有効Release APK 5種生成成功。Xiaomi実機でのyt-dlpネットワーク更新は未検証。
 - この修正はv0.6.1の公開対象。最終的な公開状態は`Work history.txt`末尾を参照する。
+
+## Essential v0.6.1公開結果（2026-09-21）
+
+- 公開コミットは`3538e81 Essential 0.6.1を公開`、タグは`v0.6.1`。GitHub Actions run `35575562647`は成功し、Releaseは`https://github.com/Aikidoooo/Essential-for-Android/releases/tag/v0.6.1`で公開済み。
+- Android初回／更新APKは334,884,877 bytes、SHA-256 `76f2087c8850341c941ec1e7c079dd580b86526e6f8109585ddb6b990caa9ac0`。Xiaomi初回／更新APKは125,562,735 bytes、SHA-256 `7e9bf3e75428e02e9fe485073903c724ce3114f403303c78df324cd8975fd423`。
+- 公開更新APK2種を再取得して、Application ID `jp.essential.app`、versionCode 22、versionName 0.6.1、正式署名、16KiB zipalignを検証済み。Android版は4 ABI、Xiaomi版はarm64-v8a専用。
+- Xiaomi実機上でのyt-dlpネットワーク更新操作自体は未検証。R8 mappingと公開バイナリの構造・署名・配布整合性までは検証済み。

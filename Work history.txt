@@ -1660,3 +1660,12 @@
 - Java 23とASCII Junctionで`:app:testDebugUnitTest :app:lintDebug :app:assembleRelease --offline --no-daemon --max-workers=1 '-Pkotlin.compiler.execution.strategy=in-process' '-PUPDATE_REPOSITORY=Aikidoooo/Essential-for-Android' --rerun-tasks`を実行し、`BUILD SUCCESSFUL`、Unit Test 36件成功、失敗0、エラー0、Lintエラー0、R8有効Release APK 5種の生成成功を確認した。
 - `aapt dump badging`で5 APKすべてが`jp.essential.app`、versionCode 22、versionName 0.6.1であることを確認した。Android Universalは334,859,617 bytes、Xiaomi元のarm64-v8a APKは125,543,815 bytes。R8 mappingでは`JarMarker.<init>()`が保持されている。
 - 公開対象は今回のソース修正、テスト、R8設定、バージョン、v0.6.1 Release notes、作業履歴、引き継ぎ資料に限定する。CameraStyleAI研究フォルダ、`.android`、ローカルログ、`docs/`は公開しない。
+
+【2026-09-21 Essential v0.6.1 GitHub公開完了】
+- 公開対象7ファイルだけをステージし、`git diff --cached --check`成功、秘密情報形式の一致0件を確認した。公開コミット`3538e81 Essential 0.6.1を公開`を`main`へpushし、注釈付きタグ`v0.6.1`を同コミットへ作成してpushした。
+- GitHub Actions run `35575562647`は`Success`で完了した。Android／Rust準備、Rust JNI再ビルド、Unit Test、Lint、R8、正式署名、apksigner、16KiB zipalign、4配布モデル作成、SHA-256生成、Release公開の全工程が成功した。
+- GitHub Release `Essential v0.6.1`を正式公開した。URLは`https://github.com/Aikidoooo/Essential-for-Android/releases/tag/v0.6.1`、公開日時は2026-09-21 08:06:49 UTC。Releaseページは外部からHTTP 200で取得でき、タグ`v0.6.1`とコミット`3538e81`を参照している。
+- 公開アセットは`Essential-0.6.1-FIRST-INSTALL-ANDROID.apk` 334,884,877 bytes、`Essential-0.6.1-FIRST-INSTALL-XIAOMI.apk` 125,562,735 bytes、`Essential-0.6.1-UPDATE-ANDROID-universal.apk` 334,884,877 bytes、`Essential-0.6.1-UPDATE-XIAOMI-arm64-v8a.apk` 125,562,735 bytes、`SHA256SUMS.txt` 436 bytes。全ファイルの外部URLがHTTP 200で応答した。
+- `SHA256SUMS.txt`は4行で、Android初回／更新APKのSHA-256は`76f2087c8850341c941ec1e7c079dd580b86526e6f8109585ddb6b990caa9ac0`、Xiaomi初回／更新APKは`7e9bf3e75428e02e9fe485073903c724ce3114f403303c78df324cd8975fd423`。公開更新APK2種を外部URLから取得し、ファイルサイズとSHA-256が一致することを確認した。
+- 公開Android更新APKは`jp.essential.app`、versionCode 22、versionName 0.6.1、arm64-v8a／armeabi-v7a／x86／x86_64収録。Xiaomi更新APKは同じApplication ID／版でarm64-v8a専用。両方ともapksigner検証と16KiB zipalign検査に成功し、署名証明書SHA-256は既存正式版と同じ`d9037fa8b1ed3855cd3fad04dd4791e568ffb4123ee8b4f54c5e494a30ab64e8`だった。
+- 検証用APKは`%TEMP%\essential-v061-verification`だけへ保存し、検査後に削除した。既存の未追跡CameraStyleAIフォルダ、`.android`、ログ、`docs/`、ユーザーデータには触れていない。
