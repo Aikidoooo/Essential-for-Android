@@ -9,13 +9,13 @@ import java.time.LocalTime
 class RoutineLevelTest {
     @Test
     fun `指定式から必要XPを四捨五入して求める`() {
-        assertEquals(25, requiredRoutineXp(1))
-        assertEquals(135, requiredRoutineXp(15))
-        assertEquals(158, requiredRoutineXp(16))
-        assertEquals(703, requiredRoutineXp(40))
-        assertEquals(1760, requiredRoutineXp(50))
-        assertEquals(15490, requiredRoutineXp(55))
-        assertEquals(22671, requiredRoutineXp(59))
+        assertEquals(50, requiredRoutineXp(1))
+        assertEquals(270, requiredRoutineXp(15))
+        assertEquals(316, requiredRoutineXp(16))
+        assertEquals(1406, requiredRoutineXp(40))
+        assertEquals(3520, requiredRoutineXp(50))
+        assertEquals(30980, requiredRoutineXp(55))
+        assertEquals(45342, requiredRoutineXp(59))
         assertEquals(0, requiredRoutineXp(60))
         assertEquals(0, requiredRoutineXp(61))
     }
@@ -23,9 +23,9 @@ class RoutineLevelTest {
     @Test
     fun `合計XPから現在レベルを計算する`() {
         assertEquals(1, calculateRoutineLevel(0).level)
-        assertEquals(25, calculateRoutineLevel(0).pointsForNextLevel)
+        assertEquals(50, calculateRoutineLevel(0).pointsForNextLevel)
         assertEquals(2, calculateRoutineLevel(requiredRoutineXp(1)).level)
-        assertEquals(33, calculateRoutineLevel(requiredRoutineXp(1)).pointsForNextLevel)
+        assertEquals(66, calculateRoutineLevel(requiredRoutineXp(1)).pointsForNextLevel)
     }
 
     @Test

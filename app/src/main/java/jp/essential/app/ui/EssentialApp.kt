@@ -150,6 +150,12 @@ private enum class Destination(val label: String, val symbol: EssentialSymbol) {
     Profile("プロフィール", EssentialSymbol.Profile),
 }
 
+private enum class ProfilePanel {
+    Main,
+    Arrange,
+    Settings,
+}
+
 // 下部バーは透明度82%（不透明度18%）を基準にし、背面の視認性を保つ。
 private const val NAVIGATION_GLASS_TRANSPARENCY = 0.82f
 private const val NAVIGATION_GLASS_SURFACE_ALPHA = 1f - NAVIGATION_GLASS_TRANSPARENCY
@@ -160,6 +166,7 @@ private enum class EssentialSymbol {
     Home,
     Grid,
     Settings,
+    Edit,
     Profile,
     Spark,
     Media,
@@ -255,7 +262,8 @@ private fun EssentialApp(
     val profileStore = remember(context) { ProfileStore(context.applicationContext) }
     var navigationProfileIcon by remember { mutableStateOf(profileStore.loadIcon()) }
     var navigationProfileImagePath by remember { mutableStateOf(profileStore.loadImagePath()) }
-    var destination by rememberSaveable {
+    // 下部タブはActivityの保存状態から復元せず、タスクを開き直したときはホームから始める。
+    var destination by remember {
         mutableStateOf(if (initialSetupRequired) Destination.Profile else Destination.Home)
     }
     var activeFeature by rememberSaveable { mutableStateOf<FeatureRoute?>(null) }
@@ -392,6 +400,7 @@ private fun EssentialApp(
                                 onDarkThemeChange = onDarkThemeChange,
                                 appIcon = AppIconManager.optionForId(appIconId),
                                 appLevel = calculateAppLevel(AppProgressStore(LocalContext.current).loadXp()),
+                                initialSetupRequired = initialSetupRequired,
                                 onProfileIconChange = { navigationProfileIcon = it },
                                 onProfileImagePathChange = { navigationProfileImagePath = it },
                                 onAppIconChange = { option ->
@@ -676,8 +685,10 @@ half4 main(float2 coordinate) {
     half4 blueSample = contents.eval(blueUv * resolution);
     half alpha = max(redSample.a, max(greenSample.a, blueSample.a));
     half4 refracted = half4(redSample.r, greenSample.g, blueSample.b, alpha);
-    half sheen = half(1.0 - smoothstep(0.08, 0.78, radius)) * 0.0;
-    refracted.rgb += half3(sheen, sheen, sheen);
+    half centerGlow = half(1.0 - smoothstep(0.08, 0.78, radius));
+    half rim = half(smoothstep(0.54, 0.84, radius));
+    refracted.rgb += half3(0.025, 0.035, 0.055) * centerGlow;
+    refracted.rgb += half3(0.055, 0.012, 0.075) * rim * edge;
     return refracted;
 }
 """
@@ -1105,6 +1116,7 @@ private fun ProfileScreen(
     onDarkThemeChange: (Boolean) -> Unit,
     appIcon: AppIconOption,
     appLevel: AppLevel,
+    initialSetupRequired: Boolean,
     onProfileIconChange: (String) -> Unit,
     onProfileImagePathChange: (String?) -> Unit,
     onAppIconChange: (AppIconOption) -> Unit,
@@ -1122,6 +1134,9 @@ private fun ProfileScreen(
     var profileImagePath by remember { mutableStateOf(profileStore.loadImagePath()) }
     var claimedRewards by remember { mutableStateOf(progressStore.loadClaimedRewards()) }
     var rewardsExpanded by rememberSaveable { mutableStateOf(false) }
+    var panel by rememberSaveable {
+        mutableStateOf(if (initialSetupRequired) ProfilePanel.Arrange else ProfilePanel.Main)
+    }
     val coreVersion = remember { EssentialCore.version() }
     val profileImagePicker = rememberLauncherForActivityResult(EssentialMediaPickerContract()) { uri ->
         if (uri != null) {
@@ -1141,102 +1156,101 @@ private fun ProfileScreen(
         ),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        progressiveItem(0) {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("プロフィール", style = MaterialTheme.typography.headlineLarge)
-                Text("名前とアイコン、アプリの進行状況をまとめて管理します。", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (panel == ProfilePanel.Settings) {
+            progressiveItem(0, keyPrefix = "profile-settings") {
+                ProfilePanelHeader(title = "設定", onBack = { panel = ProfilePanel.Main })
+            }
+        } else {
+            val panelKey = "profile-${panel.name.lowercase()}"
+            progressiveItem(0, keyPrefix = panelKey) {
                 Column(
                     Modifier.fillMaxWidth().glassSurface(28.dp).padding(19.dp),
-                    verticalArrangement = Arrangement.spacedBy(13.dp),
+                    verticalArrangement = Arrangement.spacedBy(15.dp),
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(88.dp), contentAlignment = Alignment.BottomEnd) {
-                            ProfileAvatar(
-                                profileIcon = profileIcon,
-                                imagePath = profileImagePath,
-                                modifier = Modifier.fillMaxSize(),
-                            )
-                            Box(
-                                Modifier.size(28.dp)
-                                    .clip(CircleShape)
-                                    .background(MaterialTheme.colorScheme.primary)
-                                    .border(2.dp, MaterialTheme.colorScheme.surface, CircleShape)
-                                    .semantics { contentDescription = "プロフィール画像を選ぶ" }
-                                    .clickable { profileImagePicker.launch(arrayOf("image/*")) },
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text("＋", color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.labelLarge)
-                            }
-                        }
+                        ProfileAvatar(
+                            profileIcon = profileIcon,
+                            imagePath = profileImagePath,
+                            modifier = Modifier.size(88.dp),
+                        )
                         Spacer(Modifier.width(14.dp))
                         Column(Modifier.weight(1f)) {
                             Text(profileName.ifBlank { "ゲスト" }, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
                             Text("アプリレベル LV${appLevel.level}", color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
-                    OutlinedTextField(
-                        value = profileName,
-                        onValueChange = { value ->
-                            profileName = value.take(15)
-                            profileStore.saveName(profileName)
-                        },
+                    Row(
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("表示名") },
-                        supportingText = { Text("どすこいのプロフィール名にも同期されます（15文字以内）") },
-                        singleLine = true,
-                    )
-                    Text("プロフィールアイコン", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Text("画像を選ぶか、絵文字をプロフィールのアバターに設定できます。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Button(onClick = { profileImagePicker.launch(arrayOf("image/*")) }) {
-                            Text(if (profileImagePath == null) "画像を選ぶ" else "画像を変更")
-                        }
-                        if (profileImagePath != null) {
-                            TextButton(
-                                onClick = {
-                                    profileStore.clearImage()
-                                    profileImagePath = null
-                                    onProfileImagePathChange(null)
-                                },
-                            ) { Text("絵文字に戻す") }
-                        }
-                    }
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("🌱", "🌸", "🔥", "🌙", "⚡", "🧊", "🌹").forEach { icon ->
-                            item(key = icon) {
-                                FilterChip(
-                                    selected = icon == profileIcon && profileImagePath == null,
-                                    onClick = {
-                                        profileIcon = icon
-                                        profileStore.saveIcon(icon)
-                                        profileStore.clearImage()
-                                        profileImagePath = null
-                                        onProfileIconChange(icon)
-                                        onProfileImagePathChange(null)
-                                    },
-                                    label = { Text(icon, style = MaterialTheme.typography.titleMedium) },
-                                )
-                            }
-                        }
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        ProfileActionButton(
+                            icon = EssentialSymbol.Edit,
+                            label = "アレンジ",
+                            modifier = Modifier.weight(1f),
+                            onClick = { panel = ProfilePanel.Arrange },
+                        )
+                        ProfileActionButton(
+                            icon = EssentialSymbol.Settings,
+                            label = "設定",
+                            modifier = Modifier.weight(1f),
+                            onClick = { panel = ProfilePanel.Settings },
+                        )
                     }
                 }
-                ProfileLevelCard(totalXp = progressStore.loadXp(), level = appLevel)
-                ProfileRewards(
-                    currentLevel = appLevel,
-                    claimedRewards = claimedRewards,
-                    expanded = rewardsExpanded,
-                    onExpandedChange = { rewardsExpanded = it },
-                    onClaim = { rewardLevel ->
-                        if (appLevel.level >= rewardLevel && rewardLevel !in claimedRewards) {
-                            claimedRewards = progressStore.claimReward(rewardLevel)
-                        }
-                    },
-                )
-                Text("設定", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
-                Text("Essentialを、あなたに合う見た目へ。", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (panel == ProfilePanel.Arrange) {
+                progressiveItem(1, keyPrefix = panelKey) {
+                    AnimatedVisibility(
+                        visible = true,
+                        enter = expandVertically(animationSpec = tween(260)) + fadeIn(animationSpec = tween(180)),
+                    ) {
+                        ProfileEditorPanel(
+                            profileName = profileName,
+                            onProfileNameChange = { value ->
+                                profileName = value.take(15)
+                                profileStore.saveName(profileName)
+                            },
+                            profileIcon = profileIcon,
+                            profileImagePath = profileImagePath,
+                            onChooseImage = { profileImagePicker.launch(arrayOf("image/*")) },
+                            onDone = { panel = ProfilePanel.Main },
+                            onClearImage = {
+                                profileStore.clearImage()
+                                profileImagePath = null
+                                onProfileImagePathChange(null)
+                            },
+                            onIconSelected = { icon ->
+                                profileIcon = icon
+                                profileStore.saveIcon(icon)
+                                profileStore.clearImage()
+                                profileImagePath = null
+                                onProfileIconChange(icon)
+                                onProfileImagePathChange(null)
+                            },
+                        )
+                    }
+                }
+            } else {
+                progressiveItem(1, keyPrefix = panelKey) {
+                    ProfileLevelCard(totalXp = progressStore.loadXp(), level = appLevel)
+                }
+                progressiveItem(2, keyPrefix = panelKey) {
+                    ProfileRewards(
+                        currentLevel = appLevel,
+                        claimedRewards = claimedRewards,
+                        expanded = rewardsExpanded,
+                        onExpandedChange = { rewardsExpanded = it },
+                        onClaim = { rewardLevel ->
+                            if (appLevel.level >= rewardLevel && rewardLevel !in claimedRewards) {
+                                claimedRewards = progressStore.claimReward(rewardLevel)
+                            }
+                        },
+                    )
+                }
             }
         }
-        progressiveItem(1) {
+        if (panel == ProfilePanel.Settings) {
+        progressiveItem(1, keyPrefix = "profile-settings") {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1270,14 +1284,14 @@ private fun ProfileScreen(
                 }
             }
         }
-        progressiveItem(2) {
+        progressiveItem(2, keyPrefix = "profile-settings") {
             AppIconSettingsCard(
                 selected = appIcon,
                 currentLevel = appLevel.level,
                 onSelect = onAppIconChange,
             )
         }
-        progressiveItem(3) {
+        progressiveItem(3, keyPrefix = "profile-settings") {
             Column(Modifier.fillMaxWidth().glassSurface(28.dp).padding(19.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("モーションfps", style = MaterialTheme.typography.titleLarge)
                 Text("初期値60fps・選択すると適用されます", style = MaterialTheme.typography.bodyMedium)
@@ -1295,7 +1309,7 @@ private fun ProfileScreen(
                 Text("端末へ希望fpsを要求します。実際のfpsは対応Hz・省電力設定・OSに依存します。アニメーションの所要時間は変わりません。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-        progressiveItem(4) {
+        progressiveItem(4, keyPrefix = "profile-settings") {
             Column(
                 Modifier.fillMaxWidth().glassSurface(28.dp).padding(19.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -1323,13 +1337,13 @@ private fun ProfileScreen(
                 }
             }
         }
-        progressiveItem(5) {
+        progressiveItem(5, keyPrefix = "profile-settings") {
             YtDlpUpdateSettingsCard()
         }
-        item(key = "app-updates") {
+        item(key = "profile-settings-app-updates") {
             ProgressiveWidget(6) { jp.essential.app.update.AppUpdateSettingsCard() }
         }
-        progressiveItem(7) {
+        progressiveItem(7, keyPrefix = "profile-settings") {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1343,7 +1357,7 @@ private fun ProfileScreen(
                 SettingValue("状態", "3機能を搭載")
             }
         }
-        progressiveItem(8) {
+        progressiveItem(8, keyPrefix = "profile-settings") {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.Center,
@@ -1362,6 +1376,105 @@ private fun ProfileScreen(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
+        }
+        }
+    }
+}
+
+@Composable
+private fun ProfileActionButton(
+    icon: EssentialSymbol,
+    label: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.96f else 1f,
+        animationSpec = spring(dampingRatio = 0.72f, stiffness = 520f),
+        label = "プロフィール操作ボタンの押下",
+    )
+    Row(
+        modifier = modifier
+            .graphicsLayer(scaleX = scale, scaleY = scale)
+            .clip(RoundedCornerShape(18.dp))
+            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f))
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick,
+            )
+            .padding(horizontal = 13.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        EssentialSymbol(icon, MaterialTheme.colorScheme.onPrimaryContainer, Modifier.size(20.dp), label)
+        Spacer(Modifier.width(7.dp))
+        Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
+    }
+}
+
+@Composable
+private fun ProfilePanelHeader(title: String, onBack: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        TextButton(onClick = onBack) { Text("‹ プロフィール") }
+        Spacer(Modifier.width(4.dp))
+        Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
+    }
+}
+
+@Composable
+private fun ProfileEditorPanel(
+    profileName: String,
+    onProfileNameChange: (String) -> Unit,
+    profileIcon: String,
+    profileImagePath: String?,
+    onChooseImage: () -> Unit,
+    onDone: () -> Unit,
+    onClearImage: () -> Unit,
+    onIconSelected: (String) -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth().glassSurface(28.dp).padding(19.dp),
+        verticalArrangement = Arrangement.spacedBy(13.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("プロフィールをアレンジ", modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+            TextButton(onClick = onDone) { Text("完了") }
+        }
+        OutlinedTextField(
+            value = profileName,
+            onValueChange = onProfileNameChange,
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("表示名（15文字以内）") },
+            singleLine = true,
+        )
+        Text("プロフィールアイコン", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Button(onClick = onChooseImage) {
+                Text(if (profileImagePath == null) "画像を選ぶ" else "画像を変更")
+            }
+            if (profileImagePath != null) {
+                TextButton(onClick = onClearImage) { Text("絵文字に戻す") }
+            }
+        }
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("🌱", "🌸", "🔥", "🌙", "⚡", "🧊", "🌹").forEach { icon ->
+                item(key = icon) {
+                    FilterChip(
+                        selected = icon == profileIcon && profileImagePath == null,
+                        onClick = { onIconSelected(icon) },
+                        label = { Text(icon, style = MaterialTheme.typography.titleMedium) },
+                    )
+                }
             }
         }
     }
@@ -1773,11 +1886,11 @@ private fun EssentialNavigationBar(
 ) {
     val haptics = LocalHapticFeedback.current
     val colors = MaterialTheme.colorScheme
-    val navigationSurface = Color(appIcon.backgroundEnd)
+    val dark = LocalEssentialDark.current
     val glassShape = RoundedCornerShape(32.dp)
     val selectionPosition by animateFloatAsState(
         targetValue = selected.ordinal.toFloat(),
-        animationSpec = spring(dampingRatio = 0.88f, stiffness = 480f),
+        animationSpec = spring(dampingRatio = 0.76f, stiffness = 420f),
         label = "ガラスの選択位置",
     )
 
@@ -1801,22 +1914,23 @@ private fun EssentialNavigationBar(
             drawRoundRect(
                 brush = Brush.verticalGradient(
                     colors = listOf(
-                        navigationSurface.copy(alpha = NAVIGATION_GLASS_SURFACE_ALPHA),
-                        navigationSurface.copy(alpha = NAVIGATION_GLASS_SURFACE_ALPHA * 0.92f),
-                        Color.Black.copy(alpha = 0.28f),
+                        Color.White.copy(alpha = NAVIGATION_GLASS_SURFACE_ALPHA * 1.22f),
+                        Color(0xFFEFF5FF).copy(alpha = NAVIGATION_GLASS_SURFACE_ALPHA),
+                        Color(0xFFD9E6F5).copy(alpha = NAVIGATION_GLASS_SURFACE_ALPHA * 0.78f),
                     ),
                 ),
                 topLeft = Offset.Zero,
                 size = size,
                 cornerRadius = androidx.compose.ui.geometry.CornerRadius(30.dp.toPx()),
             )
+            // GIFのように、背面の色を残しながら白いガラスの面光を重ねる。
             drawRect(
                 brush = Brush.verticalGradient(
                     colorStops = arrayOf(
                         0f to Color.Transparent,
-                        0.36f to Color.Black.copy(alpha = 0.04f),
-                        0.68f to Color.Black.copy(alpha = 0.22f),
-                        1f to Color.Black.copy(alpha = 0.34f),
+                        0.34f to Color.Transparent,
+                        0.72f to Color.Black.copy(alpha = 0.12f),
+                        1f to Color.Black.copy(alpha = 0.24f),
                     ),
                     startY = size.height * 0.12f,
                     endY = size.height,
@@ -1825,22 +1939,45 @@ private fun EssentialNavigationBar(
                 size = size,
             )
             val cellWidth = size.width / Destination.entries.size
-            val width = minOf(88.dp.toPx(), cellWidth - 18.dp.toPx())
-            val height = 44.dp.toPx()
+            val width = minOf(78.dp.toPx(), cellWidth - 20.dp.toPx())
+            val height = 58.dp.toPx()
             val left = cellWidth * (selectionPosition + 0.5f) - width / 2f
             val top = (size.height - height) / 2f
             val radius = androidx.compose.ui.geometry.CornerRadius(height / 2f)
             drawRoundRect(
+                color = Color.Black.copy(alpha = if (dark) 0.16f else 0.08f),
+                topLeft = Offset(left, top + 2.dp.toPx()),
+                size = Size(width, height),
+                cornerRadius = radius,
+            )
+            drawRoundRect(
                 brush = Brush.linearGradient(
                     colors = listOf(
-                        navigationSurface.copy(alpha = 0.08f),
-                        colors.primaryContainer.copy(alpha = 0.24f),
-                        navigationSurface.copy(alpha = 0.08f),
+                        Color.White.copy(alpha = 0.16f),
+                        Color(0xFF8DCEFF).copy(alpha = 0.18f),
+                        Color.White.copy(alpha = 0.12f),
+                        Color(0xFFFFB8DB).copy(alpha = 0.16f),
+                        Color.White.copy(alpha = 0.18f),
                     ),
                     start = Offset(left, top),
                     end = Offset(left + width, top + height),
                 ),
                 topLeft = Offset(left, top), size = Size(width, height), cornerRadius = radius,
+            )
+            drawRoundRect(
+                brush = Brush.horizontalGradient(
+                    listOf(
+                        Color(0xFF6EBBFF).copy(alpha = 0.58f),
+                        Color.White.copy(alpha = 0.28f),
+                        Color(0xFFFFB6E0).copy(alpha = 0.48f),
+                    ),
+                    startX = left,
+                    endX = left + width,
+                ),
+                topLeft = Offset(left, top),
+                size = Size(width, height),
+                cornerRadius = radius,
+                style = Stroke(width = 1.1.dp.toPx()),
             )
         }
         Row(
@@ -1893,11 +2030,16 @@ private fun EssentialNavigationBar(
                                     )
                                 }
                             } else {
+                                val iconTint = if (isSelected) {
+                                    if (dark) Color(0xFF9BCBFF) else Color(0xFF216DE4)
+                                } else {
+                                    colors.onSurface.copy(alpha = 0.96f)
+                                }
                                 EssentialSymbol(
                                     symbol = destination.symbol,
-                                    tint = colors.onSurface.copy(alpha = 0.98f),
+                                    tint = iconTint,
                                     modifier = Modifier
-                                        .size(24.dp)
+                                        .size(if (isSelected) 25.dp else 24.dp)
                                         .graphicsLayer(scaleX = scale, scaleY = scale),
                                     description = destination.label,
                                 )
@@ -1955,19 +2097,39 @@ private fun LiquidGlassNavigationBackdrop(
             },
     ) {
         Canvas(Modifier.fillMaxSize()) {
+            val blueX = size.width * (lightTravel * 0.86f + 0.05f)
+            val pinkX = size.width * ((lightTravel + 0.28f) % 1f)
             drawCircle(
                 brush = Brush.radialGradient(
-                    colors = listOf(end.copy(alpha = 0.10f), Color.Transparent),
+                    colors = listOf(
+                        Color(0xFF63B9FF).copy(alpha = 0.22f),
+                        end.copy(alpha = 0.04f),
+                        Color.Transparent,
+                    ),
                 ),
-                radius = size.width * 0.42f,
-                center = Offset(size.width * lightTravel, size.height * 0.08f),
+                radius = size.width * 0.32f,
+                center = Offset(blueX, size.height * 0.78f),
             )
             drawCircle(
                 brush = Brush.radialGradient(
-                    colors = listOf(end.copy(alpha = 0.05f), Color.Transparent),
+                    colors = listOf(Color(0xFFFF9FD5).copy(alpha = 0.16f), Color.Transparent),
                 ),
-                radius = size.width * 0.35f,
-                center = Offset(size.width * 0.14f, size.height * 1.08f),
+                radius = size.width * 0.26f,
+                center = Offset(pinkX, size.height * 0.80f),
+            )
+            drawOval(
+                brush = Brush.horizontalGradient(
+                    listOf(
+                        Color.Transparent,
+                        Color(0xFF7BC7FF).copy(alpha = 0.14f),
+                        Color(0xFFFFB5DD).copy(alpha = 0.10f),
+                        Color.Transparent,
+                    ),
+                    startX = blueX - size.width * 0.28f,
+                    endX = blueX + size.width * 0.28f,
+                ),
+                topLeft = Offset(blueX - size.width * 0.28f, size.height * 0.68f),
+                size = Size(size.width * 0.56f, size.height * 0.20f),
             )
         }
     }
@@ -2076,6 +2238,24 @@ private fun EssentialSymbol(
                     )
                     drawLine(tint, start, end, strokeWidth = stroke.width, cap = StrokeCap.Round)
                 }
+            }
+            EssentialSymbol.Edit -> {
+                val path = Path().apply {
+                    moveTo(size.width * 0.22f, size.height * 0.76f)
+                    lineTo(size.width * 0.28f, size.height * 0.56f)
+                    lineTo(size.width * 0.68f, size.height * 0.16f)
+                    lineTo(size.width * 0.84f, size.height * 0.32f)
+                    lineTo(size.width * 0.44f, size.height * 0.72f)
+                    close()
+                }
+                drawPath(path, tint, style = stroke)
+                drawLine(
+                    tint,
+                    Offset(size.width * 0.22f, size.height * 0.76f),
+                    Offset(size.width * 0.42f, size.height * 0.70f),
+                    strokeWidth = stroke.width,
+                    cap = StrokeCap.Round,
+                )
             }
             EssentialSymbol.Profile -> {
                 drawCircle(tint, size.minDimension * 0.19f, Offset(center.x, size.height * 0.34f), style = stroke)

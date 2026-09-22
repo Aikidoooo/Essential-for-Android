@@ -60,7 +60,8 @@ fun requiredAppXp(level: Int): Int {
             232350 + 26490 * offset + 110 * offset * offset
         }
     }
-    return round(raw / 15.0).toInt()
+    // レベルアップに必要なXPは、既存の必要量を基準に2倍にする。
+    return round(raw / 15.0).toInt() * 2
 }
 
 /** 合計XPから、最大60のアプリレベルと次のレベルまでの進捗を求める。 */

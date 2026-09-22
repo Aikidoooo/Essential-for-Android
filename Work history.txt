@@ -1669,3 +1669,65 @@
 - `SHA256SUMS.txt`は4行で、Android初回／更新APKのSHA-256は`76f2087c8850341c941ec1e7c079dd580b86526e6f8109585ddb6b990caa9ac0`、Xiaomi初回／更新APKは`7e9bf3e75428e02e9fe485073903c724ce3114f403303c78df324cd8975fd423`。公開更新APK2種を外部URLから取得し、ファイルサイズとSHA-256が一致することを確認した。
 - 公開Android更新APKは`jp.essential.app`、versionCode 22、versionName 0.6.1、arm64-v8a／armeabi-v7a／x86／x86_64収録。Xiaomi更新APKは同じApplication ID／版でarm64-v8a専用。両方ともapksigner検証と16KiB zipalign検査に成功し、署名証明書SHA-256は既存正式版と同じ`d9037fa8b1ed3855cd3fad04dd4791e568ffb4123ee8b4f54c5e494a30ab64e8`だった。
 - 検証用APKは`%TEMP%\essential-v061-verification`だけへ保存し、検査後に削除した。既存の未追跡CameraStyleAIフォルダ、`.android`、ログ、`docs/`、ユーザーデータには触れていない。
+
+【2026-09-22 TikTok／TikTok Lite動画ダウンロード修正】
+- 作業前に`Work history.txt`を確認した。ユーザー指定の通常版`https://vt.tiktok.com/ZSqKX8ssW/`とLite版`https://lite.tiktok.com/t/ZSqcAG2vG/`を調査対象にした。共有URLのHTTPリダイレクトはそれぞれ`www.tiktok.com/@hoandinhkinh/video/7687597691521584404`、`www.tiktok.com/@speedstrome/video/7594334460913503510`へ到達し、リンク切れではないことを確認した。
+- 原因は一つではなく、yt-dlpのTikTok Web抽出が`Unable to extract webpage video data`／`Failed to parse JSON`で不安定になっていたこと、既存の動画形式指定がTikTokで音声だけに解決されること、動画CDNのRange再開がHTTP 416になることの組み合わせだった。yt-dlp公式のTikTok `app_info`仕様と、TikTok API抽出失敗・HTTP 416に関する公式Issueも確認した。
+- `TikTokRequestPolicy`を追加し、短縮URLの対象を`vt.tiktok.com`、`vm.tiktok.com`、`lite.tiktok.com`、TikTok系`/t/`へ拡張した。短縮URLは認証情報を受け付けない既存の公開URL検証後、リダイレクトを追従して最終TikTok URLをyt-dlpへ渡す。Cookie、ログイン必須投稿、保護回避は追加していない。
+- TikTok抽出時は端末ごとの19桁インストールIDをSharedPreferencesへ一度だけ生成し、yt-dlpのモバイルAPI用`app_info`、`api_hostname`、TikTok Refererを指定するようにした。初回抽出に失敗した場合はStable版yt-dlpを一度だけ自動更新し、同じ要求を再試行する。エミュレーターでは内蔵yt-dlpが`2025.11.12`から`2026.08.19`へ更新されることを確認した。
+- TikTokの動画形式選択は音声付き単一MP4（`b`）を優先し、利用できない場合だけ映像／音声の分離取得へフォールバックするように変更した。さらにTikTokだけHTTPチャンクを`1M`に制限し、`--force-overwrites`で一時ファイルの誤ったRange再開を防止した。これにより従来の「音声だけ生成」「HTTP 416」「映像ストリームを取得できませんでした」を解消した。
+- `TikTokRequestPolicyTest`へ通常／Lite短縮URL判定、extractor-args、インストールID検証を追加し、`VideoDownloadPolicyTest`へTikTokの単一MP4優先と分離フォールバックを追加した。最終Unit Testは40件成功、失敗0、エラー0。Lint成功、R8有効Releaseビルド成功を確認した。Release APKは`app/build/outputs/apk/release/app-universal-release-unsigned.apk`、334,861,821 bytes、SHA-256`748E015B8CDC06F8F83F244DB2A939C53DC5697652BEE71C0533A4781CA16845`。
+- `emulator-5554`へ修正版Debug APKを更新インストールし、通常TikTokのリダイレクト先動画を`Download/Essential`へ保存完了（`...-7687597691521584404-bytevc1_540p_598771-1.mp4`、2,537,226 bytes）、TikTok Liteのリダイレクト先動画も保存完了（`...-7594334460913503510-bytevc1_540p_284553-1.mp4`、1,291,491 bytes）を確認した。ADBの文字入力制約により、短縮URL文字列そのものをUIへ正確に再現する操作はできなかったが、短縮URL判定ユニットテスト、リダイレクト先の実ダウンロード、両指定URLのリダイレクト調査で経路を検証した。
+- Xiaomi物理端末、ユーザーの実ネットワーク、ログイン必須／非公開投稿、すべてのTikTok投稿形式は未検証。今回の修正ではバージョン変更、コミット、push、GitHub Release公開は行っていない。既存の未追跡CameraStyleAIフォルダ、`.android`、ログ、`docs/`、ユーザーデータには触れていない。
+
+【2026-09-22 Instagram動画ダウンロード調査・修正】
+- 作業前に`Work history.txt`を確認し、既存のTikTok／TikTok Lite修正、未追跡のCameraStyleAIフォルダ、`.android`、ログ、`docs/`を保持した。対象URLはユーザー指定の`https://www.instagram.com/reel/DZSWlxsSz33/`である。
+- PC側でInstagramの通常`/reel/`、`/p/`、`/embed/captioned/`を同じショートコードで確認したところ、いずれもHTTP 200のHTML自体は返るが、ログインしていない`USER_ID=0`のエラー画面で、動画メタデータの`video_url`／`xdt_shortcode_media`／`og:video`は存在しなかった。yt-dlpも`Requested content is not available, rate-limit reached or login required`を返したため、指定投稿そのものは現時点の公開・未ログイン経路では取得不能であることを確認した。ログイン情報の収集、Cookieの埋め込み、非公開投稿の保護回避は実装していない。
+- アプリ側の原因として、Instagram動画リクエストにはTikTokのようなReferer／User-Agent指定がなく、形式指定も一般サイトと同じ分割ストリーム優先だった。`InstagramRequestPolicy`を追加し、Instagram公式ホスト判定、公開制限エラーとextractor仕様変更エラーの分類、モバイルUser-Agentと`https://www.instagram.com/` Refererを定義した。
+- Instagram動画では音声付き単一MP4（`b`）を優先し、無い場合だけ映像／音声分離へフォールバックするよう`VideoDownloadPolicy`を変更した。yt-dlpのextractor仕様変更らしい失敗だけStable版更新後に1回再試行し、ログイン必須・非公開・レート制限の失敗では更新を繰り返さず、公開状態やアクセス制限を確認する日本語メッセージを表示する。
+- `InstagramRequestPolicyTest`へ公式ホスト判定、公開制限エラーの更新抑止、仕様変更エラーの更新対象判定を追加し、`VideoDownloadPolicyTest`へInstagramの単一MP4優先を追加した。ASCII Junction `C:\Users\waki1\Desktop\essential-build`でUnit Test 44件成功、失敗0、エラー0、Lint成功、Debug APK生成成功、R8有効Release APK生成成功を確認した。最終Release未署名Universal APKは334,862,473 bytes、SHA-256は`D3DA897634F9937609841CBCED237F52D65EB0CD2F3406E9475C673AF1010B56`である。
+- 日本語パス直下でのUnit Testは全テスト一律の`ClassNotFoundException`となったが、既存のASCII Junction経由では同じソースで成功した。これはテストクラスパスのパス文字問題であり、コンパイル・Lint・APK生成の失敗ではない。ユーザー指定URLはInstagram側が未ログイン動画データを返さないため、実動画の保存成功までは検証できず、公開状態が確認できるInstagram動画での実機確認が今後必要である。
+- 変更は未コミット、未push、未公開Releaseであり、バージョン、GitHub公開状態、ユーザーデータは変更していない。
+
+【2026-09-22 アプリ再起動時のホーム復帰・GIF参考Liquid Glassナビゲーション】
+- 作業前に`Work history.txt`を確認した。添付GIFは操作仕様ではなく、下部ナビゲーションの視覚・モーション参考として扱い、既存のホーム／機能一覧／プロフィール機能とユーザーデータを維持した。
+- 下部タブの状態復元を`rememberSaveable`から通常の`remember`へ変更し、`MainActivity`に初回起動済みフラグ`app_started_once`を追加した。初回インストール時のプロフィール案内は一度だけ表示し、2回目以降にホーム／機能一覧／プロフィールを開いた状態でタスクを終了して再起動した場合はホームから開始する。
+- 下部ナビゲーションをGIFの印象に合わせて再設計した。半透明の白いLiquid Glassカプセル、選択項目に追従するスプリング式レンズ、選択アイコンの青色変化、青／ピンクの光彩、RGB分離の縁取り、下側へ自然に濃くなる影、押下時の軽い縮小アニメーションを組み合わせた。既存のRuntimeShaderによる屈折・色分散と、非対応環境向けの描画フォールバックは維持した。
+- Java 23のASCII Junction`C:\Users\waki1\Desktop\essential-build`で`:app:testDebugUnitTest :app:lintDebug :app:assembleDebug --offline --no-daemon --max-workers=1 '-Pkotlin.compiler.execution.strategy=in-process'`を実行し、`BUILD SUCCESSFUL`、Unit Test 44件成功、Lintエラー0、Debug APK生成成功を確認した。Release APK生成も直前の同一ソースで成功済みである。
+- `emulator-5554`へDebug APKをインストールし、初回起動はプロフィール案内、2回目の起動はホーム、機能一覧を開いてタスク終了後の再起動もホームになることを確認した。検証用スクリーンショットは`%TEMP%\essential-home-liquidglass-final.png`、`%TEMP%\essential-features-liquidglass-settled.png`に保存した。
+- Xiaomi実機、実端末でのアニメーションフレームレート、Android Studioの実機プレビューは未検証。変更は未コミット、未push、未公開Releaseであり、バージョン、GitHub公開状態、ユーザーデータは変更していない。
+
+【2026-09-22 アプリレベル必要XPの2倍化】
+- 作業前に`Work history.txt`を確認した。ユーザー要望はアプリレベルのレベルアップに必要なXPだけを2倍にすることであり、ゲームや日課で獲得するXP量、既存の累計XP、報酬、ユーザーデータは変更対象にしなかった。
+- `app/src/main/java/jp/essential/app/profile/AppProgress.kt`の`requiredAppXp()`で、既存のレベル別必要XPを算出した後に2倍するよう変更した。日課側はアプリレベル計算の互換ラッパーを参照しているため、アプリ全体のレベル進行に反映される。
+- `RoutineLevelTest`の必要XP期待値を新しい2倍の値へ更新した。レベル1は25から50、レベル15は135から270、レベル59は22671から45342となり、レベル60の上限とレベル遷移も確認対象にした。
+- Java 23を明示したASCII Junction`C:\Users\waki1\Desktop\essential-build`で`:app:testDebugUnitTest :app:lintDebug :app:assembleDebug --offline --no-daemon --max-workers=1 '-Pkotlin.compiler.execution.strategy=in-process'`を実行し、`BUILD SUCCESSFUL`、Unit Test成功、Lint成功、Debug APK生成成功を確認した。初回実行は環境がJava 27を選択してKotlinの`IllegalArgumentException: 27`で停止したため、プロジェクトで検証済みのJava 23へ切り替えて検証した。
+- 変更は未コミット、未push、未公開Releaseであり、バージョン、GitHub公開状態、獲得済みXP、ユーザーデータは変更していない。
+
+【2026-09-22 プロフィール画面の参考UI反映】
+- 作業前に`Work history.txt`を確認した。添付画像はプロフィール画面の視覚参考として扱い、既存の名前、アイコン、アプリXP、報酬、設定保存、どすこいとのプロフィール共有を維持した。
+- プロフィール画面上部の「プロフィール」見出しと「名前とアイコン、アプリの進行状況をまとめて管理します。」を削除した。メイン画面にはプロフィールカード、アイコン、名前、アプリレベル、レベル報酬だけを表示するよう整理した。
+- アイコンの直下に「アレンジ」と「設定」の横並びボタンを追加した。押下時は軽い縮小アニメーションを付け、アレンジはプロフィール編集UI、設定は既存の設定項目だけを表示する設定画面へ切り替える。メインのプロフィール画面下には設定項目を表示しない。
+- アレンジ画面へ表示名入力とプロフィールアイコン選択を移動した。表示名のラベルは`表示名（15文字以内）`だけにし、旧来の「どすこいのプロフィール名にも同期されます」の説明文を削除した。プロフィール画像の選択、絵文字への復帰、既存の15文字制限、ProfileStore保存は維持した。
+- プロフィール操作用の`Edit`アイコンと、アレンジ／設定／完了の画面遷移を追加した。初回プロフィール案内時はアレンジ画面を最初から開くため、初回セットアップの導線を壊していない。
+- Java 23を明示したASCII Junction`C:\Users\waki1\Desktop\essential-build`で`:app:testDebugUnitTest :app:lintDebug :app:assembleDebug --offline --no-daemon --max-workers=1 '-Pkotlin.compiler.execution.strategy=in-process'`を実行し、`BUILD SUCCESSFUL`、Unit Test成功、Lint成功、Debug APK生成成功を確認した。
+- `emulator-5554`へDebug APKを更新インストールし、プロフィールメイン画面、アレンジ画面、設定画面をスクリーンショットで確認した。確認画像は`%TEMP%\essential-profile-ui2.png`、`%TEMP%\essential-profile-arrange.png`、`%TEMP%\essential-profile-settings.png`に保存した。既存ユーザーデータは保持している。
+- Xiaomi実機、画像選択ダイアログからの実画像保存操作、設定項目の全操作は未検証。変更は未コミット、未push、未公開Releaseである。
+
+【2026-09-22 プロフィールへのProgressive Motion UI適用】
+- 作業前に`Work history.txt`を確認した。既存のプロフィール参考UI、メイン／アレンジ／設定の画面構成、既存ユーザーデータを維持したまま、プロフィール内の出現モーションだけを強化した。
+- `StartupMotion.kt`の`progressiveItem()`に任意の`keyPrefix`を追加した。画面ごとに異なるLazyColumnキーを使えるため、メインからアレンジ／設定へ切り替えたときも、表示済み状態を誤って引き継がずProgressiveWidgetを再生できる。
+- プロフィールメインをプロフィールカード、アプリXP、レベル報酬の3項目へ分割した。各項目が見える順にフェードイン、下方向スライド、軽いスケールアップで表示される。
+- アレンジ画面はプロフィールカードの後に編集パネルを段階表示し、設定画面はヘッダー、テーマ、アプリアイコン、モーションfps、ショートカット、yt-dlp、アプリ更新、情報カードを専用キーで順番に表示する。アレンジパネルには既存の展開アニメーションも重ねている。
+- Java 23を明示したASCII Junction`C:\Users\waki1\Desktop\essential-build`で`:app:testDebugUnitTest :app:lintDebug :app:assembleDebug --offline --no-daemon --max-workers=1 '-Pkotlin.compiler.execution.strategy=in-process'`を実行し、`BUILD SUCCESSFUL`、Unit Test成功、Lint成功、Debug APK生成成功を確認した。
+- `emulator-5554`へDebug APKを更新インストールし、プロフィール画面のメイン表示を確認した。モーション開始／終了確認用画像は`%TEMP%\essential-profile-motion-start.png`、`%TEMP%\essential-profile-motion-end.png`に保存した。
+- Xiaomi実機、実端末のフレーム単位の滑らかさ、全設定項目の操作は未検証。変更は未コミット、未push、未公開Releaseであり、ユーザーデータは変更していない。
+
+【2026-09-22 Essential v0.6.2 GitHub公開準備】
+- ユーザーの明示的な依頼により、2026-09-22までのTikTok／TikTok Lite、Instagram、起動時ホーム復帰、Liquid Glass下部ナビゲーション、アプリレベル必要XP、プロフィールUI、Progressive Motion UIの変更をv0.6.2としてGitHubへ正式公開する作業を開始した。
+- `git fetch --prune --tags`後、ローカル`main`と`origin/main`が0/0で同期し、ローカル／リモートに`v0.6.2`タグが存在しないことを確認した。
+- `app/build.gradle.kts`を`versionCode=23`、`versionName=0.6.2`へ更新した。Application ID `jp.essential.app`、正式署名構成、Android／Xiaomi向け4配布モデル、既存ユーザーデータを維持する更新方式は変更していない。
+- `.github/release-notes/v0.6.2.md`を追加し、4配布ファイル、変更内容、アクセス制限を回避しない方針、TikTokの実保存確認、InstagramとXiaomi実機の未検証範囲を明記した。
+- 公開対象は今回のアプリソース、テスト、バージョン、v0.6.2 Release notes、作業履歴、引き継ぎ資料に限定する。CameraStyleAI研究フォルダ、`.android`、ローカルログ、`docs/`は公開しない。
+- Java 23とASCII Junctionで`:app:testDebugUnitTest :app:lintDebug :app:assembleRelease --offline --no-daemon --max-workers=1 '-Pkotlin.compiler.execution.strategy=in-process' '-PUPDATE_REPOSITORY=Aikidoooo/Essential-for-Android' --rerun-tasks`を実行し、`BUILD SUCCESSFUL`、Unit Test 44件成功、失敗0、エラー0、Lint成功、R8有効Release APK 5種の生成成功を確認した。
+- `aapt dump badging`で5 APKすべてが`jp.essential.app`、versionCode 23、versionName 0.6.2であることを確認した。未署名Universal APKは334,865,941 bytes、SHA-256 `50A6FB210EB3356BC69F71F525D287B499C448A9460E9D14887A03B15BF67C2C`、Xiaomi配布元のarm64-v8a APKは125,550,143 bytes、SHA-256 `F0AA54998467CEA25C190BD729F8BFA8936E2B9ACDEA327FF25549834F04A7A1`。正式署名と16KiB zipalignはタグpush後のGitHub Actionsで検証する。

@@ -84,19 +84,28 @@ class YtDlpDownloadEngine(private val context: Context) {
         selection: DownloaderSelection,
         onState: (DownloadState) -> Unit,
     ): Result<List<String>> = withContext(Dispatchers.IO) {
-        runCatching {
+        try {
             val safeUrl = validatePublicUrl(selection.url)
             val effectiveSelection = selection.copy(
                 url = resolveTikTokShareUrl(safeUrl),
             )
-            when (effectiveSelection.mediaType) {
+            Result.success(when (effectiveSelection.mediaType) {
                 DownloadMediaType.Image -> downloadImages(effectiveSelection, onState)
                 DownloadMediaType.Video,
                 DownloadMediaType.Audio,
                 -> downloadWithYtDlp(effectiveSelection, onState)
+            })
+        } catch (error: Throwable) {
+            if (error is CancellationException) throw error
+            val rawMessage = buildString {
+                append(error.message.orEmpty())
+                error.cause?.message?.let { append('\n').append(it) }
             }
-        }.onFailure { error ->
-            onState(DownloadState.Failed(error.message ?: "ダウンロードに失敗しました"))
+            val message = InstagramRequestPolicy.userFacingFailure(rawMessage)
+                ?: error.message
+                ?: "ダウンロードに失敗しました"
+            onState(DownloadState.Failed(message))
+            Result.failure(error)
         }
     }
 
@@ -108,7 +117,7 @@ class YtDlpDownloadEngine(private val context: Context) {
         }
     }
 
-    private fun downloadWithYtDlp(
+    private suspend fun downloadWithYtDlp(
         selection: DownloaderSelection,
         onState: (DownloadState) -> Unit,
     ): List<String> {
@@ -124,6 +133,18 @@ class YtDlpDownloadEngine(private val context: Context) {
                 addOption("--restrict-filenames")
                 if (isTikTokUrl(selection.url)) {
                     addOption("--referer", "https://www.tiktok.com/")
+                    // TikTok CDNは大きなRange要求を416で拒否することがあるため、小さく分割して取得する。
+                    addOption("--http-chunk-size", "1M")
+                    // 既存の一時ファイルを全長まで取得済みと誤認して416になる再開を防ぐ。
+                    addOption("--force-overwrites")
+                    // TikTokのWebページ抽出は仕様変更で不安定なため、モバイルAPIを使う。
+                    addOption("--extractor-args", TikTokRequestPolicy.extractorArgs(context))
+                }
+                if (InstagramRequestPolicy.isInstagramUrl(selection.url)) {
+                    // InstagramのCDNは公開ページの参照元とモバイルUAが無いと動画形式を返さないことがある。
+                    addOption("--referer", InstagramRequestPolicy.REFERER)
+                    addOption("--user-agent", InstagramRequestPolicy.USER_AGENT)
+                    addOption("--force-overwrites")
                 }
                 val template = if (selection.mediaType == DownloadMediaType.Video && usesMaintainedFfmpegKit()) {
                     "%(title).140B-%(id)s-%(format_id)s.%(ext)s"
@@ -138,15 +159,7 @@ class YtDlpDownloadEngine(private val context: Context) {
                 }
             }
             val processId = "essential-${UUID.randomUUID()}"
-            YoutubeDL.getInstance().execute(
-                request,
-                processId,
-                { progress: Float, etaSeconds: Long, _: String ->
-                    val safeProgress = progress.takeIf { it in 0f..100f }
-                    val eta = etaSeconds.takeIf { it > 0 }?.let { "・残り約${it}秒" }.orEmpty()
-                    onState(DownloadState.Running(safeProgress, "取得・変換中$eta"))
-                },
-            )
+            executeWithExtractorRecovery(request, processId, selection, onState)
 
             val stagedFiles = when {
                 selection.mediaType == DownloadMediaType.Video && usesMaintainedFfmpegKit() ->
@@ -186,6 +199,68 @@ class YtDlpDownloadEngine(private val context: Context) {
         } finally {
             stagingDirectory.deleteRecursively()
         }
+    }
+
+    /** 対象サイトのextractor仕様変更が疑われるときだけyt-dlpを更新して再試行する。 */
+    private suspend fun executeWithExtractorRecovery(
+        request: YoutubeDLRequest,
+        processId: String,
+        selection: DownloaderSelection,
+        onState: (DownloadState) -> Unit,
+    ) {
+        fun executeRequest() {
+            YoutubeDL.getInstance().execute(
+                request,
+                processId,
+                { progress: Float, etaSeconds: Long, _: String ->
+                    val safeProgress = progress.takeIf { it in 0f..100f }
+                    val eta = etaSeconds.takeIf { it > 0 }?.let { "・残り約${it}秒" }.orEmpty()
+                    onState(DownloadState.Running(safeProgress, "取得・変換中$eta"))
+                },
+            )
+        }
+
+        try {
+            executeRequest()
+        } catch (error: Exception) {
+            val target = when {
+                isTikTokUrl(selection.url) -> "TikTok"
+                InstagramRequestPolicy.isInstagramUrl(selection.url) -> "Instagram"
+                else -> null
+            }
+            val rawMessage = buildString {
+                append(error.message.orEmpty())
+                error.cause?.message?.let { append('\n').append(it) }
+            }
+            val canRecover = target != null && (
+                target == "TikTok" && isTikTokExtractorFailure(rawMessage) ||
+                    target == "Instagram" && InstagramRequestPolicy.isRecoverableExtractorFailure(rawMessage)
+                )
+            if (error is CancellationException || !canRecover) {
+                throw error
+            }
+            onState(DownloadState.Preparing("${target}用yt-dlpを更新しています"))
+            YtDlpUpdateManager(context).updateStable().getOrElse { updateError ->
+                throw IllegalStateException("${target}用yt-dlpを更新できないため、動画を取得できませんでした", updateError)
+            }
+            try {
+                executeRequest()
+            } catch (retryError: Exception) {
+                retryError.addSuppressed(error)
+                throw retryError
+            }
+        }
+    }
+
+    /** TikTokのWeb抽出へフォールバックしたことを示すyt-dlpエラーだけを再試行対象にする。 */
+    private fun isTikTokExtractorFailure(rawMessage: String): Boolean {
+        val message = rawMessage.lowercase()
+        return listOf(
+            "unable to extract webpage video data",
+            "failed to parse json",
+            "no working app info",
+            "unable to extract sigi state",
+        ).any(message::contains)
     }
 
     private fun YoutubeDLRequest.addVideoOptions(selection: DownloaderSelection) {
@@ -522,10 +597,8 @@ class YtDlpDownloadEngine(private val context: Context) {
 
     /** TikTok Liteの短縮共有URLを、yt-dlpが扱える最終公開URLへ解決する。 */
     private fun resolveTikTokShareUrl(rawUrl: String): String {
-        val uri = runCatching { URI(rawUrl) }.getOrNull() ?: return rawUrl
-        val host = uri.host?.lowercase().orEmpty()
-        val isShortUrl = host == "lite.tiktok.com" ||
-            (isTikTokUrl(rawUrl) && uri.path.orEmpty().startsWith("/t/"))
+        if (runCatching { URI(rawUrl) }.getOrNull() == null) return rawUrl
+        val isShortUrl = TikTokRequestPolicy.isShortShareUrl(rawUrl)
         if (!isShortUrl) return rawUrl
         return runCatching {
             val connection = (URL(rawUrl).openConnection() as HttpURLConnection).apply {

@@ -102,8 +102,12 @@ class MainActivity : ComponentActivity() {
         applyWindowBackground(appIconOption)
         applyMotionFps(preferences.getInt("motion_fps", 60))
         handleIntent(intent)
-        val firstSetup = !preferences.getBoolean("home_shortcut_configured", false) &&
+        val startedBefore = preferences.getBoolean(KEY_APP_STARTED, false)
+        val firstSetup = !startedBefore &&
+            !preferences.getBoolean("home_shortcut_configured", false) &&
             sharedUrl.value.isNullOrBlank() && requestedFeature.value.isNullOrBlank()
+        // 初回起動のプロフィール案内だけを残し、2回目以降は必ずホームから始める。
+        preferences.edit().putBoolean(KEY_APP_STARTED, true).apply()
         setContent {
             EssentialRoot(
                 sharedUrl = sharedUrl.value,
@@ -174,6 +178,7 @@ class MainActivity : ComponentActivity() {
         const val FEATURE_SCHEDULE = "schedule"
         const val FEATURE_FILES = "files"
 
+        private const val KEY_APP_STARTED = "app_started_once"
         private val URL_PATTERN = Regex("https?://[^\\s]+", RegexOption.IGNORE_CASE)
     }
 }

@@ -17,4 +17,20 @@ class VideoDownloadPolicyTest {
         assertTrue(VideoDownloadPolicy.format(selection, false).contains("+ba"))
         assertFalse(VideoDownloadPolicy.isTwitter("https://x.com.example.org/status/1"))
     }
+
+    @Test fun tiktokPrefersCombinedMp4BeforeSeparateStreams() {
+        val selection = DownloaderSelection("https://www.tiktok.com/@user/video/1234567890", DownloadMediaType.Video)
+        val value = VideoDownloadPolicy.format(selection, true)
+        assertTrue(value.startsWith("b[height<=?1080][fps<=?60][ext=mp4]/bv"))
+        assertTrue(value.contains("bv[height<=?1080][fps<=?60][ext=mp4],ba"))
+        assertFalse(value.startsWith("(bv"))
+    }
+
+    @Test fun instagramPrefersCombinedMp4BeforeSeparateStreams() {
+        val selection = DownloaderSelection("https://www.instagram.com/reel/ABC123/", DownloadMediaType.Video)
+        val value = VideoDownloadPolicy.format(selection, true)
+        assertTrue(value.startsWith("b[height<=?1080][fps<=?60][ext=mp4]/bv"))
+        assertTrue(value.contains("bv[height<=?1080][fps<=?60][ext=mp4],ba"))
+        assertFalse(value.startsWith("(bv"))
+    }
 }

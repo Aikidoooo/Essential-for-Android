@@ -99,8 +99,12 @@ internal fun ProgressiveWidget(index: Int, modifier: Modifier = Modifier, conten
     ) { content() }
 }
 
-internal fun LazyListScope.progressiveItem(index: Int, content: @Composable LazyItemScope.() -> Unit) {
-    item(key = "progressive-$index") {
+internal fun LazyListScope.progressiveItem(
+    index: Int,
+    keyPrefix: String = "progressive",
+    content: @Composable LazyItemScope.() -> Unit,
+) {
+    item(key = "$keyPrefix-$index") {
         ProgressiveWidget(index) {
             // モーションのBox内でも、見出し・余白・説明を縦に配置する。
             Column(Modifier.fillMaxWidth()) { content() }
