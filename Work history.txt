@@ -1731,3 +1731,12 @@
 - 公開対象は今回のアプリソース、テスト、バージョン、v0.6.2 Release notes、作業履歴、引き継ぎ資料に限定する。CameraStyleAI研究フォルダ、`.android`、ローカルログ、`docs/`は公開しない。
 - Java 23とASCII Junctionで`:app:testDebugUnitTest :app:lintDebug :app:assembleRelease --offline --no-daemon --max-workers=1 '-Pkotlin.compiler.execution.strategy=in-process' '-PUPDATE_REPOSITORY=Aikidoooo/Essential-for-Android' --rerun-tasks`を実行し、`BUILD SUCCESSFUL`、Unit Test 44件成功、失敗0、エラー0、Lint成功、R8有効Release APK 5種の生成成功を確認した。
 - `aapt dump badging`で5 APKすべてが`jp.essential.app`、versionCode 23、versionName 0.6.2であることを確認した。未署名Universal APKは334,865,941 bytes、SHA-256 `50A6FB210EB3356BC69F71F525D287B499C448A9460E9D14887A03B15BF67C2C`、Xiaomi配布元のarm64-v8a APKは125,550,143 bytes、SHA-256 `F0AA54998467CEA25C190BD729F8BFA8936E2B9ACDEA327FF25549834F04A7A1`。正式署名と16KiB zipalignはタグpush後のGitHub Actionsで検証する。
+
+【2026-09-22 Essential v0.6.2 GitHub公開完了】
+- 公開対象16ファイルだけをステージし、`git diff --cached --check`成功、秘密情報形式の一致0件を確認した。公開コミット`7591430 Essential 0.6.2を公開`を`main`へpushし、注釈付きタグ`v0.6.2`を同コミットへ作成してpushした。CameraStyleAI研究フォルダ、`.android`、`docs/`、ローカルログは公開していない。
+- GitHub Actions run `35694545315`は`success`で完了した。タグ／バージョン一致、Android・Rust準備、Rust JNI再ビルド、Unit Test、Lint、R8、正式署名、apksigner、16KiB zipalign、4配布モデル作成、SHA-256生成、Release公開の全工程が成功した。
+- GitHub Release `Essential v0.6.2`を正式公開した。URLは`https://github.com/Aikidoooo/Essential-for-Android/releases/tag/v0.6.2`、`draft=false`、`prerelease=false`、公開日時は2026-09-22 06:29:36 UTC。タグ`v0.6.2`は公開コミット`7591430a3f15bd263163e53a5a15d9614f3d7ff0`を参照する。
+- 公開アセットは`Essential-0.6.2-FIRST-INSTALL-ANDROID.apk` 334,891,205 bytes、`Essential-0.6.2-FIRST-INSTALL-XIAOMI.apk` 125,569,063 bytes、`Essential-0.6.2-UPDATE-ANDROID-universal.apk` 334,891,205 bytes、`Essential-0.6.2-UPDATE-XIAOMI-arm64-v8a.apk` 125,569,063 bytes、`SHA256SUMS.txt` 436 bytes。Rangeリクエストで全5 URLがHTTP 206を返し、外部から取得可能であることを確認した。
+- `SHA256SUMS.txt`は4行で、Android初回／更新APKのSHA-256は`d5a9293d304bf63e92304b14dc6b7e6b15c796a48aed2c9bdccbdd7fc6fe2489`、Xiaomi初回／更新APKは`d17f00e69a02fd0a41a89e098d99a70cf7fa62817ce78eb23424b6704e2932b3`。GitHub Release APIのdigestと、再取得した更新APK2種の実ファイルハッシュが一致した。
+- 再取得した公開更新APK2種は`jp.essential.app`、versionCode 23、versionName 0.6.2。Android版はarm64-v8a／armeabi-v7a／x86／x86_64、Xiaomi版はarm64-v8a専用。両方ともAPK Signature Scheme v2検証と16KiB zipalign検査に成功し、署名証明書SHA-256は既存正式版と同じ`d9037fa8b1ed3855cd3fad04dd4791e568ffb4123ee8b4f54c5e494a30ab64e8`だった。
+- 検証用APKは`%TEMP%\essential-v062-verification`だけへ保存し、検査後に削除した。Instagram指定投稿の実動画保存、Xiaomi実機上の今回のUI・ダウンロード・yt-dlp更新は引き続き未検証であり、Release notesにも明記している。
