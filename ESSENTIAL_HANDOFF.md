@@ -519,3 +519,10 @@ requiredXP(L) = round(raw / 15)
 - Android初回／更新APKは334,891,205 bytes、SHA-256 `d5a9293d304bf63e92304b14dc6b7e6b15c796a48aed2c9bdccbdd7fc6fe2489`。Xiaomi初回／更新APKは125,569,063 bytes、SHA-256 `d17f00e69a02fd0a41a89e098d99a70cf7fa62817ce78eb23424b6704e2932b3`。
 - 公開更新APK2種を再取得し、Application ID `jp.essential.app`、versionCode 23、versionName 0.6.2、正式署名、16KiB zipalign、SHA-256を検証済み。Android版は4 ABI、Xiaomi版はarm64-v8a専用。
 - Instagram指定投稿の実動画保存と、Xiaomi実機での今回のUI・ダウンロード・yt-dlp更新は未検証。Release notesへ制限事項を明記済み。
+
+## Essential v0.6.3公開準備（2026-09-28）
+
+- `app/build.gradle.kts`はversionCode 24、versionName 0.6.3。既存のAndroid／Xiaomi向け4配布モデルとGitHub Actionsの正式署名手順を使用する。
+- `.github/release-notes/v0.6.3.md`へタブバー、QRスキャナー、ヘビゲーム、一番遠い言葉、Xiaomi向け調整と未検証事項を記載した。
+- Java 23／ASCII JunctionでUnit Test 44件、Lint、R8有効Releaseビルドに成功。生成された未署名APK2種はパッケージ／バージョン／ABI／16KiB zipalignを確認済み。
+- CameraStyleAI研究フォルダと`docs/`はコミット対象外。GitHub上のタグとReleaseはこの時点で未作成。

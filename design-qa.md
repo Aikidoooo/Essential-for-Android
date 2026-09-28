@@ -459,3 +459,223 @@ final result: passed
 - [x] `test`、`lint`、`assembleDebug`
 
 final result: passed
+
+# Design QA — QRスキャナーのズームUI（2026-09-28）
+
+## 比較対象
+
+- Source visual truth 1: `C:\Users\waki1\AppData\Local\Temp\codex-clipboard-e92d8046-d4de-4732-b6b4-1bcc882de7ec.png`（368 x 772 px、上部プロフィール欄の置換と画面内配置を確認）
+- Source visual truth 2: `C:\Users\waki1\AppData\Local\Temp\codex-clipboard-74ae5221-a303-4a29-8621-e597c8f3d30f.png`（701 x 294 px、倍率プリセットと曲線ズーム目盛りの視覚基準）
+- Implementation screenshot: `app/build/visual-qa/qr-scanner-updated.png`（1080 x 2424 px）
+- State: Pixel_10a AVD／Android 17／420 dpi（論理画面411 x 923 dp）。`jp.essential.app.debug` versionName `0.6.2-debug`でQRスキャナーを表示し、倍率1x、Auto未選択。
+- 正規化: 参照2はズームコントロールだけを切り出した横長画像で、実装は縦長のカメラ画面のため、画面全体のピクセル重ね合わせは行わず、参照1で配置、参照2でコントロール形状・並び・曲線を同じ比較入力に並べて確認した。
+
+## Full-view comparison evidence
+
+- 参照1の「Android標準プロファイル」位置は、実装では「クイック設定に追加」ボタンになっている。画面下部にあった同ボタンの重複表示はなくなった。
+- 倍率プリセットはカメラ上部から下部へ移動し、ズーム目盛りの直上に並ぶ。Autoチェックと読み取り枠は維持されている。
+- 参照2に合わせ、選択中の白い円枠、暗い半透明プリセットカプセル、曲線状の目盛り、赤い現在位置マーカーを維持し、目盛り背面の角丸パネルを取り除いた。
+
+## Focused region comparison evidence
+
+- 参照2と実装画像のズーム領域を同じ比較入力で確認。プリセット列は目盛りより上、目盛りは左右へ広がる浅い弧、現在位置は赤い縦マーカーで示され、1xラベルは1x位置の上にある。
+- 横方向ドラッグに`detectHorizontalDragGestures`を使用し、タップ、アクセシビリティの進捗操作、倍率プリセット、触覚フィードバックを保った。
+
+## Required fidelity surfaces
+
+- Fonts and typography: 既存のMaterial 3日本語sans-serifとlabelLargeを使用。ズーム倍率ラベルは曲線位置に追従し、カメラ映像に対して白で表示される。
+- Spacing and layout rhythm: プリセット列を目盛り直上へまとめ、上部中央の操作ボタンをプロフィール欄の位置へ配置。横幅は既存の左右18 dp余白に追従する。
+- Colors and visual tokens: 非選択プリセットは暗い半透明面、選択中は白い円枠、目盛りは白、現在位置は赤。目盛り領域の塗りつぶし面はない。
+- Image quality and asset fidelity: 背景はQRスキャナーのライブカメラ映像を維持し、参照画像の風景を固定画像として合成していない。
+- Copy and content: プロフィール名を除去し、同じ上部位置に「クイック設定に追加」を表示。倍率表記はW／1x／3.5x／10x。
+
+## Comparison history
+
+### Iteration 1
+
+- [P1] プロフィール名が残り、クイック設定追加ボタンが目盛りの上にあり、プリセットが画面上部に離れていた。目盛りは暗い角丸面の中にあり、ラベルは固定高さだった。
+- Fix: プロフィール位置へクイック設定追加ボタンを移動。プリセットを下部目盛りの上へ移し、重複ボタンと目盛り背景面を削除。ドラッグを横方向に限定し、倍率ラベルを弧に沿わせた。
+- Post-fix evidence: `app/build/visual-qa/qr-scanner-updated.png`でボタン位置、プリセット／目盛りの順序、透過背景、赤い1xマーカーを確認した。
+
+## Findings
+
+- P0/P1/P2の残件なし。ソース画像1の配置変更と画像2のズームコントロール構成を実装した。
+- P3: AVDのCameraXズーム範囲は1xのみのため、画面ではW／3.5x／10xが無効表示となり、対応する目盛りラベルも出ない。対応倍率がある実機ではカメラ能力に応じて表示される。AVDでは複数倍率間のドラッグ動作を確認できていない。
+
+## Implementation checklist
+
+- [x] プロフィール表示を削除し、同じ位置へQuick Settings追加操作を移動
+- [x] プリセットを曲線目盛りの直上へ配置
+- [x] 目盛りを横方向ドラッグ／タップで操作可能に維持
+- [x] Debug APKをエミュレーターへインストールし、QRスキャナー画面をキャプチャ
+
+final result: passed
+
+# Design QA — ミニゲーム追加（2026-09-28）
+
+## 確認環境
+
+- Pixel_10a AVD／Android 17／420 dpi。Debug版`jp.essential.app.debug`を起動。
+- 一覧画面: `app/build/visual-qa/minigame-menu-final.png`
+- ヘビ画面: `app/build/visual-qa/snake-screen-adjusted.png`
+- 単語ゲーム: `app/build/visual-qa/word-distance-screen.png`、`app/build/visual-qa/word-distance-result-submitted.png`
+- 参照ゲームの紹介ページとプレイ画面を調査し、ノーマル／エンドレス、7文字制限、距離更新ルールを確認した。
+
+## 確認内容
+
+- ミニゲーム一覧に「一番遠い単語」「ヘビゲーム」のカードが表示され、各画面へ遷移する。
+- ヘビ画面は縦長端末内に盤面・スコア・一時停止・方向操作を収め、盤面のタイル、ヘビ、エサを視認できる。ゲームが時間経過で進み、壁衝突後にゲームオーバー状態へ移る。
+- 単語ゲームのモード選択、最大7文字の入力表示、送信後の距離結果画面を確認した。
+- P3: 参照ゲームのAIモデルは公開情報から再利用できないため、Essentialではローカル語彙の簡易距離推定としている。未知語への距離は決定的な簡易ベクトル推定となる。参照元と同じスコアにはならず、画面上で説明している。
+- P3: エンドレス連鎖、エサ取得／成長、スワイプによる方向操作はコード実装済みだが、エミュレーターでの個別操作確認は行っていない。自動テストと物理端末確認も未実施。
+
+## 実装チェック
+
+- [x] 新規2ゲームの一覧導線
+- [x] EssentialネイティブUIの単語ゲームとヘビゲーム
+- [x] 参照AIとのスコア差を画面表示
+- [x] Debugビルド／エミュレーターインストール／画面確認
+
+final result: passed with noted limits
+
+# Design QA — ミニゲーム画面調整・公式ゲーム内蔵（2026-09-28）
+
+## 確認環境
+
+- Pixel_10a AVD／Android 17／420 dpi。Debug版`jp.essential.app.debug`をインストール。
+- ヘビ: `app/build/visual-qa/snake-ready.png`、`app/build/visual-qa/snake-playing.png`
+- 一番遠い言葉: `app/build/visual-qa/word-final-menu.png`、`app/build/visual-qa/word-final-play.png`
+- 参照元: [unityroom「いちばん遠い言葉」](https://unityroom.com/games/word-distance)。公式ページをWebViewで読み、署名付きプレイヤーURLへ遷移する構成。
+
+## 確認内容
+
+- ヘビ画面は縦スクロールを使わず、Pixel_10aの縦画面にヘッダー、3つのスコア、盤面、開始操作、方向パッド、説明文が収まる。ナビゲーションバーとの重なりも避けている。
+- ヘビは最初に「準備完了」を表示し、方向ボタンで開始・移動する。開始直後の盤面と稼働中の盤面をAVDで確認した。
+- 一番遠い言葉はEssential独自の画面枠内で公式WebGLゲームを開く。ノーマル／エンドレス選択、ノーマル開始後のテーマと入力欄を表示し、操作に反応することを確認した。
+- unityroomのゲーム本体はアプリに同梱せず、ネット接続時に読み込む。入力後の結果画面、通信が切れた状態、物理端末でのキーボードとゲーム操作は未確認。
+- ビルド／AVDインストール成功。自動テストとコミット・公開は実施していない。
+
+## 実装チェック
+
+- [x] ヘビ画面のスクロールをなくし、全UIを縦画面内へ配置
+- [x] 開始前状態と方向操作による開始を追加
+- [x] 公式unityroomゲームをEssential画面内のWebViewで起動
+- [x] Pixel_10a AVDで画面と基本操作を確認
+
+final result: passed with noted limits
+
+# Design QA — unityroom WebViewの軽量化・Liquid Glass（2026-09-28）
+
+## 確認環境
+
+- Pixel_10a AVD／Android 17／Debug版 `jp.essential.app.debug` versionCode 23、versionName 0.6.2-debug。
+- 更新後の画面: `app/build/visual-qa/word-distance-updated.png`
+
+## 確認内容
+
+- ミニゲーム一覧から「一番遠い言葉」を開き、WebViewでunityroomのゲームモードを表示した。ノーマル開始後、テーマ「猫」と7文字入力欄、送信ボタンが表示されることを確認した。
+- Essential外枠のGlass面、反射縁、読み込み状況、戻る／再読み込み操作、ステータス表示を目視した。Unity WebGL本体との重ね合わせでもゲーム操作範囲を保つ。
+- アプリを一度ホームへ移動して再表示し、ゲーム画面へ戻れることを確認した。画面離脱時はWebViewのJavaScriptタイマーを止め、復帰時とWebView破棄時にタイマー状態を復元する。
+- Pixel AVDはXiaomi端末ではないため、Xiaomi判定、60Hz要求、HyperOS上のメモリ／消費電力は実機検証していない。画面上のモーション／FPS測定と自動テストも未実施。
+
+## 実装チェック
+
+- [x] WebViewを画面ライフサイクルと同期し、画面離脱時に停止・破棄
+- [x] 背面時のJavaScriptタイマー停止と画面復帰／破棄時の共有状態復元
+- [x] 非表示時に描画器を低優先度へ変更し、描画プロセス終了から再生成
+- [x] Liquid Glass外枠と押下ばね／段階表示
+- [x] Xiaomi／Redmi／POCO判定とAPI 35以降の60Hz要求
+- [x] Debug APKビルド、AVDへの署名互換な上書きインストール、画面確認
+
+final result: passed with device-specific limits
+
+# Design QA — ヘビゲームの移動スティックとWord Distanceの表示枠（2026-09-28）
+
+## 確認環境
+
+- Pixel_10a AVD／Android 17／Debug版 `jp.essential.app.debug`。
+- Snake操作画面: `app/build/visual-qa/snake-joystick-playing.png`
+- Word Distance表示: `app/build/visual-qa/word-distance-current.png` と `app/build/visual-qa/word-distance-play-final.png`
+
+## 確認内容
+
+- 方向ボタンの代わりに円形スティックを表示し、右へドラッグするとヘビが進むことを確認した。盤面スワイプ、スタート／一時停止は維持した。
+- unityroomのゲームをノーマル開始し、猫のお題と7文字以内の入力欄が表示されることを確認した。ゲームキャンバスの左右・上下に均等な余白ができ、画面中央へ収まる。
+- Unity WebView上で実測したCSS viewportとキャンバス寸法を確認し、最終キャンバスの縮尺が0.92、左右・上下の位置がそれぞれviewportの4%となることを確認した。
+- 物理端末、自動テスト、回答送信後の結果表示は未確認。
+
+## 実装チェック
+
+- [x] 方向ボタンを移動スティックへ置換
+- [x] 同じ方向のスティック操作で開始、逆方向を抑止
+- [x] WebViewの実測寸法に基づくUnity表示領域の補正
+- [x] Debug APKビルド、AVDへのインストール、表示と操作を確認
+
+final result: passed on AVD; physical-device verification not performed
+
+# Design QA — 「一番遠い言葉」WebView消音（2026-09-28）
+
+## 確認環境
+
+- Pixel_10a AVD／Android 17／Debug版 `jp.essential.app.debug` versionCode 23、versionName 0.6.2-debug。
+- 実行画面: `app/build/visual-qa/audio-mute-word-play.png`
+
+## 確認内容
+
+- 公式unityroomゲームのプレイ画面を表示したまま、WebViewの対象プレイヤーURLでドキュメント開始時消音フックが有効になることを確認した。
+- Chrome DevTools Protocolの確認値は`muted=true`、`hooked=true`、AudioContext出力ゲイン`0`。確認用AudioNodeを出力先へ接続し、ゲートの値が0になることを検証した。
+- 消音対象はこのゲームのWebView内だけで、Androidのシステム音量は変更しない。HTMLメディアは個別にミュートする。
+- 物理端末での聴感確認と自動テストは未実施。
+
+## 実装チェック
+
+- [x] Web Audio出力をAudioContextごとにゲイン0へ接続
+- [x] HTML audio／videoメディアをミュート
+- [x] `*.play.unityroom.com`のページ開始時スクリプト注入
+- [x] Debug APKビルド、AVDへインストール、実行中WebViewのフックを確認
+
+final result: passed on AVD; physical-device listening verification not performed
+
+# Design QA — ヘビゲーム移動スティックのLiquid Glass化（2026-09-28）
+
+## 確認環境
+
+- Pixel_10a AVD／Android 17／Debug版 `jp.essential.app.debug` versionCode 23、versionName 0.6.2-debug。
+- ゲーム準備画面: `app/build/visual-qa/snake-glass-playing.png`
+- 右方向の操作確認: `app/build/visual-qa/snake-glass-playing-verified.png`
+
+## 確認内容
+
+- スティックつまみから方向を示す矢印文字がなくなり、つまみは反射と透過を使ったガラス表現で表示される。
+- スティックの外周に半透明の青緑ガラス、細い反射縁、内側リングを表示した。
+- スティックを右へドラッグしてゲームが開始し、ヘビが進むことを確認した。
+- 物理端末と自動テストは未実施。
+
+## 実装チェック
+
+- [x] 画面内の矢印グリフを削除し、読み上げ用ラベルを維持
+- [x] スティック台座とつまみにLiquid Glassの透過・反射・縁取りを適用
+- [x] Debug APKビルド、AVDへのインストール、方向操作を確認
+
+final result: passed on AVD; physical-device verification not performed
+
+# Design QA — 移動スティックの反射表現を削除（2026-09-28）
+
+## 確認環境
+
+- Pixel_10a AVD／Android 17／Debug版 `jp.essential.app.debug` versionCode 23、versionName 0.6.2-debug。
+- ヘビゲーム画面: `app/build/visual-qa/snake-glass-no-reflection.png`
+
+## 確認内容
+
+- スティック台座とつまみの上部光沢ライン、明るい反射グラデーションを除いた。
+- 半透明の単色面、控えめな縁取り、柔らかな影、薄い円形ガイドは維持した。
+- AVDの画面で更新後の見た目を確認した。自動テストと物理端末確認は未実施。
+
+## 実装チェック
+
+- [x] 反射ラインと反射グラデーションを削除
+- [x] Liquid Glassの半透明面と縁取りを維持
+- [x] Debug APKビルド、AVDへインストール、画面確認
+
+final result: passed on AVD; physical-device verification not performed

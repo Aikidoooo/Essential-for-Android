@@ -94,6 +94,8 @@ internal fun MiniGameScreen(
             onDosukoi = { selectedGame = GameSelection.Dosukoi },
             onMinesweeper = { selectedGame = GameSelection.Minesweeper },
             onBlockBlast = { selectedGame = GameSelection.BlockBlast },
+            onWordDistance = { selectedGame = GameSelection.WordDistance },
+            onSnake = { selectedGame = GameSelection.Snake },
         )
         GameSelection.Dosukoi -> DosukoiWebViewScreen(
             onBack = { selectedGame = GameSelection.Menu },
@@ -101,10 +103,12 @@ internal fun MiniGameScreen(
         )
         GameSelection.Minesweeper -> MinesweeperFlow(onBack = { selectedGame = GameSelection.Menu })
         GameSelection.BlockBlast -> BlockBlastScreen(onBack = { selectedGame = GameSelection.Menu })
+        GameSelection.WordDistance -> WordDistanceScreen(onBack = { selectedGame = GameSelection.Menu })
+        GameSelection.Snake -> SnakeGameScreen(onBack = { selectedGame = GameSelection.Menu })
     }
 }
 
-private enum class GameSelection { Menu, Dosukoi, Minesweeper, BlockBlast }
+private enum class GameSelection { Menu, Dosukoi, Minesweeper, BlockBlast, WordDistance, Snake }
 
 @Composable
 private fun MiniGameMenu(
@@ -112,6 +116,8 @@ private fun MiniGameMenu(
     onDosukoi: () -> Unit,
     onMinesweeper: () -> Unit,
     onBlockBlast: () -> Unit,
+    onWordDistance: () -> Unit,
+    onSnake: () -> Unit,
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -155,11 +161,29 @@ private fun MiniGameMenu(
                 onClick = onMinesweeper,
             )
         }
+        progressiveItem(4) {
+            GameMenuCard(
+                title = "一番遠い言葉",
+                description = "お題から遠い言葉を見つけよう",
+                icon = "🌌",
+                accent = Color(0xFF8D79E8),
+                onClick = onWordDistance,
+            )
+        }
+        progressiveItem(5) {
+            GameMenuCard(
+                title = "ヘビゲーム",
+                description = "エサを食べてどこまで伸びる？",
+                icon = "🐍",
+                accent = Color(0xFF37B98C),
+                onClick = onSnake,
+            )
+        }
     }
 }
 
 @Composable
-private fun GameBackButton(onClick: () -> Unit, darkSurface: Boolean = false) {
+internal fun GameBackButton(onClick: () -> Unit, darkSurface: Boolean = false) {
     Box(
         modifier = Modifier
             .size(44.dp)

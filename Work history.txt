@@ -1740,3 +1740,121 @@
 - `SHA256SUMS.txt`は4行で、Android初回／更新APKのSHA-256は`d5a9293d304bf63e92304b14dc6b7e6b15c796a48aed2c9bdccbdd7fc6fe2489`、Xiaomi初回／更新APKは`d17f00e69a02fd0a41a89e098d99a70cf7fa62817ce78eb23424b6704e2932b3`。GitHub Release APIのdigestと、再取得した更新APK2種の実ファイルハッシュが一致した。
 - 再取得した公開更新APK2種は`jp.essential.app`、versionCode 23、versionName 0.6.2。Android版はarm64-v8a／armeabi-v7a／x86／x86_64、Xiaomi版はarm64-v8a専用。両方ともAPK Signature Scheme v2検証と16KiB zipalign検査に成功し、署名証明書SHA-256は既存正式版と同じ`d9037fa8b1ed3855cd3fad04dd4791e568ffb4123ee8b4f54c5e494a30ab64e8`だった。
 - 検証用APKは`%TEMP%\essential-v062-verification`だけへ保存し、検査後に削除した。Instagram指定投稿の実動画保存、Xiaomi実機上の今回のUI・ダウンロード・yt-dlp更新は引き続き未検証であり、Release notesにも明記している。
+
+【2026-09-22 フォルダ整理（継続中）】
+- 作業前にこのWork historyを確認した。Git管理下のAndroid/Rust本体、Gradle設定、Android Studio設定、CameraStyleAIのソース・設定・手順書・Android同梱資産は保持する方針とした。
+- 再生成可能な`app/build`、ルート`build`、`.gradle`、`.kotlin`、`core-rust/target`、`output`、`backups`、ルートの`build-essential-*`検証画像/UIダンプ、古いビルドログを削除した。`.android/debug.keystore`はDebug署名互換性のため保持し、cacheとlockだけ削除した。
+- CameraStyleAIの`.venv-dped`、`.gradle-home`、`android/.gradle`、`android/.kotlin`、`android/build`、`android/app/build`、Starter側の古いビルドログを削除した。ソース、モデル、cube、ライセンス、レポートは保持した。
+- `references/public-style-targets`配下のLeica M9、Leica M3、Xiaomi Leicaを含む8スタイルの公開参照画像を削除した。参照元一覧・README・研究レポートは保持した。
+- 削除前の容量はルート全体で約40GB超だった。上記整理後も`CameraStyleAI_REAL_DATA_Collection_Kit/REAL_DATA_DOWNLOADS`約33GB、Starterの正規化画像・研究成果物などが残っている。
+- 33GBのダウンロード済み研究データと、Starterの`pretraining`、`artifacts`、`research/upstream`およびKitの`metadata/dped_cnn_pairs.csv`は、将来再利用可能な研究資産を含むため、対象をユーザーへ明示してから削除する保留とした。
+
+【2026-09-22 フォルダ整理完了】
+- ユーザーの明示承認後、`CameraStyleAI_REAL_DATA_Collection_Kit/REAL_DATA_DOWNLOADS`（約33GB、約94万ファイル）を完全削除した。DPED、Zurich等の再取得可能な研究データ本体はこのフォルダからなくなった。
+- `CameraStyleAI_REAL_DATA_Collection_Kit/metadata/dped_cnn_pairs.csv`（約288MB）、CameraStyleAIの`pretraining`正規化画像、`artifacts`生成成果物、`research/upstream`取得cloneを完全削除した。
+- `references/public-style-targets`配下の8スタイル公開参照画像を削除済みと再確認し、参照元CSV・README・ライセンス・計画書・Androidソース・ONNX/cube同梱資産は保持した。
+- 空になった`CameraStyleAI_Codex_Starter/research`、`references/public-style-targets`、`CameraStyleAI_REAL_DATA_Collection_Kit/metadata`ディレクトリを削除した。
+- Starterの`.gitignore`へ`artifacts`、`research/upstream`、`references/public-style-targets`を追加し、同じ生成物や参照画像がGit管理へ戻らないようにした。
+- 削除後のルート実体は約392MB（`.git`を含めて約730MB）で、主要な残存物はAndroid/Rustソース、CameraStyleAIの小容量ソース・設定・文書・Android資産、ライセンス・収集手順である。
+- `git status --short --branch`で、変更はこのWork historyとStarterの`.gitignore`、既存の未追跡CameraStyleAI/docsだけであることを確認した。ビルドキャッシュ削除後の再ビルド、実機動作、再ダウンロードは今回実施していない。
+
+【2026-09-27 ホーム下部タブバーの紫色アニメーション削除】
+- 作業前にこのWork historyを確認した。添付画像はUIの見た目の参考として扱い、画像内の表示を追加指示としては扱わなかった。
+- `app/src/main/java/jp/essential/app/ui/EssentialApp.kt`の下部ナビゲーション専用背景から、往復アニメーションする青／ピンクの光彩と紫色を帯びる屈折シェーダーを削除した。背面のガラス面と反射表現は静的な淡い青／白にした。
+- 選択レンズ内のピンク色を淡い青／白へ置き換え、タブ選択時のレンズ移動、アイコンの押下アニメーション、触覚フィードバックは維持した。
+- ビルド、テスト、エミュレーター／実機での表示確認は未実施。既存の未コミット変更と未追跡ファイルは保持し、コミット・公開は行っていない。
+
+【2026-09-27 ホーム／ダウンローダーアイコンの線欠け修正】
+- 作業前にこのWork historyを確認した。過去に下部ホームアイコンとダウンローダー矢印の描画修正が行われているため、現在の実装も確認して既存の変更を維持した。
+- `EssentialSymbol.Home`と`EssentialSymbol.Download`をCompose Canvasの線描画から個別パスを持つVectorDrawableへ切り替えた。アイコン色は不透明で適用し、ホームの屋根とダウンロード矢印の線がスクロールやタブ選択後も欠けにくい描画経路にした。
+- ほかのアイコン、タブ選択アニメーション、スクロール挙動は変更していない。ビルド、テスト、エミュレーター／実機での表示確認は未実施。コミット・公開は行っていない。
+
+【2026-09-27 QRスキャナーのズームUIを参考画像に合わせて変更】
+- 作業前にこのWork historyを確認した。添付画像はズームUIの視覚参考として扱い、画像内の表示を追加指示としては扱わなかった。
+- `QrScannerScreen.kt`の倍率クイック操作を、上側に並ぶ丸型の`W`／`1x`／`3.5x`／`10x`ボタンへ変更した。選択中は白い円枠、端末非対応の倍率は無効表示とし、押下縮小と触覚フィードバックを付けた。
+- 画面下側の標準スライダーを曲線の目盛りへ置き換えた。倍率は対数間隔で配置し、現在位置を赤い縦マーカーで示す。タップとドラッグの両方でズームを変更できる。
+- CameraXのズーム適用、ピンチズーム、ライト、Auto URL設定、QR結果、クイック設定タイルは維持した。
+- `git diff --check`で空白エラーがないことを確認した。Java 23でDebugリソース／Kotlinのコンパイルを試みたが、Gradle Wrapperが`C:\Users\waki1\.gradle\wrapper\dists\gradle-8.11.1-bin\...zip.lck`へアクセスできず停止した。テストとエミュレーター／実機での表示確認は未実施。コミット・公開は行っていない。
+
+【2026-09-28 エミュレーターへ最新Debugアプリをインストール】
+- 作業前にこのWork historyを確認した。Android Studioプロジェクトの` :app:installDebug `を使い、接続端末に編集済みコードを反映する方針とした。
+- `emulator-5554`（Android StudioのPixel_10a AVD）にDebug APKをインストールした。端末で`jp.essential.app.debug`のversionCode 23／versionName 0.6.2-debugを確認し、`MainActivity`を起動した。Debug版が前面にあり、プロセスも稼働している。
+- 既存のリリース版`jp.essential.app`はversionCode 16／versionName 0.5.5であることを確認した。Debug版は`applicationIdSuffix`により別パッケージとなるため、リリース版のアプリとデータは変更・削除していない。
+- Gradle Wrapperは共有Gradleキャッシュのロック権限で起動できなかったため、既存のGradle 8.11.1本体とJDK 23を使用した。無視対象の`.gradle-user-home`をGradleキャッシュにし、既存Debug署名キーを専用`ANDROID_USER_HOME`経由で利用した。Kotlinコンパイルはプロセス内方式で実行し、`:app:installDebug`は成功した。
+- Android Studioの計測設定とKotlin daemonのユーザー領域はアクセス拒否となったため、それぞれ警告／回避対象となった。APKはx86_64エミュレーターへインストール済み。画面上の目視QAは今回実施していない。ビルドキャッシュはGit管理対象外に保持し、一時的なDesktop Junctionは除去した。
+
+【2026-09-28 QRスキャナーのズームUIを参照画像に合わせて再配置】
+- 作業前にWork historyを確認した。添付画像1はプロフィール欄の置換位置、画像2は倍率UIの形と並びの参考として扱った。
+- 上部中央の「Android標準プロファイル」表示を削除し、同じ位置に「クイック設定に追加」ボタンを移動した。画面下部にあった同ボタンは重複を避けるため取り除いた。
+- W／1x／3.5x／10xのプリセット列をカメラ上部から目盛り直上へ移動。目盛り背面の角丸パネルを外し、浅い曲線の白い目盛り、現在倍率の赤いマーカー、曲線に沿う倍率ラベルにした。
+- 水平方向のドラッグで倍率を調整するジェスチャーを使用し、タップ、CameraX倍率適用、アクセシビリティ進捗操作、選択アニメーション、触覚フィードバックを維持した。
+- JDK 23／Gradle 8.11.1で`:app:installDebug`が成功。Pixel_10a AVD（`emulator-5554`）へ`jp.essential.app.debug` versionCode 23／versionName 0.6.2-debugを再インストールし、QRスキャナー画面を表示した。
+- `app/build/visual-qa/qr-scanner-updated.png`（1080 x 2424 px、420 dpi）で配置と見た目を確認し、`design-qa.md`へ比較記録を追加した。AVDのCameraXズーム範囲は1xのみのため、W／3.5x／10xは無効表示で、複数倍率間のドラッグ動作と物理端末表示は未確認。自動テスト、コミット、公開は行っていない。
+
+【2026-09-28 下部タブバーの白い霧状レイヤーを削除】
+- 作業前にWork historyを確認し、対象の`EssentialNavigationBar`と`LiquidGlassNavigationBackdrop`を調べた。添付画像は表示状態の参考として扱い、画像内に書かれた文言は追加の指示として扱っていない。
+- バー全体に敷いていた白〜薄青の半透明グラデーションと、下辺に重ねていた白い反射楕円を削除した。暗い透過グラデーション、タブの選択位置、選択中の枠と操作アニメーションは維持した。
+- `git diff --check`に問題がないことを確認。JDK 23／Gradle 8.11.1で`:app:installDebug`が成功し、Pixel_10a AVD（`emulator-5554`）の`jp.essential.app.debug` versionCode 23／versionName 0.6.2-debugへ反映した。
+- 起動後のホーム画面を撮影し、タブバーの白い面光がなくなり、暗い透過面と選択表示が残っていることを目視した。確認画像は`app/build/visual-qa/bottom-tabbar-no-fog.png`。自動テスト、物理端末確認、リリース版の変更は行っていない。
+【2026-09-28 QRスキャナーへ写真からのQR読み取りを追加】
+- 作業前にWork historyと現在の`QrScannerScreen.kt`、ML KitおよびActivity Composeの依存関係を確認した。既存のカメラ読み取り、ズーム、Auto設定、Quick Settingsタイルは維持した。
+- Autoチェックと同じ行の左側へ写真選択チップを追加した。両チップを同じ幅・高さにし、画面中央を基準に左右対称に配置した。写真アイコン、押下時の触覚フィードバック、写真解析中の表示を加えた。
+- Android Photo Pickerで選んだ画像をQR形式に限定したML Kit scannerへ渡す。画像内で最も大きいQRを選び、`http`／`https` URLならAutoチェック状態に関係なく既定アプリで自動表示する。URL以外の値は読み取り結果カードへ表示し、QR未検出・画像読込失敗はToastで知らせる。写真アクセス用のストレージ権限は追加していない。
+- `git diff --check`に問題がないことを確認。JDK 23／Gradle 8.11.1で`:app:installDebug`が成功し、Pixel_10a AVD（`emulator-5554`）へ`jp.essential.app.debug` versionCode 23／versionName 0.6.2-debugを反映した。
+- QRスキャナー画面のスクリーンショット`app/build/visual-qa/qr-photo-button.png`で、左右対称の配置を目視確認した。写真を実際に選んだ後のQR認識・URL起動は未操作で、物理端末確認と自動テストは行っていない。コミット・公開は行っていない。
+【2026-09-28 ミニゲーム「一番遠い単語」「ヘビゲーム」追加】
+- 作業前にWork historyを確認し、既存のMiniGameScreen／Block Blast／アプリXP保存方式を調べた。既存ミニゲーム一覧に「一番遠い単語」と「ヘビゲーム」を加え、各ゲームをEssentialのCompose UIとして実装した。
+- unityroom「いちばん遠い言葉」の紹介ページとブラウザー上のゲームを調査した。ノーマル／エンドレス、7文字以内、前の距離を超えて連鎖するルールを確認した。参照先のAI埋め込みモデルは利用せず、端末内の語彙カテゴリベクトルと未知語向けの決定的ベクトルを使う簡易推定に置き換えた。画面上にEssential独自のローカル判定であり、参照ゲームのAIスコアと異なることを表示し、入力内容は外部送信しない。
+- 「一番遠い単語」はランダムなお題、7文字カウント、距離結果、再挑戦、ノーマルとエンドレスを実装した。エンドレスは前回より厳密に遠い場合のみ連鎖し、最高連鎖数は端末に保存する。
+- 「ヘビゲーム」は16×22盤面、時間経過による移動、エサ取得と成長、取得数に応じた速度上昇、壁／自分の体との衝突、盤面クリア、一時停止／再開、スワイプ／方向ボタン、再挑戦、端末内ベストスコア保存を実装した。ゲーム終了時に獲得数に応じたXPを一度だけ加算する。
+- `git diff --check`成功。JDK 23／Gradle 8.11.1で`:app:installDebug`が成功し、Pixel_10a AVD（`emulator-5554`／Android 17）へDebug版をインストールした。エミュレーターでミニゲーム一覧、ヘビ盤面とゲームオーバー、単語ゲームのモード／入力／距離結果を表示確認した。確認画像は`app/build/visual-qa/minigame-menu-final.png`、`snake-screen-adjusted.png`、`word-distance-screen.png`、`word-distance-result-submitted.png`。
+- 自動テストと物理端末での確認は行っていない。コミット・公開は行っていない。既存の他変更・未追跡資産は保持した。
+
+【2026-09-28 ミニゲームの画面調整と「いちばん遠い言葉」公式ゲーム表示】
+- 作業前にWork historyを読み返した。直前の「一番遠い単語」はEssential内の簡易再現だったが、今回の要望に合わせてその実装を取り除き、unityroomの実ゲームをアプリ内で動かす方式へ変更した。
+- 「一番遠い言葉」はEssentialのヘッダー、戻る／再読み込み操作、提供元表示、角丸のWebView枠で囲み、公式ページを読み込む。ページ内リンクから都度発行される`*.play.unityroom.com`の再生URLを取得して同じWebViewへ遷移する。新規ウィンドウを抑止し、ネット接続失敗時は再読み込み操作を表示する。WebGLキャンバス上端がWebViewに隠れるケースでは、初期表示後にキャンバスの負の上端分と小さな余白をCSSで補正する。
+- unityroom公式ページの説明でノーマル／エンドレス、入力7文字以内を確認した。Pixel_10a AVDで公式ゲームのモード選択とノーマル開始後の入力欄を表示し、ゲーム本体のタップ操作を確認した。プレイ結果画面までの入力／スコア挙動は未確認。再生コードやモデルをアプリへ複製せず、実行時に公式サイトから読み込むためネット接続が必要。
+- 「ヘビゲーム」は縦スクロールを外し、利用可能な高さへ盤面を比率維持で収めるレイアウトへ変更した。ヘッダー、スコア、盤面、スタート／一時停止、方向ボタン、説明をPixel_10a AVDの一画面へ配置し、ジェスチャーナビゲーションとの間に余白を確保した。開始前の「準備完了」状態を追加し、スタートボタンまたは方向操作で開始する。方向ボタン操作で盤面上のヘビが動くことを確認した。
+- JDK 23／Gradle 8.11.1で`:app:installDebug`成功。Pixel_10a AVD（`emulator-5554`／Android 17）へDebug版をインストールして確認した。画面記録は`app/build/visual-qa/word-final-menu.png`、`word-final-play.png`、`snake-ready.png`、`snake-playing.png`。`git diff --check`成功。
+- 自動テストと物理端末での確認は行っていない。unityroomの外部コンテンツ、署名付き再生URL、入力後の結果演出は物理端末で未確認。コミット・公開は行っていない。既存の他変更・未追跡資産は保持した。
+
+【2026-09-28 unityroom WebViewの軽量化・Liquid Glass・端末別モーション調整】
+- 作業前にWork historyとESSENTIAL_HANDOFF.mdを確認し、公式OPPO／Xiaomi情報とAndroid WebView APIを照合した。OPPO ColorOSの操作起点・指の動きに沿う遷移表現をCompose内の画面演出へ取り入れた。ColorOS固有エンジンをEssentialへ組み込んだものではない。
+- `WordDistanceScreen.kt`でWebViewのライフサイクルを画面表示とActivityのRESUME／PAUSEへ同期した。背面時はWebView表示処理とJavaScriptタイマーを停止し、復帰時に再開する。画面離脱時は読み込みを止めてWebViewを破棄し、非表示時は描画器が低優先度になる設定を加えた。タイマー停止はアプリ内全WebViewに及ぶため、ミニゲームではWebViewを同時に一つだけ表示する既存画面構成に合わせ、画面終了時にもタイマー状態を復元する。Unity WebGLの前面動作を保つため、前面中の描画器優先度は重要度を維持した。キャッシュとDOMストレージはゲームの通信・プレイ状態を保つ既存設定を維持し、キャッシュ削除や高負荷な全画面Backdrop Blurは追加していない。
+- WebView描画プロセスがメモリ圧迫などで終了した場合、旧Viewを停止・破棄し、Essential画面を維持してWebViewを再生成・再読込する復旧経路を追加した。
+- Essential外枠へ半透明の面、淡い反射グラデーション、細い縁取りを追加した。戻る／再読込ボタンは押下時に明るさと縮尺がばねで追従し、画面要素は順番に短く現れ、読み込み／失敗表示はフェードで切り替わる。ゲーム描画を邪魔しないよう外枠と状態表示だけにGlass表現を限定した。
+- `DeviceOptimizer`へXiaomi／Redmi／POCO判定を追加した。Xiaomi系列でAndroid API 35以降の場合、外部WebGL描画面の要求更新レートを60Hzに揃える。低メモリのXiaomi端末では画面モーションを短くする。配布設定は従来どおりXiaomi向けarm64-v8a APKを選択する。HyperOS固有の非公開APIは使わず、HyperOS 3／4のAndroid互換機能を使う設計とした。
+- JDK 23／Gradle 8.11.1でASCII Junction経由の`:app:compileDebugKotlin`と`:app:assembleDebug`が成功した。最初の`:app:installDebug`は一時的なプロジェクトDebug keystoreを使ったため既存アプリと署名が合わず拒否された。その後、既存Android Studio Debug keystoreを使って再実行し、`emulator-5554`（Pixel 10a AVD／Android 17）上の`jp.essential.app.debug`をデータ保持のまま上書き更新した。versionCode 23／versionName 0.6.2-debugを確認した。
+- 更新後にミニゲーム一覧、unityroomのモード選択、ノーマル開始後の入力画面をAVD上で表示確認した。ホームへ移動してからアプリに戻り、Unityゲームが再表示されることも確認した。Liquid Glass外枠、操作ボタン、ステータス表示、公式Webゲーム表示を目視した。記録画像は`app/build/visual-qa/word-distance-updated.png`。物理Xiaomi端末／HyperOS 3・4での確認、メモリ・消費電力の実測、自動テストは未実施。`git diff --check`は空白エラーなし（CRLF変換警告のみ）。コミット・公開は行っていない。
+- 調査参照: OPPO ColorOS 16公式記事（https://www.oppo.com/en/newsroom/stories/oppo-find-x9-series-coloros-16-smooth/）、Xiaomi HyperOS 4公式サイト（https://hyperos.mi.com/）、Xiaomi Global HyperOS 3公式ページ（https://www.mi.com/uk/hyperos）、Android WebView API（https://developer.android.com/reference/android/webkit/WebView）。
+
+【2026-09-28 ヘビゲームの移動スティック化と一番遠い言葉の表示枠補正】
+- 作業前にWork historyを読み返し、添付画像は画面状態の参考として扱った。ゲーム操作とWebView配置以外の機能は維持した。
+- ヘビゲームの方向ボタン群を、親指で倒して方向を指定する円形スティックへ置き換えた。スティックのつまみはドラッグに追従し、中心のデッドゾーンを設け、主軸方向を上下左右へ変換する。逆方向入力の抑止、スティック操作でのゲーム開始、プレイ中の一時停止、盤面スワイプ操作は維持した。
+- unityroomのゲーム領域は、WebViewの実測サイズからhtml／body／Unityコンテナの縦横をピクセルで指定する方式に変更した。対象環境のUnity WebViewでは`100vh`が高さ0として計算され、親領域とゲーム表示が崩れることを実測したため、画面サイズ変更時にも再計算する。Unityキャンバスの内部解像度と縦横比は保ちつつ、見た目を中央基準で縮小し、左右に4%、上下に4%の余白を確保する。Unityキャンバスの解像度属性が変わった際にも位置と倍率を再適用する。
+- JDK 23／Gradle 8.11.1で`:app:installDebug`が成功し、Pixel_10a AVD（`emulator-5554`／Android 17）の`jp.essential.app.debug`へ上書きインストールした。スティックを右へドラッグしてゲームが開始し、ヘビが進行すること、unityroomのノーマル開始後に入力画面が表示されることを確認した。画面記録は`app/build/visual-qa/snake-joystick-playing.png`、`app/build/visual-qa/word-distance-current.png`、`app/build/visual-qa/word-distance-play-final.png`。
+- `git diff --check`を実行し、エラーはなかった。自動テストと物理端末での確認は行っていない。Unityゲームの回答送信後の結果画面は今回未確認。コミット・公開は行っていない。
+
+【2026-09-28 「一番遠い言葉」WebViewの音声を消音】
+- 作業前にWork historyを読み返した。ユーザーの依頼に合わせ、端末全体の音量を変更せず、Essential内で動作するunityroom版「一番遠い言葉」だけを無音化した。
+- `WordDistanceScreen.kt`でWebViewの`DOCUMENT_START_SCRIPT`機能を使い、`*.play.unityroom.com`のドキュメント開始時に消音処理を注入する。Web Audio APIでは各AudioContextの出力先へ直接つながるノードをゲイン0のGainNode経由にし、Unity WebGLの音声出力を遮断する。HTML audio／video要素と再生イベントもミュートし、ページ内で後から追加されたメディアにも適用する。WebView機能が使えない環境向けに、プレイヤーページ読み込み完了時の適用も残した。AndroidのAudioManagerやシステム音量は変更していない。
+- JDK 23／Gradle 8.11.1で`:app:installDebug`が成功し、Pixel_10a AVD（`emulator-5554`／Android 17）の`jp.essential.app.debug` versionCode 23／versionName 0.6.2-debugを更新した。AVDで公式ゲームを開き、Chrome DevTools Protocolからページの消音フック有効状態、AudioNode接続フック、テスト用AudioContextの出力ゲイン0、対象ホスト`78914.play.unityroom.com`を確認した。テスト用オシレーターは接続のみで再生していない。
+- `git diff --check`で空白エラーがないことを確認した。自動テストと物理端末での聴感確認は行っていない。コミット・公開は行っていない。既存の他変更・未追跡資産は保持した。
+
+【2026-09-28 ヘビゲームの移動スティックをLiquid Glass化】
+- 作業前にWork historyを読み返した。移動スティックのつまみ内にあった上下左右の矢印文字を削除し、方向判定と読み上げ用の方向ラベルは維持した。
+- スティック外周を透明感のある青緑の放射グラデーション、反射する縁取り、内側リングと上端の光沢で構成した。つまみも半透明の冷色グラデーションと白い縁、反射ハイライト、小さな光点、柔らかな影でLiquid Glass表現に変更した。ドラッグ操作、デッドゾーン、逆方向入力の抑止など操作仕様は維持した。
+- JDK 23／Gradle 8.11.1で`:app:installDebug`が成功し、Pixel_10a AVD（`emulator-5554`／Android 17）のDebug版を更新した。ゲーム画面で矢印が表示されないこと、つまみに矢印以外の文字がないこと、Glass表現を目視確認した。右へドラッグしてゲームが開始し、ヘビが動くことも確認した。記録画像は`app/build/visual-qa/snake-glass-playing.png`と`snake-glass-playing-verified.png`。
+- `git diff --check`に空白エラーなし。自動テストと物理端末での確認は行っていない。コミット・公開は行っていない。既存の他変更・未追跡資産は保持した。
+
+【2026-09-28 ヘビゲームの移動スティックから反射グラデーションを削除】
+- 作業前にWork historyを読み返した。スティック台座とつまみにあった反射に見える明るいグラデーションと光沢ラインを取り除き、半透明の単色面、控えめな縁、影、薄い円形ガイドでLiquid Glassの印象を保った。矢印表示なしと既存の入力処理は維持した。
+- JDK 23／Gradle 8.11.1で`:app:installDebug`が成功し、Pixel_10a AVD（`emulator-5554`／Android 17）へDebug版を反映した。ヘビゲーム画面で反射ラインや色のグラデーションがなくなったことを目視確認した。画像は`app/build/visual-qa/snake-glass-no-reflection.png`。
+- `git diff --check`に空白エラーなし。自動テストと物理端末での確認は行っていない。コミット・公開は行っていない。既存の他変更・未追跡資産は保持した。
+
+【2026-09-28 Essential v0.6.3公開準備】
+- 作業前にWork history、ESSENTIAL_HANDOFF.md、Git差分、公開ワークフロー、前回のRelease記録を確認した。既存のQRスキャナー、タブバー、ミニゲーム、WebView、Xiaomi向け変更を今回の対象とし、CameraStyleAI研究フォルダとdocs/は公開対象から外した。
+- `app/build.gradle.kts`をversionCode 24／versionName 0.6.3に更新し、`.github/release-notes/v0.6.3.md`に配布ファイル、変更点、未検証事項を記した。GitHub上では作業開始時にv0.6.3のタグとReleaseが未作成であることを確認した。
+- Java 23とASCII Junctionを使用し、`:app:testDebugUnitTest :app:lintDebug :app:assembleRelease`が成功した。Unit Testは44件成功、失敗・エラー・スキップは0。R8有効Releaseビルドも成功した。最初のオフライン実行はJUnitがキャッシュになく停止したため、依存関係を取得して再実行した。
+- 生成された未署名Release APKは`jp.essential.app`、versionCode 24／versionName 0.6.3。Android版はarm64-v8a／armeabi-v7a／x86／x86_64、Xiaomi版はarm64-v8aのみ。両方とも16KiB zipalign検査が成功した。正式署名と配布ファイルの検査はタグpush後のGitHub Actionsで実施する。
+- 実機でのQR写真読み取りとURL起動、Xiaomi／HyperOS上の表示と負荷、Unityゲームの回答送信後の結果は今回未検証。現時点では公開前。

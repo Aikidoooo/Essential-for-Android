@@ -93,6 +93,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -156,9 +157,6 @@ private enum class ProfilePanel {
     Settings,
 }
 
-// 下部バーは透明度82%（不透明度18%）を基準にし、背面の視認性を保つ。
-private const val NAVIGATION_GLASS_TRANSPARENCY = 0.82f
-private const val NAVIGATION_GLASS_SURFACE_ALPHA = 1f - NAVIGATION_GLASS_TRANSPARENCY
 // 最終項目全体が下部タブの影に隠れないための追加スクロール余白。
 private val NAVIGATION_CONTENT_CLEARANCE = 12.8.dp
 
@@ -325,7 +323,6 @@ private fun EssentialApp(
                 if (activeFeature == null) {
                     EssentialNavigationBar(
                         selected = destination,
-                        appIcon = AppIconManager.optionForId(appIconId),
                         profileIcon = navigationProfileIcon,
                         profileImagePath = navigationProfileImagePath,
                         onSelected = { destination = it },
@@ -662,33 +659,6 @@ half4 main(float2 coordinate) {
     float centerGlow = 1.0 - smoothstep(0.04, 0.74, radius);
     refracted.rgb += float3(0.035, 0.055, 0.085) * centerGlow;
     refracted.rgb += float3(0.11, 0.025, 0.12) * rim * edge;
-    return refracted;
-}
-"""
-
-private const val LIQUID_GLASS_NAV_SHADER_SOURCE = """
-uniform shader contents;
-uniform float2 resolution;
-
-half4 main(float2 coordinate) {
-    float2 uv = coordinate / resolution;
-    float2 radial = uv - float2(0.5, 0.5);
-    float radius = length(radial);
-    float2 direction = normalize(radial + float2(0.0001, 0.0001));
-    float edge = smoothstep(0.22, 0.74, radius);
-    float distortion = 0.010 * edge * edge;
-    float2 redUv = clamp(uv + direction * (distortion + 0.002), 0.0, 1.0);
-    float2 greenUv = clamp(uv + direction * distortion, 0.0, 1.0);
-    float2 blueUv = clamp(uv + direction * (distortion - 0.002), 0.0, 1.0);
-    half4 redSample = contents.eval(redUv * resolution);
-    half4 greenSample = contents.eval(greenUv * resolution);
-    half4 blueSample = contents.eval(blueUv * resolution);
-    half alpha = max(redSample.a, max(greenSample.a, blueSample.a));
-    half4 refracted = half4(redSample.r, greenSample.g, blueSample.b, alpha);
-    half centerGlow = half(1.0 - smoothstep(0.08, 0.78, radius));
-    half rim = half(smoothstep(0.54, 0.84, radius));
-    refracted.rgb += half3(0.025, 0.035, 0.055) * centerGlow;
-    refracted.rgb += half3(0.055, 0.012, 0.075) * rim * edge;
     return refracted;
 }
 """
@@ -1879,7 +1849,6 @@ private fun SettingValue(label: String, value: String) {
 @Composable
 private fun EssentialNavigationBar(
     selected: Destination,
-    appIcon: AppIconOption,
     profileIcon: String,
     profileImagePath: String?,
     onSelected: (Destination) -> Unit,
@@ -1907,23 +1876,7 @@ private fun EssentialNavigationBar(
             }
             .clip(glassShape),
     ) {
-        LiquidGlassNavigationBackdrop(
-            end = Color(appIcon.backgroundEnd),
-        )
         Canvas(Modifier.matchParentSize()) {
-            drawRoundRect(
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        Color.White.copy(alpha = NAVIGATION_GLASS_SURFACE_ALPHA * 1.22f),
-                        Color(0xFFEFF5FF).copy(alpha = NAVIGATION_GLASS_SURFACE_ALPHA),
-                        Color(0xFFD9E6F5).copy(alpha = NAVIGATION_GLASS_SURFACE_ALPHA * 0.78f),
-                    ),
-                ),
-                topLeft = Offset.Zero,
-                size = size,
-                cornerRadius = androidx.compose.ui.geometry.CornerRadius(30.dp.toPx()),
-            )
-            // GIFのように、背面の色を残しながら白いガラスの面光を重ねる。
             drawRect(
                 brush = Brush.verticalGradient(
                     colorStops = arrayOf(
@@ -1953,11 +1906,11 @@ private fun EssentialNavigationBar(
             drawRoundRect(
                 brush = Brush.linearGradient(
                     colors = listOf(
+                        Color.White.copy(alpha = 0.20f),
+                        Color(0xFFB9DFFF).copy(alpha = 0.18f),
                         Color.White.copy(alpha = 0.16f),
-                        Color(0xFF8DCEFF).copy(alpha = 0.18f),
-                        Color.White.copy(alpha = 0.12f),
-                        Color(0xFFFFB8DB).copy(alpha = 0.16f),
-                        Color.White.copy(alpha = 0.18f),
+                        Color(0xFFD8ECFF).copy(alpha = 0.14f),
+                        Color.White.copy(alpha = 0.20f),
                     ),
                     start = Offset(left, top),
                     end = Offset(left + width, top + height),
@@ -1967,9 +1920,9 @@ private fun EssentialNavigationBar(
             drawRoundRect(
                 brush = Brush.horizontalGradient(
                     listOf(
-                        Color(0xFF6EBBFF).copy(alpha = 0.58f),
-                        Color.White.copy(alpha = 0.28f),
-                        Color(0xFFFFB6E0).copy(alpha = 0.48f),
+                        Color(0xFF6EBBFF).copy(alpha = 0.48f),
+                        Color.White.copy(alpha = 0.34f),
+                        Color(0xFFAED8FF).copy(alpha = 0.42f),
                     ),
                     startX = left,
                     endX = left + width,
@@ -2053,89 +2006,6 @@ private fun EssentialNavigationBar(
 }
 
 @Composable
-@SuppressLint("NewApi")
-private fun LiquidGlassNavigationBackdrop(
-    end: Color,
-) {
-    val shape = RoundedCornerShape(32.dp)
-    val shader: RuntimeShader? = remember {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            runCatching { RuntimeShader(LIQUID_GLASS_NAV_SHADER_SOURCE) }.getOrNull()
-        } else {
-            null
-        }
-    }
-    val lightTransition = rememberInfiniteTransition(label = "下部ガラスの光")
-    val lightTravel by lightTransition.animateFloat(
-        initialValue = 0.06f,
-        targetValue = 0.94f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(3_800, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "下部ガラスの反射光",
-    )
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .clip(shape)
-            .graphicsLayer {
-                compositingStrategy = CompositingStrategy.Offscreen
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && shader != null) {
-                    shader.setFloatUniform(
-                        "resolution",
-                        size.width.toFloat().coerceAtLeast(1f),
-                        size.height.toFloat().coerceAtLeast(1f),
-                    )
-                    renderEffect = RenderEffect
-                        .createRuntimeShaderEffect(shader, "contents")
-                        .asComposeRenderEffect()
-                } else {
-                    renderEffect = null
-                }
-            },
-    ) {
-        Canvas(Modifier.fillMaxSize()) {
-            val blueX = size.width * (lightTravel * 0.86f + 0.05f)
-            val pinkX = size.width * ((lightTravel + 0.28f) % 1f)
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(
-                        Color(0xFF63B9FF).copy(alpha = 0.22f),
-                        end.copy(alpha = 0.04f),
-                        Color.Transparent,
-                    ),
-                ),
-                radius = size.width * 0.32f,
-                center = Offset(blueX, size.height * 0.78f),
-            )
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(Color(0xFFFF9FD5).copy(alpha = 0.16f), Color.Transparent),
-                ),
-                radius = size.width * 0.26f,
-                center = Offset(pinkX, size.height * 0.80f),
-            )
-            drawOval(
-                brush = Brush.horizontalGradient(
-                    listOf(
-                        Color.Transparent,
-                        Color(0xFF7BC7FF).copy(alpha = 0.14f),
-                        Color(0xFFFFB5DD).copy(alpha = 0.10f),
-                        Color.Transparent,
-                    ),
-                    startX = blueX - size.width * 0.28f,
-                    endX = blueX + size.width * 0.28f,
-                ),
-                topLeft = Offset(blueX - size.width * 0.28f, size.height * 0.68f),
-                size = Size(size.width * 0.56f, size.height * 0.20f),
-            )
-        }
-    }
-}
-
-@Composable
 private fun PressableGlassCard(
     onClick: () -> Unit,
     radius: Dp,
@@ -2198,20 +2068,27 @@ private fun EssentialSymbol(
     } else {
         modifier
     }
+    val vectorResourceId = when (symbol) {
+        EssentialSymbol.Home -> R.drawable.ic_home_outline
+        EssentialSymbol.Download -> R.drawable.ic_download_outline
+        else -> null
+    }
+    if (vectorResourceId != null) {
+        Image(
+            painter = painterResource(vectorResourceId),
+            contentDescription = null,
+            modifier = semanticsModifier,
+            colorFilter = ColorFilter.tint(tint.copy(alpha = 1f)),
+        )
+        return
+    }
+
     Canvas(modifier = semanticsModifier) {
         val stroke = Stroke(width = size.minDimension * 0.095f, cap = StrokeCap.Round)
         val center = Offset(size.width / 2f, size.height / 2f)
         when (symbol) {
-            EssentialSymbol.Home -> {
-                val roofLeft = Offset(size.width * 0.13f, size.height * 0.47f)
-                val roofTop = Offset(size.width * 0.50f, size.height * 0.14f)
-                val roofRight = Offset(size.width * 0.87f, size.height * 0.47f)
-                drawLine(tint, roofLeft, roofTop, stroke.width, StrokeCap.Round)
-                drawLine(tint, roofTop, roofRight, stroke.width, StrokeCap.Round)
-                drawLine(tint, Offset(size.width * 0.22f, size.height * 0.42f), Offset(size.width * 0.22f, size.height * 0.84f), stroke.width, StrokeCap.Round)
-                drawLine(tint, Offset(size.width * 0.78f, size.height * 0.42f), Offset(size.width * 0.78f, size.height * 0.84f), stroke.width, StrokeCap.Round)
-                drawLine(tint, Offset(size.width * 0.22f, size.height * 0.84f), Offset(size.width * 0.78f, size.height * 0.84f), stroke.width, StrokeCap.Round)
-            }
+            EssentialSymbol.Home,
+            EssentialSymbol.Download -> Unit
             EssentialSymbol.Grid -> {
                 val itemSize = size.minDimension * 0.25f
                 listOf(0.18f to 0.18f, 0.57f to 0.18f, 0.18f to 0.57f, 0.57f to 0.57f).forEach { (x, y) ->
@@ -2322,37 +2199,6 @@ private fun EssentialSymbol(
                     topLeft = Offset(size.width * 0.37f, size.height * 0.48f),
                     size = Size(size.width * 0.26f, size.height * 0.20f),
                     style = stroke,
-                )
-            }
-            EssentialSymbol.Download -> {
-                drawLine(
-                    tint,
-                    Offset(center.x, size.height * 0.12f),
-                    Offset(center.x, size.height * 0.60f),
-                    strokeWidth = stroke.width,
-                    cap = StrokeCap.Round,
-                )
-                // 矢印先端は2本の線で描き、小さなカード内でも形が崩れないようにする。
-                drawLine(
-                    tint,
-                    Offset(size.width * 0.25f, size.height * 0.51f),
-                    Offset(center.x, size.height * 0.75f),
-                    strokeWidth = stroke.width,
-                    cap = StrokeCap.Round,
-                )
-                drawLine(
-                    tint,
-                    Offset(size.width * 0.75f, size.height * 0.51f),
-                    Offset(center.x, size.height * 0.75f),
-                    strokeWidth = stroke.width,
-                    cap = StrokeCap.Round,
-                )
-                drawLine(
-                    tint,
-                    Offset(size.width * 0.18f, size.height * 0.84f),
-                    Offset(size.width * 0.82f, size.height * 0.84f),
-                    strokeWidth = stroke.width,
-                    cap = StrokeCap.Round,
                 )
             }
             EssentialSymbol.Qr -> {
