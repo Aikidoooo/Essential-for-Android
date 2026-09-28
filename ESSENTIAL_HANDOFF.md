@@ -526,3 +526,10 @@ requiredXP(L) = round(raw / 15)
 - `.github/release-notes/v0.6.3.md`へタブバー、QRスキャナー、ヘビゲーム、一番遠い言葉、Xiaomi向け調整と未検証事項を記載した。
 - Java 23／ASCII JunctionでUnit Test 44件、Lint、R8有効Releaseビルドに成功。生成された未署名APK2種はパッケージ／バージョン／ABI／16KiB zipalignを確認済み。
 - CameraStyleAI研究フォルダと`docs/`はコミット対象外。GitHub上のタグとReleaseはこの時点で未作成。
+
+## Essential v0.6.3公開結果（2026-09-28）
+
+- 公開コミット`dd1f5d0`、タグ`v0.6.3`。GitHub Actions run `36385086808`が成功し、Releaseを`https://github.com/Aikidoooo/Essential-for-Android/releases/tag/v0.6.3`に公開した。
+- Android／Xiaomiの初回用と更新用APK各2種、`SHA256SUMS.txt`の計5ファイルを添付。公開更新APK2種を再取得し、SHA-256、v2署名、16KiB zipalign、パッケージ／バージョン／ABIを独立に検査した。
+- Android版SHA-256は`a6b3c831a00fdc616198ba681074b44589cd3c2c967c991230be8e97d4d9671b`、Xiaomi版は`4b73d0f27c444fd99706445475bbb08410387d734e8de55b6d2d85368c2a48d6`。いずれもversionCode 24／versionName 0.6.3。
+- 実機インストール、QR写真読み取り後の起動、Xiaomi／HyperOS実機の表示・負荷、Unityゲームの回答結果は未検証。

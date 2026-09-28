@@ -1858,3 +1858,10 @@
 - Java 23とASCII Junctionを使用し、`:app:testDebugUnitTest :app:lintDebug :app:assembleRelease`が成功した。Unit Testは44件成功、失敗・エラー・スキップは0。R8有効Releaseビルドも成功した。最初のオフライン実行はJUnitがキャッシュになく停止したため、依存関係を取得して再実行した。
 - 生成された未署名Release APKは`jp.essential.app`、versionCode 24／versionName 0.6.3。Android版はarm64-v8a／armeabi-v7a／x86／x86_64、Xiaomi版はarm64-v8aのみ。両方とも16KiB zipalign検査が成功した。正式署名と配布ファイルの検査はタグpush後のGitHub Actionsで実施する。
 - 実機でのQR写真読み取りとURL起動、Xiaomi／HyperOS上の表示と負荷、Unityゲームの回答送信後の結果は今回未検証。現時点では公開前。
+
+【2026-09-28 Essential v0.6.3公開結果】
+- 公開対象13ファイルだけをステージングして差分を確認し、CameraStyleAI研究フォルダと`docs/`を除外した。公開コミットは`dd1f5d0a501662e6680e4ad498c3e4861bcbf9bd`、タグは`v0.6.3`。`main`とタグをGitHubへpushした。
+- GitHub Actions run `36385086808`が成功し、`https://github.com/Aikidoooo/Essential-for-Android/releases/tag/v0.6.3`で公開された。Releaseはdraftではなく、Android／Xiaomiの初回用と更新用APK各2種、`SHA256SUMS.txt`の計5ファイルを添付した。
+- 公開更新APK2種を再取得し、Android版SHA-256 `a6b3c831a00fdc616198ba681074b44589cd3c2c967c991230be8e97d4d9671b`、Xiaomi版SHA-256 `4b73d0f27c444fd99706445475bbb08410387d734e8de55b6d2d85368c2a48d6`が配布ハッシュ一覧と一致することを確認した。初回用APKもGitHubのアセットdigestと更新用APKのハッシュが一致した。
+- 再取得したAPKはいずれも`jp.essential.app`、versionCode 24／versionName 0.6.3、APK Signature Scheme v2署名有効、16KiB zipalign成功。Android版はarm64-v8a／armeabi-v7a／x86／x86_64、Xiaomi版はarm64-v8a専用。
+- 実機インストール、QR写真読み取りからのURL起動、Xiaomi／HyperOS実機での表示と負荷、Unityゲームの回答送信後の結果は未検証。
