@@ -29,6 +29,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Switch
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInVertically
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -312,12 +320,7 @@ internal fun RoutineScreen(onBack: () -> Unit) {
 @Composable
 private fun RoutineHeader(onBack: () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Button(
-            onClick = onBack,
-            modifier = Modifier.size(46.dp),
-            contentPadding = PaddingValues(0.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f)),
-        ) { Text("‹", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onSurface) }
+        jp.essential.app.ui.GlassBackButton(onClick = onBack)
         Spacer(Modifier.width(14.dp))
         Column {
             Text("日課", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Black)
@@ -546,112 +549,190 @@ private fun RoutineEditorDialog(
         mutableStateOf((existingTask?.eventDurationDays ?: 1).toString())
     }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(34.dp),
-        title = { Text(if (existingTask == null) "新しい日課" else "日課を編集", fontWeight = FontWeight.Black) },
-        text = {
-            Column(
-                modifier = Modifier.verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(13.dp),
-            ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    RoutineCadence.entries.forEach { option ->
-                        FilterChip(
-                            selected = cadence == option,
-                            onClick = {
-                                cadence = option
-                                points = points.coerceIn(option.pointRange)
-                            },
-                            label = { Text(option.label) },
-                        )
-                    }
-                }
-                OutlinedTextField(value = emoji, onValueChange = { emoji = it.take(4) }, label = { Text("絵文字") }, singleLine = true)
-                OutlinedTextField(value = title, onValueChange = { title = it.take(60) }, label = { Text("目標") }, singleLine = true)
-                Text("達成ポイント　$points pt", fontWeight = FontWeight.Bold)
-                EssentialBubblySlider(
-                    value = points.toFloat(),
-                    onValueChange = { points = it.toInt().coerceIn(cadence.pointRange) },
-                    valueRange = cadence.pointRange.first.toFloat()..cadence.pointRange.last.toFloat(),
-                    steps = (cadence.pointRange.last - cadence.pointRange.first - 1).coerceAtLeast(0),
-                )
-                Text("${cadence.pointRange.first}〜${cadence.pointRange.last}ptから設定できます", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-                if (cadence == RoutineCadence.Event) {
-                    Text("イベント期間", fontWeight = FontWeight.Bold)
-                    OutlinedTextField(
-                        value = eventStartDate,
-                        onValueChange = { eventStartDate = it.take(10) },
-                        label = { Text("開始日 (YYYY-MM-DD)") },
-                        singleLine = true,
-                    )
-                    OutlinedTextField(
-                        value = eventStartTime,
-                        onValueChange = { eventStartTime = it.take(5) },
-                        label = { Text("開始時刻 (HH:MM)") },
-                        singleLine = true,
-                    )
-                    OutlinedTextField(
-                        value = eventDurationDays,
-                        onValueChange = { eventDurationDays = it.filter(Char::isDigit).take(3) },
-                        label = { Text("期間（日数）") },
-                        supportingText = { Text("期間中は1日1回達成できます") },
-                        singleLine = true,
-                    )
-                }
-                Text("通知設定", fontWeight = FontWeight.Bold)
-                FilterChip(
-                    selected = notificationEnabled,
-                    onClick = { notificationEnabled = !notificationEnabled },
-                    label = { Text(if (notificationEnabled) "通知オン" else "通知オフ") },
-                )
-                if (notificationEnabled) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedTextField(
-                            value = notificationHour,
-                            onValueChange = { notificationHour = it.filter(Char::isDigit).take(2) },
-                            label = { Text("時") },
-                            singleLine = true,
-                            modifier = Modifier.weight(1f),
-                        )
-                        OutlinedTextField(
-                            value = notificationMinute,
-                            onValueChange = { notificationMinute = it.filter(Char::isDigit).take(2) },
-                            label = { Text("分") },
-                            singleLine = true,
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
-                    Text("指定時刻にこの項目を通知します", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-                }
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    onSave(
-                        title.trim(),
-                        emoji.trim(),
-                        cadence,
-                        points,
-                        notificationEnabled,
-                        notificationHour.toIntOrNull()?.coerceIn(0, 23) ?: 9,
-                        notificationMinute.toIntOrNull()?.coerceIn(0, 59) ?: 0,
-                        eventStartDate,
-                        eventStartTime,
-                        eventDurationDays.toIntOrNull()?.coerceIn(1, 365) ?: 1,
-                    )
-                },
-                enabled = title.isNotBlank() && (
-                    cadence != RoutineCadence.Event || (
-                        runCatching { LocalDate.parse(eventStartDate) }.isSuccess &&
-                            runCatching { LocalTime.parse(eventStartTime) }.isSuccess
-                        )
-                    ),
-            ) {
-                Text(if (existingTask == null) "追加する" else "変更を保存")
-            }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("キャンセル") } },
+    val fieldColors = OutlinedTextFieldDefaults.colors(
+        focusedTextColor = Color.White, unfocusedTextColor = Color.White,
+        cursorColor = Color(0xFFAAE6F3),
+        focusedContainerColor = Color(0xFF122537).copy(alpha = 0.48f),
+        unfocusedContainerColor = Color(0xFF122537).copy(alpha = 0.32f),
+        focusedBorderColor = Color(0xFFAAE6F3),
+        unfocusedBorderColor = Color.White.copy(alpha = 0.3f),
+        focusedLabelColor = Color(0xFFAAE6F3), unfocusedLabelColor = Color.White.copy(alpha = 0.8f),
+        focusedSupportingTextColor = Color.White.copy(alpha = 0.75f),
+        unfocusedSupportingTextColor = Color.White.copy(alpha = 0.75f),
     )
+    var visible by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { visible = true }
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        val dialogView = androidx.compose.ui.platform.LocalView.current
+        androidx.compose.runtime.SideEffect {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                // 背後の文字をぼかし、半透明パネルの入力内容を読みやすくする。
+                (dialogView.parent as? androidx.compose.ui.window.DialogWindowProvider)
+                    ?.window?.setBackgroundBlurRadius(48)
+            }
+        }
+        AnimatedVisibility(
+            visible = visible,
+            enter = fadeIn(tween(260)) + slideInVertically(tween(380)) { it / 5 },
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 24.dp).imePadding(),
+        ) {
+            androidx.compose.runtime.CompositionLocalProvider(
+                androidx.compose.material3.LocalContentColor provides Color.White,
+            ) {
+                Column(
+                    Modifier.fillMaxWidth().heightIn(max = 700.dp)
+                        .clip(RoundedCornerShape(32.dp))
+                        .background(Brush.linearGradient(listOf(
+                            Color(0xFF23576A).copy(alpha = 0.88f),
+                            Color(0xFF20354D).copy(alpha = 0.9f),
+                            Color(0xFF443764).copy(alpha = 0.88f),
+                        )))
+                        .border(1.dp, Brush.linearGradient(listOf(
+                            Color(0xFFBBF4FF).copy(alpha = 0.65f), Color.White.copy(alpha = 0.16f),
+                            Color(0xFFBCADFF).copy(alpha = 0.4f),
+                        )), RoundedCornerShape(32.dp))
+                        .padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Column {
+                            Text("MISSION", color = Color(0xFFBBF4FF), style = MaterialTheme.typography.labelSmall)
+                            Text(if (existingTask == null) "ミッションを作成" else "ミッションを編集",
+                                style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        }
+                        TextButton(onClick = onDismiss) { Text("閉じる", color = Color.White) }
+                    }
+                    Column(
+                        Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(13.dp),
+                    ) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            RoutineCadence.entries.forEach { option ->
+                                FilterChip(
+                                    selected = cadence == option,
+                                    onClick = {
+                                        cadence = option
+                                        points = points.coerceIn(option.pointRange)
+                                    },
+                                    label = { Text(if (option == RoutineCadence.Event) "イベント" else option.label) },
+                                    colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
+                                        containerColor = Color.White.copy(alpha = 0.07f),
+                                        labelColor = Color.White.copy(alpha = 0.8f),
+                                        selectedContainerColor = Color(0xFF89DAEC).copy(alpha = 0.28f),
+                                        selectedLabelColor = Color.White,
+                                    ),
+                                )
+                            }
+                        }
+                        OutlinedTextField(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = fieldColors,
+                                shape = RoundedCornerShape(18.dp),value = emoji, onValueChange = { emoji = it.take(4) }, label = { Text("絵文字") }, singleLine = true)
+                        OutlinedTextField(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = fieldColors,
+                                shape = RoundedCornerShape(18.dp),value = title, onValueChange = { title = it.take(60) }, label = { Text("目標") }, singleLine = true)
+                        Text("達成ポイント　$points pt", fontWeight = FontWeight.Bold)
+                        EssentialBubblySlider(
+                            value = points.toFloat(),
+                            onValueChange = { points = it.toInt().coerceIn(cadence.pointRange) },
+                            valueRange = cadence.pointRange.first.toFloat()..cadence.pointRange.last.toFloat(),
+                            steps = (cadence.pointRange.last - cadence.pointRange.first - 1).coerceAtLeast(0),
+                        )
+                        Text("${cadence.pointRange.first}〜${cadence.pointRange.last}ptから設定できます", color = Color.White.copy(alpha = 0.75f), style = MaterialTheme.typography.bodySmall)
+                        if (cadence == RoutineCadence.Event) {
+                            Text("イベント期間", fontWeight = FontWeight.Bold)
+                            OutlinedTextField(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = fieldColors,
+                                shape = RoundedCornerShape(18.dp),
+                                value = eventStartDate,
+                                onValueChange = { eventStartDate = it.take(10) },
+                                label = { Text("開始日 (YYYY-MM-DD)") },
+                                singleLine = true,
+                            )
+                            OutlinedTextField(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = fieldColors,
+                                shape = RoundedCornerShape(18.dp),
+                                value = eventStartTime,
+                                onValueChange = { eventStartTime = it.take(5) },
+                                label = { Text("開始時刻 (HH:MM)") },
+                                singleLine = true,
+                            )
+                            OutlinedTextField(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = fieldColors,
+                                shape = RoundedCornerShape(18.dp),
+                                value = eventDurationDays,
+                                onValueChange = { eventDurationDays = it.filter(Char::isDigit).take(3) },
+                                label = { Text("期間（日数）") },
+                                supportingText = { Text("期間中は1日1回達成できます") },
+                                singleLine = true,
+                            )
+                        }
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("リマインダー", fontWeight = FontWeight.Bold)
+                            Switch(checked = notificationEnabled, onCheckedChange = { notificationEnabled = it })
+                        }
+                        if (notificationEnabled) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedTextField(
+                                colors = fieldColors,
+                                shape = RoundedCornerShape(18.dp),
+                                    value = notificationHour,
+                                    onValueChange = { notificationHour = it.filter(Char::isDigit).take(2) },
+                                    label = { Text("時") },
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                OutlinedTextField(
+                                colors = fieldColors,
+                                shape = RoundedCornerShape(18.dp),
+                                    value = notificationMinute,
+                                    onValueChange = { notificationMinute = it.filter(Char::isDigit).take(2) },
+                                    label = { Text("分") },
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f),
+                                )
+                            }
+                            Text("指定時刻にこの項目を通知します", color = Color.White.copy(alpha = 0.75f), style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(onClick = onDismiss) { Text("キャンセル", color = Color.White.copy(alpha = 0.85f)) }
+                        Button(
+                            modifier = Modifier.weight(1f).height(50.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFAAE6F3), contentColor = Color(0xFF122A40)),
+                            onClick = {
+                                onSave(
+                                    title.trim(),
+                                    emoji.trim(),
+                                    cadence,
+                                    points,
+                                    notificationEnabled,
+                                    notificationHour.toIntOrNull()?.coerceIn(0, 23) ?: 9,
+                                    notificationMinute.toIntOrNull()?.coerceIn(0, 59) ?: 0,
+                                    eventStartDate,
+                                    eventStartTime,
+                                    eventDurationDays.toIntOrNull()?.coerceIn(1, 365) ?: 1,
+                                )
+                            },
+                            enabled = title.isNotBlank() && (
+                                cadence != RoutineCadence.Event || (
+                                    runCatching { LocalDate.parse(eventStartDate) }.isSuccess &&
+                                        runCatching { LocalTime.parse(eventStartTime) }.isSuccess
+                                    )
+                                ),
+                        ) {
+                            Text(if (existingTask == null) "追加する" else "変更を保存")
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

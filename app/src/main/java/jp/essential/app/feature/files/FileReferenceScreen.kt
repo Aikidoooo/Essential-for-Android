@@ -635,11 +635,7 @@ private fun FrameExtractionScreen(
 @Composable
 private fun FrameTopBar(onBack: () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Surface(
-            shape = CircleShape,
-            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.78f),
-            modifier = Modifier.size(46.dp).clickable(onClick = onBack),
-        ) { Box(contentAlignment = Alignment.Center) { Text("‹", style = MaterialTheme.typography.headlineMedium) } }
+        jp.essential.app.ui.GlassBackButton(onClick = onBack)
         Spacer(Modifier.width(12.dp))
         Column {
             Text("フレーム切り取り", style = MaterialTheme.typography.headlineMedium)
@@ -727,11 +723,7 @@ private fun ActionButton(label: String, processingLabel: String?, onClick: () ->
 @Composable
 private fun FileTopBar(onBack: () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Surface(
-            shape = CircleShape,
-            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.78f),
-            modifier = Modifier.size(46.dp).clickable(onClick = onBack),
-        ) { Box(contentAlignment = Alignment.Center) { Text("‹", style = MaterialTheme.typography.headlineMedium) } }
+        jp.essential.app.ui.GlassBackButton(onClick = onBack)
         Spacer(Modifier.width(12.dp))
         Column {
             Text("ファイル参照", style = MaterialTheme.typography.headlineMedium)

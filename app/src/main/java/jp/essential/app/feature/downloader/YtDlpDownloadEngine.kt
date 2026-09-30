@@ -109,6 +109,7 @@ class YtDlpDownloadEngine(private val context: Context) {
         }
     }
 
+    @Synchronized
     private fun initializeLibraries() {
         YoutubeDL.getInstance().init(context.applicationContext)
         // arm64／x86_64はFFmpegKitを使用するため、不要なFFmpegランタイムを展開しない。
@@ -531,6 +532,8 @@ class YtDlpDownloadEngine(private val context: Context) {
         }
     }
 
+    // 同時完了時も、旧Androidの保存名の決定と書き込みを一組として扱う。
+    @Synchronized
     private fun publishDatedFile(source: File, requestedName: String, mimeType: String, savedAt: Long): String {
         val safeName = requestedName.replace(Regex("[^A-Za-z0-9._ -]"), "_").take(180)
             .ifBlank { "Essential-${System.currentTimeMillis()}.${source.extension}" }

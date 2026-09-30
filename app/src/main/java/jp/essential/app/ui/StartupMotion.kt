@@ -14,6 +14,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -23,8 +24,13 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 import jp.essential.app.R
 import jp.essential.app.ui.theme.LocalEssentialDark
+
+internal val LocalProgressiveMotionCycle = compositionLocalOf { 0L }
+internal val LocalProgressiveMotionDirection = compositionLocalOf { 0 }
+internal val LocalProgressiveMotionCompleted = compositionLocalOf { false }
 
 @Composable
 internal fun StartupGate(content: @Composable () -> Unit) {
@@ -65,15 +71,27 @@ internal fun StartupGate(content: @Composable () -> Unit) {
 
 @Composable
 internal fun ProgressiveWidget(index: Int, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
-    var revealed by rememberSaveable { mutableStateOf(false) }
+    val motionCycle = LocalProgressiveMotionCycle.current
+    val horizontalDirection = LocalProgressiveMotionDirection.current
+    val motionCompleted = LocalProgressiveMotionCompleted.current
+    // タブ入場時は保存済みの表示完了状態を復元せず、毎回最初から再生する。
+    var revealed by if (motionCycle == 0L) {
+        rememberSaveable { mutableStateOf(false) }
+    } else {
+        remember(motionCycle) { mutableStateOf(motionCompleted) }
+    }
     var visibleInViewport by remember { mutableStateOf(false) }
-    val progress = remember { Animatable(if (revealed) 1f else 0f) }
+    val progress = remember(motionCycle) { Animatable(if (revealed) 1f else 0f) }
     val rootView = LocalView.current
-    LaunchedEffect(visibleInViewport, revealed) {
-        if (visibleInViewport && !revealed) {
-            // LazyColumnが先読みした画面外の項目では待たず、見えた瞬間から再生する。
+    LaunchedEffect(visibleInViewport, revealed, motionCycle, motionCompleted) {
+        if (motionCompleted) {
+            progress.snapTo(1f)
+            revealed = true
+        } else if (visibleInViewport && !revealed) {
+            // 画面内の項目だけを、上から順に短い間隔で表示する。
             progress.snapTo(0f)
-            progress.animateTo(1f, tween(240, easing = FastOutSlowInEasing))
+            delay(index.coerceIn(0, 7) * 72L)
+            progress.animateTo(1f, tween(440, easing = FastOutSlowInEasing))
             revealed = true
         }
     }
@@ -91,10 +109,11 @@ internal fun ProgressiveWidget(index: Int, modifier: Modifier = Modifier, conten
             .graphicsLayer {
                 val fraction = progress.value
                 alpha = fraction
-                val initialOffset = (34 + index.coerceIn(0, 4) * 2).dp.toPx()
-                translationY = (1f - fraction) * initialOffset
-                scaleX = 0.99f + 0.01f * fraction
-                scaleY = scaleX
+                if (horizontalDirection == 0) {
+                    translationY = (fraction - 1f) * 34.dp.toPx()
+                } else {
+                    translationX = (1f - fraction) * horizontalDirection * 38.dp.toPx()
+                }
             },
     ) { content() }
 }

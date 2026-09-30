@@ -88,7 +88,7 @@ internal fun WordDistanceScreen(onBack: () -> Unit) {
         context.getSystemService(ActivityManager::class.java)?.isLowRamDevice == true
     }
     val restrainedMotion = lowMemoryDevice && deviceOptimization.isXiaomiFamily
-    val motionDuration = if (restrainedMotion) 170 else 230
+    val motionDuration = if (restrainedMotion) 300 else 440
     val landscapeMode = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
     var webViewGeneration by remember { mutableIntStateOf(0) }
@@ -168,9 +168,7 @@ internal fun WordDistanceScreen(onBack: () -> Unit) {
                     ),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                GlassActionButton(contentDescription = "戻る", onClick = ::navigateBack) {
-                    Text("‹", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Light)
-                }
+                jp.essential.app.ui.GlassBackButton(onClick = ::navigateBack, size = 42.dp)
                 Spacer(Modifier.width(if (landscapeMode) 8.dp else 12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
@@ -456,16 +454,14 @@ private fun ProgressiveChrome(
     )
     LaunchedEffect(visible, index) {
         if (visible) {
-            delay(index * 42L)
+            delay(index * 72L)
             revealed = true
         }
     }
     Box(
         Modifier.graphicsLayer {
             alpha = progress
-            translationY = (1f - progress) * 9.dp.toPx()
-            scaleX = 0.99f + progress * 0.01f
-            scaleY = scaleX
+            translationY = (progress - 1f) * 22.dp.toPx()
         },
         content = content,
     )

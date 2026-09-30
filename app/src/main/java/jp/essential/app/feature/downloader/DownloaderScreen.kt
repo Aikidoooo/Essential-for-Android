@@ -64,6 +64,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -81,9 +82,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.launch
+import java.util.UUID
 import jp.essential.app.R
 import jp.essential.app.ui.progressiveItem
 import jp.essential.app.ui.EssentialBubblyProgressBar
+
+private data class DownloadTask(val id: String, val url: String, val state: DownloadState)
 
 @Composable
 fun DownloaderScreen(
@@ -106,37 +110,33 @@ fun DownloaderScreen(
     var candidates by remember { mutableStateOf<List<ImageCandidate>>(emptyList()) }
     var selectedCandidateIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var state by remember { mutableStateOf<DownloadState>(DownloadState.Idle) }
-    var pendingDownload by remember { mutableStateOf(false) }
+    var pendingDownload by remember { mutableStateOf<DownloaderSelection?>(null) }
+    val downloadTasks = remember { mutableStateListOf<DownloadTask>() }
     var imageLoading by remember { mutableStateOf(false) }
     var imageError by remember { mutableStateOf<String?>(null) }
     var analyzedUrl by remember { mutableStateOf("") }
     var imageReload by remember { mutableStateOf(0) }
 
-    val isBusy = state is DownloadState.Preparing || state is DownloadState.Running
+    val isBusy = downloadTasks.any { it.state is DownloadState.Preparing || it.state is DownloadState.Running }
+    fun enqueueDownload(selection: DownloaderSelection) {
+        val id = UUID.randomUUID().toString()
+        downloadTasks.add(0, DownloadTask(id, selection.url, DownloadState.Preparing("ダウンロードを開始しています")))
+        startDownload(scope, engine, selection) { updated ->
+            // エンジンのコールバックはIOスレッドから届くため、画面更新をMainへ戻す。
+            scope.launch {
+                val index = downloadTasks.indexOfFirst { it.id == id }
+                if (index >= 0) downloadTasks[index] = downloadTasks[index].copy(state = updated)
+            }
+        }
+    }
     val storagePermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
-        if (granted && pendingDownload) {
-            pendingDownload = false
-            startDownload(
-                scope = scope,
-                engine = engine,
-                selection = DownloaderSelection(
-                    url = url,
-                    mediaType = mediaType,
-                    videoResolution = videoResolution,
-                    frameRate = frameRate,
-                    videoFormat = videoFormat,
-                    audioQuality = audioQuality,
-                    audioFormat = audioFormat,
-                    imageQuality = imageQuality,
-                    imageFormat = imageFormat,
-                    selectedImages = candidates.filter { it.id in selectedCandidateIds },
-                ),
-                onState = { state = it },
-            )
+        val selection = pendingDownload
+        pendingDownload = null
+        if (granted && selection != null) {
+            enqueueDownload(selection)
         } else if (!granted) {
-            pendingDownload = false
             state = DownloadState.Failed("Android 8で保存するにはストレージ権限が必要です")
         }
     }
@@ -210,7 +210,7 @@ fun DownloaderScreen(
                 value = url,
                 onValueChange = { url = it },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = !isBusy,
+                enabled = true,
                 shape = RoundedCornerShape(22.dp),
                 label = { Text("公開URL") },
                 placeholder = { Text("https://…") },
@@ -218,7 +218,7 @@ fun DownloaderScreen(
                 trailingIcon = {
                     Row {
                         androidx.compose.material3.IconButton(
-                            enabled = !isBusy,
+                            enabled = true,
                             onClick = {
                                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                                 url = clipboard.primaryClip?.takeIf { it.itemCount > 0 }
@@ -230,7 +230,7 @@ fun DownloaderScreen(
                                 tint = MaterialTheme.colorScheme.primary)
                         }
                         androidx.compose.material3.IconButton(
-                            enabled = !isBusy && url.isNotEmpty(),
+                            enabled = url.isNotEmpty(),
                             onClick = { url = "" },
                         ) {
                             Icon(painterResource(R.drawable.ic_close),
@@ -246,7 +246,7 @@ fun DownloaderScreen(
                 values = DownloadMediaType.entries,
                 selected = mediaType,
                 text = DownloadMediaType::label,
-                enabled = !isBusy,
+                enabled = true,
                 onSelected = {
                     mediaType = it
                     state = DownloadState.Idle
@@ -270,21 +270,21 @@ fun DownloaderScreen(
                         onFrameRate = { frameRate = it },
                         format = videoFormat,
                         onFormat = { videoFormat = it },
-                        enabled = !isBusy,
+                        enabled = true,
                     )
                     DownloadMediaType.Audio -> AudioOptions(
                         quality = audioQuality,
                         onQuality = { audioQuality = it },
                         format = audioFormat,
                         onFormat = { audioFormat = it },
-                        enabled = !isBusy,
+                        enabled = true,
                     )
                     DownloadMediaType.Image -> ImageOptions(
                         quality = imageQuality,
                         onQuality = { imageQuality = it },
                         format = imageFormat,
                         onFormat = { imageFormat = it },
-                        enabled = !isBusy && !imageLoading,
+                        enabled = !imageLoading,
                         onAnalyze = { imageReload++ },
                     )
                 }
@@ -305,7 +305,7 @@ fun DownloaderScreen(
             progressiveItem(motionIndex++) {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 items(candidates, key = { it.url }) { candidate ->
-                ImageCandidateCard(candidate, candidate.id in selectedCandidateIds, !isBusy && analyzedUrl == url,
+                ImageCandidateCard(candidate, candidate.id in selectedCandidateIds, analyzedUrl == url,
                     modifier = Modifier.width(168.dp),
                     loadPreview = engine::preview,
                     onToggle = {
@@ -338,30 +338,26 @@ fun DownloaderScreen(
                         Build.VERSION.SDK_INT <= Build.VERSION_CODES.P &&
                         ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED
                     ) {
-                        pendingDownload = true
+                        pendingDownload = selection
                         storagePermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
                     } else {
-                        startDownload(scope, engine, selection) { state = it }
+                        enqueueDownload(selection)
                     }
                 },
-                enabled = !isBusy && url.isNotBlank() &&
+                enabled = pendingDownload == null && url.isNotBlank() &&
                     (mediaType != DownloadMediaType.Image || (!imageLoading && analyzedUrl == url && selectedCandidateIds.isNotEmpty())),
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(58.dp),
                 shape = RoundedCornerShape(20.dp),
             ) {
-                if (isBusy) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(21.dp),
-                        strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.onPrimary,
-                    )
-                    Spacer(Modifier.width(10.dp))
-                    Text("処理中")
-                } else {
-                    Text(if (mediaType == DownloadMediaType.Image) "選択した${selectedCandidateIds.size}枚を保存" else "Download/Essentialへ保存")
-                }
+                Text(if (mediaType == DownloadMediaType.Image) "選択した${selectedCandidateIds.size}枚を保存" else "Download/Essentialへ保存")
+            }
+        }
+        items(downloadTasks, key = { it.id }) { task ->
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(task.url, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                DownloadStatus(task.state)
             }
         }
     }
@@ -622,19 +618,7 @@ private fun FeatureTopBar(
     onBack: () -> Unit,
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        MotionSurface(
-            shape = CircleShape,
-            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.78f),
-            contentColor = MaterialTheme.colorScheme.onSurface,
-            enabled = true,
-            onClick = onBack,
-            modifier = Modifier
-                .size(46.dp),
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Text("‹", style = MaterialTheme.typography.headlineMedium)
-            }
-        }
+        jp.essential.app.ui.GlassBackButton(onClick = onBack)
         Spacer(Modifier.width(12.dp))
         Column {
             Text(title, style = MaterialTheme.typography.headlineMedium)

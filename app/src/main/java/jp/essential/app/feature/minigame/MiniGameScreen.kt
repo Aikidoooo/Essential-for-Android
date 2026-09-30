@@ -10,7 +10,6 @@ import android.view.View
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -63,6 +62,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.webkit.WebViewAssetLoader
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
+import jp.essential.app.ui.GlassBackButton
 import androidx.core.view.WindowCompat
 import jp.essential.app.profile.AppProgressStore
 import jp.essential.app.profile.ProfileStore
@@ -143,7 +143,7 @@ private fun MiniGameMenu(
                 onClick = onDosukoi,
             )
         }
-        progressiveItem(3) {
+        progressiveItem(2) {
             GameMenuCard(
                 title = "Block Blast",
                 description = "ブロックを置いて縦横の列を消そう",
@@ -152,7 +152,7 @@ private fun MiniGameMenu(
                 onClick = onBlockBlast,
             )
         }
-        progressiveItem(2) {
+        progressiveItem(3) {
             GameMenuCard(
                 title = "マインスイーパー",
                 description = "地雷を避けてすべてのマスを開こう",
@@ -184,19 +184,7 @@ private fun MiniGameMenu(
 
 @Composable
 internal fun GameBackButton(onClick: () -> Unit, darkSurface: Boolean = false) {
-    Box(
-        modifier = Modifier
-            .size(44.dp)
-            .clip(CircleShape)
-            .background(
-                if (darkSurface) Color.White.copy(alpha = 0.14f)
-                else MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
-            )
-            .combinedClickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text("‹", color = if (darkSurface) Color.White else MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.headlineMedium)
-    }
+    GlassBackButton(onClick = onClick, size = 44.dp)
 }
 
 @Composable
@@ -637,13 +625,20 @@ private fun DosukoiWebViewScreen(onBack: () -> Unit, motionFps: Int) {
                     settings.allowFileAccess = false
                     settings.allowContentAccess = false
                     if (Build.VERSION.SDK_INT >= 35) requestedFrameRate = motionFps.toFloat()
-                    addJavascriptInterface(object {
-                        @JavascriptInterface
-                        fun setProfileName(name: String) {
-                            ProfileStore(context).saveName(name)
-                        }
-                    }, "EssentialProfileBridge")
                     if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
+                        // 外部フレームからプロフィールを書き換えられないよう、送信元と本文を検証する。
+                        WebViewCompat.addWebMessageListener(
+                            this, "EssentialProfileBridge", setOf("https://appassets.androidplatform.net"),
+                        ) { _, message, sourceOrigin, isMainFrame, _ ->
+                            if (isMainFrame && sourceOrigin.toString() == "https://appassets.androidplatform.net") {
+                                val payload = message.data.orEmpty()
+                                if (payload.length <= 256) {
+                                    runCatching { JSONObject(payload).getString("name") }
+                                        .getOrNull()?.takeIf { it.isNotBlank() && it.length <= 15 }
+                                        ?.let { ProfileStore(context).saveName(it) }
+                                }
+                            }
+                        }
                         // アプリ内HTTPSオリジンのメインフレームだけに、貼り付け要求を許可する。
                         WebViewCompat.addWebMessageListener(
                             this,
@@ -679,6 +674,10 @@ private fun DosukoiWebViewScreen(onBack: () -> Unit, motionFps: Int) {
                         }
                     }
                     webViewClient = object : WebViewClient() {
+                        override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =
+                            request.isForMainFrame &&
+                                (request.url.scheme != "https" || request.url.host != "appassets.androidplatform.net")
+
                         override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest) =
                             assetLoader.shouldInterceptRequest(request.url)
 

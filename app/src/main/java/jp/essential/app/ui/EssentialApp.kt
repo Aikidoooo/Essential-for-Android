@@ -1,12 +1,20 @@
 package jp.essential.app.ui
 
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.material3.OutlinedButton
+import android.content.Context
+import androidx.compose.ui.input.pointer.pointerInput
+
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
+import android.graphics.ImageDecoder
 import android.graphics.RenderEffect
 import android.graphics.RuntimeShader
+import android.graphics.drawable.AnimatedImageDrawable
 import android.os.Build
+import android.widget.ImageView
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
@@ -28,7 +36,9 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -49,6 +59,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -61,6 +72,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Badge
@@ -76,15 +89,29 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.zIndex
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -106,6 +133,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.Role
@@ -124,8 +152,10 @@ import jp.essential.app.R
 import jp.essential.app.core.EssentialCore
 import jp.essential.app.feature.downloader.DownloaderScreen
 import jp.essential.app.feature.downloader.YtDlpUpdateSettingsCard
+import jp.essential.app.storage.StorageMaintenance
 import jp.essential.app.feature.files.FileReferenceScreen
 import jp.essential.app.feature.minigame.MiniGameScreen
+import jp.essential.app.feature.textscan.TextScanScreen
 import jp.essential.app.feature.qr.QrScannerScreen
 import jp.essential.app.feature.routine.RoutineScreen
 import jp.essential.app.feature.schedule.ScheduleGeneratorScreen
@@ -177,6 +207,7 @@ private enum class EssentialSymbol {
     Calendar,
     Game,
     Routine,
+    TextScan,
 }
 
 private enum class FeatureRoute(val requestId: String) {
@@ -186,6 +217,7 @@ private enum class FeatureRoute(val requestId: String) {
     Files("files"),
     MiniGame("mini_game"),
     Routine("routine"),
+    TextScan("text_scan"),
 }
 
 private data class FeatureItem(
@@ -264,6 +296,34 @@ private fun EssentialApp(
     var destination by remember {
         mutableStateOf(if (initialSetupRequired) Destination.Profile else Destination.Home)
     }
+    val tabMotionCycles = remember { mutableStateMapOf(destination to 1L) }
+    val tabEntryDirections = remember { mutableStateMapOf(destination to 0) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val currentDestination by rememberUpdatedState(destination)
+    DisposableEffect(lifecycleOwner) {
+        var stopped = false
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_STOP -> stopped = true
+                Lifecycle.Event.ON_START -> if (stopped) {
+                    val activeDestination = currentDestination
+                    tabEntryDirections[activeDestination] = 0
+                    tabMotionCycles[activeDestination] = (tabMotionCycles[activeDestination] ?: 0L) + 1L
+                    stopped = false
+                }
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    fun selectDestination(next: Destination) {
+        if (next != destination) {
+            tabMotionCycles[next] = (tabMotionCycles[next] ?: 0L) + 1L
+            tabEntryDirections[next] = if (next.ordinal > destination.ordinal) 1 else -1
+            destination = next
+        }
+    }
     var activeFeature by rememberSaveable { mutableStateOf<FeatureRoute?>(null) }
     var dosukoiActive by rememberSaveable { mutableStateOf(false) }
     var homeShortcut by rememberSaveable {
@@ -301,7 +361,7 @@ private fun EssentialApp(
         if (activeFeature != null) {
             activeFeature = null
         } else {
-            destination = Destination.Home
+            selectDestination(Destination.Home)
         }
     }
 
@@ -325,7 +385,7 @@ private fun EssentialApp(
                         selected = destination,
                         profileIcon = navigationProfileIcon,
                         profileImagePath = navigationProfileImagePath,
-                        onSelected = { destination = it },
+                        onSelected = ::selectDestination,
                     )
                 }
             },
@@ -352,9 +412,10 @@ private fun EssentialApp(
                         onBack = { activeFeature = null },
                         onOpenSettings = {
                             activeFeature = null
-                            destination = Destination.Profile
+                            selectDestination(Destination.Profile)
                         },
                     )
+                    FeatureRoute.TextScan -> TextScanScreen { activeFeature = null }
                     FeatureRoute.QrScanner -> QrScannerScreen { activeFeature = null }
                     FeatureRoute.Schedule -> ScheduleGeneratorScreen { activeFeature = null }
                     FeatureRoute.Files -> FileReferenceScreen { activeFeature = null }
@@ -368,21 +429,36 @@ private fun EssentialApp(
                         targetState = destination,
                         modifier = Modifier.fillMaxSize(),
                         transitionSpec = {
-                            val forward = targetState.ordinal >= initialState.ordinal
-                            val direction = if (forward) 1 else -1
-                            // 押下、選択移動、画面出現を順に重ねる段階的モーション。
-                            (fadeIn(tween(240, delayMillis = 70)) +
-                                slideInHorizontally(tween(340, delayMillis = 50, easing = FastOutSlowInEasing)) { it * direction / 18 } +
-                                scaleIn(tween(340, delayMillis = 50, easing = FastOutSlowInEasing), initialScale = 0.985f)) togetherWith
-                                (fadeOut(tween(110)) + slideOutHorizontally(tween(160)) { -it * direction / 28 })
+                            val direction = tabEntryDirections[targetState] ?: 0
+                            // 起動と再表示は縦の項目演出だけにし、タブ移動時だけ横方向へ入れる。
+                            val enter = if (direction == 0) {
+                                fadeIn(tween(180))
+                            } else {
+                                fadeIn(tween(260, easing = FastOutSlowInEasing)) +
+                                    slideInHorizontally(tween(300, easing = FastOutSlowInEasing)) {
+                                        it * direction / 18
+                                    }
+                            }
+                            enter togetherWith fadeOut(tween(120))
                         },
                         label = "画面切り替え",
                     ) { current ->
+                        val motionCycle = tabMotionCycles[current] ?: 0L
+                        var motionCompleted by remember(current, motionCycle) { mutableStateOf(false) }
+                        LaunchedEffect(current, motionCycle) {
+                            kotlinx.coroutines.delay(1_000L)
+                            motionCompleted = true
+                        }
+                        CompositionLocalProvider(
+                            LocalProgressiveMotionCycle provides motionCycle,
+                            LocalProgressiveMotionDirection provides (tabEntryDirections[current] ?: 0),
+                            LocalProgressiveMotionCompleted provides motionCompleted,
+                        ) {
                         destinationState.SaveableStateProvider(current.name) {
                         when (current) {
                             Destination.Home -> HomeScreen(
                                 onOpenFeature = { activeFeature = it },
-                                onOpenAll = { destination = Destination.Features },
+                                onOpenAll = { selectDestination(Destination.Features) },
                                 onComingSoon = onComingSoon,
                                 shortcut = homeShortcut,
                                 contentBottomPadding = innerPadding.calculateBottomPadding(),
@@ -413,6 +489,7 @@ private fun EssentialApp(
                                 },
                                 contentBottomPadding = innerPadding.calculateBottomPadding(),
                             )
+                        }
                         }
                         }
                     }
@@ -472,7 +549,13 @@ private fun HomeScreen(
     shortcut: FeatureRoute,
     contentBottomPadding: Dp,
 ) {
+    val preferences = LocalContext.current.getSharedPreferences("appearance", Context.MODE_PRIVATE)
+    var widgetOrder by remember {
+        mutableStateOf(preferences.getString("home_widget_order", "").orEmpty().split(",").filter { it.isNotBlank() })
+    }
+    val homeListState = rememberLazyListState()
     LazyColumn(
+        state = homeListState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(
             start = 20.dp,
@@ -485,7 +568,7 @@ private fun HomeScreen(
         progressiveItem(0) { AppHeader() }
         progressiveItem(1) { HeroCard(shortcut) { onOpenFeature(shortcut) } }
         progressiveItem(2) { SectionHeader(title = "使える機能", action = "すべて見る", onAction = onOpenAll) }
-        progressiveItem(3) {
+        item(key = "home-feature-grid") {
             FeatureGrid(
                 features = listOf(
                     FeatureItem("ダウンローダー", "動画・音声・画像を端末へ", EssentialSymbol.Download, EssentialOrange, FeatureRoute.Downloader),
@@ -494,13 +577,19 @@ private fun HomeScreen(
                     FeatureItem("ファイル参照", "圧縮・変換・背景透過", EssentialSymbol.Media, EssentialRed, FeatureRoute.Files),
                     FeatureItem("ミニゲーム", "言葉遊び・マインスイーパー", EssentialSymbol.Game, Color(0xFF9C6BFF), FeatureRoute.MiniGame),
                     FeatureItem("日課", "毎日の目標をポイントに", EssentialSymbol.Routine, Color(0xFF27B99A), FeatureRoute.Routine),
-                ),
+                    FeatureItem("文字スキャン", "カメラ・写真の文字をコードブロックへ", EssentialSymbol.TextScan, Color(0xFF78D9EF), FeatureRoute.TextScan),
+                ).sortedBy { widgetOrder.indexOf(it.route?.requestId).takeIf { index -> index >= 0 } ?: Int.MAX_VALUE },
+                onReorder = { reordered ->
+                    widgetOrder = reordered.mapNotNull { it.route?.requestId }
+                    preferences.edit().putString("home_widget_order", widgetOrder.joinToString(",")).apply()
+                },
+                scrollState = homeListState,
                 onClick = { feature ->
                     feature.route?.let(onOpenFeature) ?: onComingSoon()
                 },
             )
         }
-        progressiveItem(4) { RustCoreBanner() }
+        progressiveItem(6) { RustCoreBanner() }
     }
 }
 
@@ -818,25 +907,90 @@ private fun SectionHeader(
 private fun FeatureGrid(
     features: List<FeatureItem>,
     onClick: (FeatureItem) -> Unit,
+    onReorder: (List<FeatureItem>) -> Unit,
+    scrollState: androidx.compose.foundation.lazy.LazyListState,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    val currentFeatures by rememberUpdatedState(features)
+    val currentReorder by rememberUpdatedState(onReorder)
+    val bounds = remember { mutableStateMapOf<FeatureRoute, androidx.compose.ui.geometry.Rect>() }
+    var dragged by remember { mutableStateOf<FeatureRoute?>(null) }
+    var pointer by remember { mutableStateOf(Offset.Zero) }
+    var grabOffset by remember { mutableStateOf(Offset.Zero) }
+    var gridOrigin by remember { mutableStateOf(Offset.Zero) }
+    val haptics = LocalHapticFeedback.current
+    val viewHeight = androidx.compose.ui.platform.LocalView.current.height.toFloat()
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val edge = with(density) { 100.dp.toPx() }
+    fun moveToTarget() {
+        val selected = dragged ?: return
+        val target = bounds.entries.firstOrNull { it.key != selected && it.value.contains(pointer) }?.key ?: return
+        val items = currentFeatures.toMutableList()
+        val from = items.indexOfFirst { it.route == selected }
+        val to = items.indexOfFirst { it.route == target }
+        if (from >= 0 && to >= 0) {
+            items.add(to, items.removeAt(from))
+            currentReorder(items)
+            haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+        }
+    }
+    LaunchedEffect(dragged) {
+        while (dragged != null) {
+            val amount = when {
+                pointer.y < edge -> -18f
+                pointer.y > viewHeight - edge * 2 -> 18f
+                else -> 0f
+            }
+            if (amount != 0f) { scrollState.scrollBy(amount); moveToTarget() }
+            kotlinx.coroutines.delay(16)
+        }
+    }
+    Column(
+        modifier = Modifier.onGloballyPositioned { gridOrigin = it.positionInRoot() }
+            .pointerInput(Unit) {
+                detectDragGesturesAfterLongPress(
+                    onDragStart = { position ->
+                        pointer = gridOrigin + position
+                        val hit = bounds.entries.firstOrNull { it.value.contains(pointer) }
+                        dragged = hit?.key
+                        grabOffset = hit?.let { pointer - it.value.center } ?: Offset.Zero
+                        if (hit != null) haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                    },
+                    onDragEnd = { dragged = null },
+                    onDragCancel = { dragged = null },
+                    onDrag = { change, amount ->
+                        if (dragged != null) {
+                            change.consume()
+                            pointer += amount
+                            moveToTarget()
+                        }
+                    },
+                )
+            },
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
         features.chunked(2).forEachIndexed { rowIndex, rowFeatures ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                rowFeatures.forEachIndexed { columnIndex, feature ->
-                    ProgressiveWidget(rowIndex * 2 + columnIndex, Modifier.weight(1f)) {
-                        FeatureCard(
-                            feature = feature,
-                            onClick = { onClick(feature) },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
+            Row(Modifier.fillMaxWidth().zIndex(if (rowFeatures.any { it.route == dragged }) 1f else 0f),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                rowFeatures.forEach { feature ->
+                    val selected = feature.route == dragged
+                    Box(Modifier.weight(1f).zIndex(if (selected) 1f else 0f).onGloballyPositioned {
+                        feature.route?.let { route -> bounds[route] = it.boundsInRoot() }
+                    }) {
+                        ProgressiveWidget(rowIndex + 3, Modifier.fillMaxWidth().graphicsLayer {
+                            if (selected) {
+                                val center = bounds[feature.route]?.center ?: pointer
+                                translationX = pointer.x - grabOffset.x - center.x
+                                translationY = pointer.y - grabOffset.y - center.y
+                                scaleX = 1.04f
+                                scaleY = 1.04f
+                                shadowElevation = 16.dp.toPx()
+                            }
+                        }) {
+                            FeatureCard(feature = feature, onClick = { if (dragged == null) onClick(feature) }, modifier = Modifier.fillMaxWidth())
+                        }
                     }
                 }
-                if (rowFeatures.size == 1) {
-                    Spacer(Modifier.weight(1f))
-                }
+                if (rowFeatures.size == 1) Spacer(Modifier.weight(1f))
             }
         }
     }
@@ -1023,6 +1177,15 @@ private fun FeaturesScreen(
                 onClick = { onOpenFeature(FeatureRoute.Routine) },
             )
         }
+        progressiveItem(7) {
+            CategoryPanel(
+                title = "文字スキャン",
+                description = "撮影・写真から文字を認識してコピー",
+                symbol = EssentialSymbol.TextScan,
+                accent = Color(0xFF78D9EF),
+                onClick = { onOpenFeature(FeatureRoute.TextScan) },
+            )
+        }
     }
 }
 
@@ -1102,20 +1265,52 @@ private fun ProfileScreen(
     var profileName by remember { mutableStateOf(profileStore.loadName()) }
     var profileIcon by remember { mutableStateOf(profileStore.loadIcon()) }
     var profileImagePath by remember { mutableStateOf(profileStore.loadImagePath()) }
+    var profileBannerPath by remember { mutableStateOf(profileStore.loadBannerPath()) }
     var claimedRewards by remember { mutableStateOf(progressStore.loadClaimedRewards()) }
     var rewardsExpanded by rememberSaveable { mutableStateOf(false) }
+    var cacheClearInProgress by remember { mutableStateOf(false) }
+    var cacheClearMessage by remember { mutableStateOf<String?>(null) }
+    val settingsScope = rememberCoroutineScope()
     var panel by rememberSaveable {
         mutableStateOf(if (initialSetupRequired) ProfilePanel.Arrange else ProfilePanel.Main)
     }
+    BackHandler(enabled = panel != ProfilePanel.Main) { panel = ProfilePanel.Main }
     val coreVersion = remember { EssentialCore.version() }
     val profileImagePicker = rememberLauncherForActivityResult(EssentialMediaPickerContract()) { uri ->
         if (uri != null) {
-            profileStore.saveImage(uri)?.let {
-                profileImagePath = it
-                onProfileImagePathChange(it)
+            settingsScope.launch {
+                val path = withContext(Dispatchers.IO) { profileStore.saveImage(uri) }
+                if (path != null) {
+                    profileImagePath = path
+                    onProfileImagePathChange(path)
+                } else {
+                    android.widget.Toast.makeText(context, "画像を保存できません。64MB以下の画像を選択してください。", android.widget.Toast.LENGTH_LONG).show()
+                }
             }
         }
     }
+    val profileBannerPicker = rememberLauncherForActivityResult(EssentialMediaPickerContract()) { uri ->
+        if (uri != null) settingsScope.launch {
+            val path = withContext(Dispatchers.IO) { profileStore.saveBanner(uri) }
+            if (path != null) profileBannerPath = path
+            else android.widget.Toast.makeText(context, "背景を保存できません。64MB以下の画像を選択してください。", android.widget.Toast.LENGTH_LONG).show()
+        }
+    }
+    Box(Modifier.fillMaxSize()) {
+    AnimatedContent(
+        targetState = panel == ProfilePanel.Settings,
+        modifier = Modifier.fillMaxSize(),
+        transitionSpec = {
+            if (targetState) {
+                (slideInVertically(tween(380, easing = FastOutSlowInEasing)) { it } + fadeIn(tween(260))) togetherWith
+                    (fadeOut(tween(180)) + slideOutVertically(tween(380)) { -it / 12 })
+            } else {
+                (fadeIn(tween(280)) + slideInVertically(tween(380)) { -it / 12 }) togetherWith
+                    (slideOutVertically(tween(320, easing = FastOutSlowInEasing)) { it } + fadeOut(tween(220)))
+            }
+        },
+        label = "設定画面の開閉",
+    ) { settingsVisible ->
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(
@@ -1126,27 +1321,49 @@ private fun ProfileScreen(
         ),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        if (panel == ProfilePanel.Settings) {
+        if (settingsVisible) {
             progressiveItem(0, keyPrefix = "profile-settings") {
                 ProfilePanelHeader(title = "設定", onBack = { panel = ProfilePanel.Main })
             }
         } else {
-            val panelKey = "profile-${panel.name.lowercase()}"
+            val panelKey = "profile-main"
             progressiveItem(0, keyPrefix = panelKey) {
                 Column(
-                    Modifier.fillMaxWidth().glassSurface(28.dp).padding(19.dp),
-                    verticalArrangement = Arrangement.spacedBy(15.dp),
+                    Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.fillMaxWidth().height(212.dp)) {
+                        ProfileBanner(
+                            imagePath = profileBannerPath,
+                            modifier = Modifier.fillMaxWidth().height(166.dp)
+                                .clip(RoundedCornerShape(24.dp))
+                                .clickable { profileBannerPicker.launch(arrayOf("image/*")) },
+                        )
                         ProfileAvatar(
                             profileIcon = profileIcon,
                             imagePath = profileImagePath,
-                            modifier = Modifier.size(88.dp),
+                            modifier = Modifier.align(Alignment.BottomStart).padding(start = 18.dp).size(100.dp)
+                                .clip(CircleShape)
+                                .clickable { profileImagePicker.launch(arrayOf("image/*")) },
                         )
-                        Spacer(Modifier.width(14.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(profileName.ifBlank { "ゲスト" }, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
-                            Text("アプリレベル LV${appLevel.level}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            profileName.ifBlank { "ゲスト" },
+                            modifier = Modifier.weight(1f).padding(start = 14.dp),
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.Black,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.width(112.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                            Text("LV ${appLevel.level}", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                            Box(Modifier.fillMaxWidth().height(7.dp).clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f))) {
+                                Box(Modifier.fillMaxWidth(appLevel.progress.coerceIn(0f, 1f)).fillMaxHeight()
+                                    .background(MaterialTheme.colorScheme.primary, CircleShape))
+                            }
                         }
                     }
                     Row(
@@ -1155,7 +1372,7 @@ private fun ProfileScreen(
                     ) {
                         ProfileActionButton(
                             icon = EssentialSymbol.Edit,
-                            label = "アレンジ",
+                            label = "プロフィール編集",
                             modifier = Modifier.weight(1f),
                             onClick = { panel = ProfilePanel.Arrange },
                         )
@@ -1168,43 +1385,8 @@ private fun ProfileScreen(
                     }
                 }
             }
-            if (panel == ProfilePanel.Arrange) {
+            if (!settingsVisible) {
                 progressiveItem(1, keyPrefix = panelKey) {
-                    AnimatedVisibility(
-                        visible = true,
-                        enter = expandVertically(animationSpec = tween(260)) + fadeIn(animationSpec = tween(180)),
-                    ) {
-                        ProfileEditorPanel(
-                            profileName = profileName,
-                            onProfileNameChange = { value ->
-                                profileName = value.take(15)
-                                profileStore.saveName(profileName)
-                            },
-                            profileIcon = profileIcon,
-                            profileImagePath = profileImagePath,
-                            onChooseImage = { profileImagePicker.launch(arrayOf("image/*")) },
-                            onDone = { panel = ProfilePanel.Main },
-                            onClearImage = {
-                                profileStore.clearImage()
-                                profileImagePath = null
-                                onProfileImagePathChange(null)
-                            },
-                            onIconSelected = { icon ->
-                                profileIcon = icon
-                                profileStore.saveIcon(icon)
-                                profileStore.clearImage()
-                                profileImagePath = null
-                                onProfileIconChange(icon)
-                                onProfileImagePathChange(null)
-                            },
-                        )
-                    }
-                }
-            } else {
-                progressiveItem(1, keyPrefix = panelKey) {
-                    ProfileLevelCard(totalXp = progressStore.loadXp(), level = appLevel)
-                }
-                progressiveItem(2, keyPrefix = panelKey) {
                     ProfileRewards(
                         currentLevel = appLevel,
                         claimedRewards = claimedRewards,
@@ -1219,7 +1401,7 @@ private fun ProfileScreen(
                 }
             }
         }
-        if (panel == ProfilePanel.Settings) {
+        if (settingsVisible) {
         progressiveItem(1, keyPrefix = "profile-settings") {
             Box(
                 modifier = Modifier
@@ -1348,7 +1530,94 @@ private fun ProfileScreen(
                 )
             }
         }
+        progressiveItem(9, keyPrefix = "profile-settings") {
+            Column(
+                modifier = Modifier.fillMaxWidth().glassSurface(28.dp).padding(19.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text("キャッシュ", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "一時ファイルを削除します。プロフィールや設定は残ります。",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Button(
+                    onClick = {
+                        cacheClearInProgress = true
+                        cacheClearMessage = null
+                        settingsScope.launch {
+                            val result = runCatching {
+                                withContext(Dispatchers.IO) { StorageMaintenance.clearUserCache(context) }
+                            }
+                            cacheClearMessage = result.fold(
+                                onSuccess = { cleared ->
+                                    if (cleared.removedEntries == 0) "削除するキャッシュはありません"
+                                    else "キャッシュを削除しました（${cleared.reclaimedBytes / 1024} KiB）"
+                                },
+                                onFailure = { "キャッシュを削除できませんでした" },
+                            )
+                            cacheClearInProgress = false
+                        }
+                    },
+                    enabled = !cacheClearInProgress,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(if (cacheClearInProgress) "削除中..." else "キャッシュをクリア")
+                }
+                cacheClearMessage?.let { message ->
+                    Text(message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
         }
+        }
+    }
+    }
+    AnimatedVisibility(
+        visible = panel == ProfilePanel.Arrange,
+        modifier = Modifier.fillMaxSize(),
+        enter = fadeIn(tween(220)),
+        exit = fadeOut(tween(180)),
+    ) {
+        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.40f))
+            .clickable { panel = ProfilePanel.Main })
+    }
+    AnimatedVisibility(
+        visible = panel == ProfilePanel.Arrange,
+        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = contentBottomPadding),
+        enter = slideInVertically(tween(380, easing = FastOutSlowInEasing)) { it } + fadeIn(tween(250)),
+        exit = slideOutVertically(tween(280, easing = FastOutSlowInEasing)) { it } + fadeOut(tween(180)),
+    ) {
+        ProfileEditorPanel(
+            profileName = profileName,
+            onProfileNameChange = { value ->
+                profileName = value.take(15)
+                profileStore.saveName(profileName)
+            },
+            profileIcon = profileIcon,
+            profileImagePath = profileImagePath,
+            profileBannerPath = profileBannerPath,
+            onChooseImage = { profileImagePicker.launch(arrayOf("image/*")) },
+            onChooseBanner = { profileBannerPicker.launch(arrayOf("image/*")) },
+            onClearBanner = {
+                profileStore.clearBanner()
+                profileBannerPath = null
+            },
+            onDone = { panel = ProfilePanel.Main },
+            onClearImage = {
+                profileStore.clearImage()
+                profileImagePath = null
+                onProfileImagePathChange(null)
+            },
+            onIconSelected = { icon ->
+                profileIcon = icon
+                profileStore.saveIcon(icon)
+                profileStore.clearImage()
+                profileImagePath = null
+                onProfileIconChange(icon)
+                onProfileImagePathChange(null)
+            },
+        )
+    }
     }
 }
 
@@ -1392,7 +1661,7 @@ private fun ProfilePanelHeader(title: String, onBack: () -> Unit) {
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        TextButton(onClick = onBack) { Text("‹ プロフィール") }
+        GlassBackButton(onClick = onBack)
         Spacer(Modifier.width(4.dp))
         Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
     }
@@ -1404,48 +1673,118 @@ private fun ProfileEditorPanel(
     onProfileNameChange: (String) -> Unit,
     profileIcon: String,
     profileImagePath: String?,
+    profileBannerPath: String?,
     onChooseImage: () -> Unit,
+    onChooseBanner: () -> Unit,
+    onClearBanner: () -> Unit,
     onDone: () -> Unit,
     onClearImage: () -> Unit,
     onIconSelected: (String) -> Unit,
 ) {
+    val colors = MaterialTheme.colorScheme
     Column(
-        modifier = Modifier.fillMaxWidth().glassSurface(28.dp).padding(19.dp),
-        verticalArrangement = Arrangement.spacedBy(13.dp),
+        Modifier.fillMaxWidth().fillMaxHeight(0.8f).imePadding()
+            .clip(RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp))
+            .background(colors.surface.copy(alpha = 0.96f)).glassSurface(32.dp).padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("プロフィールをアレンジ", modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
-            TextButton(onClick = onDone) { Text("完了") }
-        }
-        OutlinedTextField(
-            value = profileName,
-            onValueChange = onProfileNameChange,
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("表示名（15文字以内）") },
-            singleLine = true,
-        )
-        Text("プロフィールアイコン", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Button(onClick = onChooseImage) {
-                Text(if (profileImagePath == null) "画像を選ぶ" else "画像を変更")
+        Box(Modifier.align(Alignment.CenterHorizontally).width(40.dp).height(4.dp)
+            .clip(CircleShape).background(colors.onSurface.copy(alpha = 0.2f)))
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("PROFILE", style = MaterialTheme.typography.labelSmall, color = colors.primary)
+                Text("プロフィール編集", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             }
-            if (profileImagePath != null) {
-                TextButton(onClick = onClearImage) { Text("絵文字に戻す") }
-            }
+            TextButton(onClick = onDone) { Text("閉じる") }
         }
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("🌱", "🌸", "🔥", "🌙", "⚡", "🧊", "🌹").forEach { icon ->
-                item(key = icon) {
-                    FilterChip(
-                        selected = icon == profileIcon && profileImagePath == null,
-                        onClick = { onIconSelected(icon) },
-                        label = { Text(icon, style = MaterialTheme.typography.titleMedium) },
-                    )
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Box(Modifier.fillMaxWidth().height(170.dp)) {
+                ProfileBanner(profileBannerPath, Modifier.fillMaxWidth().height(125.dp)
+                    .clip(RoundedCornerShape(24.dp)).clickable(onClick = onChooseBanner))
+                ProfileAvatar(profileIcon, profileImagePath, Modifier.align(Alignment.BottomStart)
+                    .padding(start = 14.dp).size(84.dp).clip(CircleShape)
+                    .border(4.dp, colors.surface, CircleShape).clickable(onClick = onChooseImage))
+                Text("背景をタップして変更", Modifier.align(Alignment.TopEnd).padding(12.dp)
+                    .background(Color.Black.copy(alpha = 0.45f), CircleShape).padding(horizontal = 10.dp, vertical = 6.dp),
+                    color = Color.White, style = MaterialTheme.typography.labelSmall)
+            }
+            OutlinedTextField(
+                value = profileName, onValueChange = onProfileNameChange,
+                modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp),
+                label = { Text("表示名") }, supportingText = { Text("${profileName.length} / 15") }, singleLine = true,
+            )
+            Text("アイコン", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                OutlinedButton(onClick = onChooseImage) { Text("写真から選ぶ") }
+                if (profileImagePath != null) TextButton(onClick = onClearImage) { Text("絵文字に戻す") }
+            }
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("🌱", "🌸", "🔥", "🌙", "⚡", "🧊", "🌹").forEach { icon ->
+                    item(key = icon) {
+                        val selected = icon == profileIcon && profileImagePath == null
+                        Box(Modifier.size(52.dp).clip(RoundedCornerShape(16.dp))
+                            .background(if (selected) colors.primaryContainer else colors.onSurface.copy(alpha = 0.06f))
+                            .border(1.dp, if (selected) colors.primary else colors.outline.copy(alpha = 0.2f), RoundedCornerShape(16.dp))
+                            .clickable { onIconSelected(icon) }, contentAlignment = Alignment.Center) {
+                            Text(icon, style = MaterialTheme.typography.headlineSmall)
+                        }
+                    }
                 }
             }
+            if (profileBannerPath != null) TextButton(onClick = onClearBanner) { Text("背景を標準に戻す") }
+        }
+        Button(onClick = onDone, modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(18.dp)) {
+            Text("完了", fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+private fun ProfileBanner(imagePath: String?, modifier: Modifier = Modifier) {
+    val drawable by produceState<android.graphics.drawable.Drawable?>(null, imagePath) {
+        value = imagePath?.let { path ->
+            withContext(Dispatchers.IO) {
+                runCatching {
+                    if (Build.VERSION.SDK_INT >= 28) {
+                        ImageDecoder.decodeDrawable(ImageDecoder.createSource(java.io.File(path))) { decoder, info, _ ->
+                            // 高解像度の静止画・GIFを背景表示に必要な寸法へ抑え、復帰時のメモリ負荷を減らす。
+                            val longest = maxOf(info.size.width, info.size.height)
+                            if (longest > 1920) {
+                                val scale = 1920f / longest
+                                decoder.setTargetSize(
+                                    (info.size.width * scale).toInt().coerceAtLeast(1),
+                                    (info.size.height * scale).toInt().coerceAtLeast(1),
+                                )
+                            }
+                        }
+                    } else {
+                        BitmapFactory.decodeFile(path)?.let {
+                            android.graphics.drawable.BitmapDrawable(android.content.res.Resources.getSystem(), it)
+                        }
+                    }
+                }.getOrNull()
+            }
+        }
+    }
+    DisposableEffect(drawable) {
+        onDispose { if (Build.VERSION.SDK_INT >= 28) (drawable as? AnimatedImageDrawable)?.stop() }
+    }
+    Box(
+        modifier = modifier.background(
+            Brush.linearGradient(
+                listOf(Color(0xFF1D8F91), Color(0xFF4779C1), Color(0xFF7559B4)),
+            ),
+        ),
+    ) {
+        if (drawable != null) {
+            AndroidView(
+                factory = { context -> ImageView(context).apply { scaleType = ImageView.ScaleType.CENTER_CROP } },
+                update = { imageView ->
+                    if (imageView.drawable !== drawable) imageView.setImageDrawable(drawable)
+                    if (Build.VERSION.SDK_INT >= 28) (drawable as? AnimatedImageDrawable)?.start()
+                },
+                modifier = Modifier.fillMaxSize(),
+            )
         }
     }
 }
@@ -1558,7 +1897,7 @@ private fun ProfileRewards(
     onClaim: (Int) -> Unit,
 ) {
     Column(
-        modifier = Modifier.animateContentSize(animationSpec = tween(220, easing = FastOutSlowInEasing)),
+        modifier = Modifier,
         verticalArrangement = Arrangement.spacedBy(11.dp),
     ) {
         Row(
@@ -1575,8 +1914,8 @@ private fun ProfileRewards(
         }
         AnimatedVisibility(
             visible = expanded,
-            enter = expandVertically(animationSpec = tween(240, easing = FastOutSlowInEasing)) + fadeIn(animationSpec = tween(150)),
-            exit = shrinkVertically(animationSpec = tween(170, easing = FastOutSlowInEasing)) + fadeOut(animationSpec = tween(100)),
+            enter = expandVertically(animationSpec = tween(420, easing = FastOutSlowInEasing)) + fadeIn(animationSpec = tween(280)),
+            exit = shrinkVertically(animationSpec = tween(360, easing = FastOutSlowInEasing)) + fadeOut(animationSpec = tween(220)),
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(11.dp)) {
                 appRewards.forEach { reward ->
@@ -1867,14 +2206,33 @@ private fun EssentialNavigationBar(
         modifier = Modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(horizontal = 14.dp, vertical = 8.dp)
+            .padding(horizontal = 26.dp, vertical = 8.dp)
             .height(66.dp)
             .graphicsLayer {
                 shadowElevation = 20.dp.toPx()
                 shape = glassShape
                 clip = false
             }
-            .clip(glassShape),
+            .clip(glassShape)
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        if (dark) Color(0xFF17243D).copy(alpha = 0.48f) else Color.White.copy(alpha = 0.48f),
+                        if (dark) Color(0xFF0C172D).copy(alpha = 0.58f) else Color.White.copy(alpha = 0.58f),
+                    ),
+                ),
+            )
+            .border(
+                width = 1.dp,
+                brush = Brush.verticalGradient(
+                    listOf(
+                        Color.White.copy(alpha = 0.48f),
+                        Color(0xFFA9C6E4).copy(alpha = 0.32f),
+                        Color.White.copy(alpha = 0.24f),
+                    ),
+                ),
+                shape = glassShape,
+            ),
     ) {
         Canvas(Modifier.matchParentSize()) {
             drawRect(
@@ -1882,8 +2240,8 @@ private fun EssentialNavigationBar(
                     colorStops = arrayOf(
                         0f to Color.Transparent,
                         0.34f to Color.Transparent,
-                        0.72f to Color.Black.copy(alpha = 0.12f),
-                        1f to Color.Black.copy(alpha = 0.24f),
+                        0.72f to Color.Black.copy(alpha = if (dark) 0.12f else 0f),
+                        1f to Color.Black.copy(alpha = if (dark) 0.24f else 0f),
                     ),
                     startY = size.height * 0.12f,
                     endY = size.height,
@@ -1892,9 +2250,10 @@ private fun EssentialNavigationBar(
                 size = size,
             )
             val cellWidth = size.width / Destination.entries.size
-            val width = minOf(78.dp.toPx(), cellWidth - 20.dp.toPx())
+            val selectionInset = 4.dp.toPx()
+            val width = cellWidth - selectionInset * 2f
             val height = 58.dp.toPx()
-            val left = cellWidth * (selectionPosition + 0.5f) - width / 2f
+            val left = cellWidth * selectionPosition + selectionInset
             val top = (size.height - height) / 2f
             val radius = androidx.compose.ui.geometry.CornerRadius(height / 2f)
             drawRoundRect(
@@ -1907,9 +2266,9 @@ private fun EssentialNavigationBar(
                 brush = Brush.linearGradient(
                     colors = listOf(
                         Color.White.copy(alpha = 0.20f),
-                        Color(0xFFB9DFFF).copy(alpha = 0.18f),
+                        if (dark) Color(0xFFB9DFFF).copy(alpha = 0.18f) else Color(0xFFE8E8E8).copy(alpha = 0.24f),
                         Color.White.copy(alpha = 0.16f),
-                        Color(0xFFD8ECFF).copy(alpha = 0.14f),
+                        if (dark) Color(0xFFD8ECFF).copy(alpha = 0.14f) else Color(0xFFF3F3F3).copy(alpha = 0.18f),
                         Color.White.copy(alpha = 0.20f),
                     ),
                     start = Offset(left, top),
@@ -1920,9 +2279,9 @@ private fun EssentialNavigationBar(
             drawRoundRect(
                 brush = Brush.horizontalGradient(
                     listOf(
-                        Color(0xFF6EBBFF).copy(alpha = 0.48f),
+                        if (dark) Color(0xFF6EBBFF).copy(alpha = 0.48f) else Color(0xFFBDBDBD),
                         Color.White.copy(alpha = 0.34f),
-                        Color(0xFFAED8FF).copy(alpha = 0.42f),
+                        if (dark) Color(0xFFAED8FF).copy(alpha = 0.42f) else Color(0xFFBDBDBD),
                     ),
                     startX = left,
                     endX = left + width,
@@ -1936,7 +2295,7 @@ private fun EssentialNavigationBar(
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 4.dp, vertical = 4.dp)
+                .padding(vertical = 4.dp)
                 .selectableGroup(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -1960,7 +2319,7 @@ private fun EssentialNavigationBar(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center,
                 ) {
-                    Box(Modifier.height(40.dp), contentAlignment = Alignment.Center) {
+                    Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
                         BadgedBox(
                             badge = {
                                 if (destination == Destination.Features) {
@@ -1971,7 +2330,7 @@ private fun EssentialNavigationBar(
                             if (destination == Destination.Profile) {
                                 Box(
                                     modifier = Modifier
-                                        .size(28.dp)
+                                        .size(36.dp)
                                         .graphicsLayer(scaleX = scale, scaleY = scale)
                                         .semantics { contentDescription = destination.label },
                                     contentAlignment = Alignment.Center,
@@ -1983,16 +2342,14 @@ private fun EssentialNavigationBar(
                                     )
                                 }
                             } else {
-                                val iconTint = if (isSelected) {
-                                    if (dark) Color(0xFF9BCBFF) else Color(0xFF216DE4)
-                                } else {
-                                    colors.onSurface.copy(alpha = 0.96f)
-                                }
+                                val iconTint = if (!dark) {
+                                    if (isSelected) Color(0xFF606060) else Color(0xFF8A8A8A)
+                                } else if (isSelected) Color(0xFF9BCBFF) else colors.onSurface.copy(alpha = 0.96f)
                                 EssentialSymbol(
                                     symbol = destination.symbol,
                                     tint = iconTint,
                                     modifier = Modifier
-                                        .size(if (isSelected) 25.dp else 24.dp)
+                                        .size(if (isSelected) 34.dp else 33.dp)
                                         .graphicsLayer(scaleX = scale, scaleY = scale),
                                     description = destination.label,
                                 )
@@ -2260,6 +2617,13 @@ private fun EssentialSymbol(
                 drawCircle(tint, size.minDimension * 0.045f, Offset(size.width * 0.66f, size.height * 0.47f))
                 drawCircle(tint, size.minDimension * 0.045f, Offset(size.width * 0.77f, size.height * 0.59f))
             }
+            EssentialSymbol.TextScan -> {
+                val edge = size.width * 0.13f
+                drawRoundRect(tint, Offset(edge, edge), Size(size.width - edge * 2, size.height - edge * 2),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(size.width * 0.12f), style = stroke)
+                drawLine(tint, Offset(size.width * 0.3f, size.height * 0.32f), Offset(size.width * 0.7f, size.height * 0.32f), stroke.width, StrokeCap.Round)
+                drawLine(tint, Offset(size.width * 0.5f, size.height * 0.32f), Offset(size.width * 0.5f, size.height * 0.7f), stroke.width, StrokeCap.Round)
+            }
             EssentialSymbol.Routine -> {
                 drawCircle(tint, size.minDimension * 0.38f, center, style = stroke)
                 drawLine(tint, center, Offset(center.x, size.height * 0.27f), strokeWidth = stroke.width, cap = StrokeCap.Round)
@@ -2285,6 +2649,7 @@ private fun FeatureRoute.displayName(): String = when (this) {
     FeatureRoute.Schedule -> "行程表ジェネレーター"
     FeatureRoute.Files -> "ファイル参照"
     FeatureRoute.MiniGame -> "ミニゲーム"
+    FeatureRoute.TextScan -> "文字スキャン"
     FeatureRoute.Routine -> "日課"
 }
 
@@ -2294,6 +2659,7 @@ private fun FeatureRoute.symbol(): EssentialSymbol = when (this) {
     FeatureRoute.Schedule -> EssentialSymbol.Calendar
     FeatureRoute.Files -> EssentialSymbol.Media
     FeatureRoute.MiniGame -> EssentialSymbol.Game
+    FeatureRoute.TextScan -> EssentialSymbol.TextScan
     FeatureRoute.Routine -> EssentialSymbol.Routine
 }
 

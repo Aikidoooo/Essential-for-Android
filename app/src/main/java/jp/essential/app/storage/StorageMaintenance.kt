@@ -16,6 +16,24 @@ internal object StorageMaintenance {
     /** 削除した項目数と回収した容量を呼び出し元へ返す。 */
     internal data class Result(val removedEntries: Int, val reclaimedBytes: Long)
 
+    /** ユーザー操作でアプリ専用の内部・外部キャッシュを消去する。保存データは対象にしない。 */
+    fun clearUserCache(context: Context): Result {
+        val appContext = context.applicationContext
+        val cacheRoots = listOfNotNull(appContext.cacheDir, appContext.externalCacheDir)
+        var removedEntries = 0
+        var reclaimedBytes = 0L
+        cacheRoots.forEach { root ->
+            root.listFiles().orEmpty().forEach { entry ->
+                val bytes = entry.sizeRecursively()
+                if (entry.deleteRecursively()) {
+                    removedEntries += 1
+                    reclaimedBytes += bytes
+                }
+            }
+        }
+        return Result(removedEntries, reclaimedBytes)
+    }
+
     /** アプリ更新後、または一定時間が経過したときだけ保守を実行する。 */
     fun runIfNeeded(
         context: Context,

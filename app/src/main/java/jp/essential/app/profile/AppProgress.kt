@@ -163,13 +163,13 @@ class ProfileStore(context: Context) {
         val input = appContext.contentResolver.openInputStream(uri) ?: return null
         return runCatching {
             input.use { source ->
-                temporary.outputStream().use { output -> source.copyTo(output) }
+                temporary.outputStream().use { output -> copyProfileMedia(source, output) }
             }
-            loadImagePath()?.let { File(it).delete() }
             if (!temporary.renameTo(destination)) {
                 temporary.copyTo(destination, overwrite = true)
                 temporary.delete()
             }
+            loadImagePath()?.let { File(it).delete() }
             preferences.edit().putString(KEY_IMAGE_PATH, destination.absolutePath).apply()
             destination.absolutePath
         }.getOrElse {
@@ -183,10 +183,52 @@ class ProfileStore(context: Context) {
         preferences.edit().remove(KEY_IMAGE_PATH).apply()
     }
 
+    fun loadBannerPath(): String? = preferences.getString(KEY_BANNER_PATH, null)?.takeIf { File(it).isFile }
+
+    /** 静止画またはGIFの背景をアプリ専用領域へ保存する。 */
+    fun saveBanner(uri: Uri): String? {
+        val directory = File(appContext.filesDir, PROFILE_DIRECTORY).apply { mkdirs() }
+        val destination = File(directory, "profile_banner_${System.currentTimeMillis()}.img")
+        val temporary = File(directory, "${destination.name}.part")
+        val input = appContext.contentResolver.openInputStream(uri) ?: return null
+        return runCatching {
+            input.use { source -> temporary.outputStream().use { output -> copyProfileMedia(source, output) } }
+            if (!temporary.renameTo(destination)) {
+                temporary.copyTo(destination, overwrite = true)
+                temporary.delete()
+            }
+            loadBannerPath()?.let { File(it).delete() }
+            preferences.edit().putString(KEY_BANNER_PATH, destination.absolutePath).apply()
+            destination.absolutePath
+        }.getOrElse {
+            temporary.delete()
+            null
+        }
+    }
+
+    fun clearBanner() {
+        loadBannerPath()?.let { File(it).delete() }
+        preferences.edit().remove(KEY_BANNER_PATH).apply()
+    }
+
+    /** 巨大な画像やGIFでストレージを使い切らないよう、両方の保存経路に上限を設ける。 */
+    private fun copyProfileMedia(input: java.io.InputStream, output: java.io.OutputStream) {
+        val buffer = ByteArray(8192)
+        var total = 0L
+        while (true) {
+            val count = input.read(buffer)
+            if (count < 0) break
+            total += count
+            require(total <= 64L * 1024 * 1024) { "プロフィール画像は64MB以下を選択してください" }
+            output.write(buffer, 0, count)
+        }
+    }
+
     private companion object {
         const val KEY_NAME = "profile_name"
         const val KEY_ICON = "profile_icon"
         const val KEY_IMAGE_PATH = "profile_image_path"
+        const val KEY_BANNER_PATH = "profile_banner_path"
         const val PROFILE_DIRECTORY = "profile"
         const val MAX_NAME_LENGTH = 15
         const val DEFAULT_ICON = "🌱"

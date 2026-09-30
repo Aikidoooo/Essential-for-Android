@@ -3605,9 +3605,12 @@ if (typeof window !== 'undefined') {
             </div>
 
             <div id="dosukoiRoomScreen" class="dosukoi-room-screen">
+                <div class="dosukoi-thrones" aria-hidden="true">
+                    <span class="dosukoi-throne throne-left"><span class="dosukoi-throne-icon">👤</span></span>
+                    <span class="dosukoi-throne throne-center"><span class="dosukoi-throne-icon">👤</span></span>
+                    <span class="dosukoi-throne throne-right"><span class="dosukoi-throne-icon">👤</span></span>
+                </div>
                 <div class="hero-section">
-                    <div class="room-kicker">ROOM PLAY</div>
-                    <div class="hero-icon" aria-hidden="true"></div>
                     <h1 class="hero-title">DOSUKOI</h1>
                     <p class="hero-subtitle">言葉とリズムの格闘技</p>
                 </div>
@@ -3647,6 +3650,7 @@ if (typeof window !== 'undefined') {
 
         <!-- SCREEN: WAITING -->
         <div id="dosukoiWaitingScreen" class="screen-section hidden">
+            <div id="waitingFighterOrbit" class="fighter-orbit waiting-fighter-orbit" aria-hidden="true"></div>
             <div class="waiting-shell">
                 <header class="waiting-command-row">
                     <div>
@@ -3655,20 +3659,6 @@ if (typeof window !== 'undefined') {
                     </div>
                     <div class="sync-badge"><span class="sync-dot"></span>SYNC ONLINE</div>
                 </header>
-
-                <section class="standby-stage" aria-label="対戦準備中">
-                    <div class="standby-radar" aria-hidden="true">
-                        <span class="radar-ring radar-ring-outer"></span>
-                        <span class="radar-ring radar-ring-inner"></span>
-                        <span class="radar-sweep"></span>
-                        <span class="radar-core">VS</span>
-                    </div>
-                    <div class="standby-copy">
-                        <span class="standby-kicker">BATTLE STANDBY</span>
-                        <h2>挑戦者を待っています</h2>
-                        <p>仲間が参加すると、ここから対戦を開始できます。</p>
-                    </div>
-                </section>
 
                 <section class="lobby-card room-code-card">
                     <div class="lobby-card-heading">
@@ -3703,20 +3693,15 @@ if (typeof window !== 'undefined') {
 
         <!-- SCREEN: GAME -->
         <div id="dosukoiGameScreen" class="screen-section hidden">
+            <div id="fighterOrbit" class="fighter-orbit" aria-hidden="true"></div>
             <div class="game-shell">
-                <header class="game-top-bar">
-                    <div class="match-live-badge"><span></span>LIVE MATCH</div>
-                    <div class="turn-indicator" id="turnInfo">ROUND ACTIVE</div>
-                    <div class="game-room-code">ROOM <strong id="gameRoomCode">------</strong></div>
-                </header>
+                <div id="turnInfo" hidden></div>
+                <div id="gameRoomCode" hidden></div>
 
-                <section class="game-status-panel">
-                    <div class="game-status-message" id="gameStatus">待機中...</div>
-                </section>
+                <div class="game-status-accessible" id="gameStatus" role="status" aria-live="polite">待機中...</div>
 
                 <main class="game-arena">
                     <div id="phaseDosukoi" class="phase-wrapper active">
-                        <div class="phase-instruction">PHASE 1 · START WORD</div>
                         <div class="dosukoi-logo-anim">どすこい！</div>
                         <p class="phase-support">最初のひらがなを一文字選んでください</p>
                         <div class="input-action-row">
@@ -3727,15 +3712,12 @@ if (typeof window !== 'undefined') {
                     </div>
 
                     <div id="phaseNumber" class="phase-wrapper hidden">
-                        <div class="phase-instruction">PHASE 2 · SELECT POWER</div>
                         <h2 class="phase-heading">数字を選択</h2>
                         <p class="phase-support">全員の数字を合わせて文字数を決めます</p>
                         <div class="number-grid-container" id="numberGrid"></div>
                     </div>
 
                     <div id="phaseWord" class="phase-wrapper hidden">
-                        <div class="phase-instruction">PHASE 3 · WORD BATTLE</div>
-                        <h2 class="phase-heading">条件に合う言葉を入力</h2>
                         <div class="word-conditions">
                             <div class="condition-item">
                                 <span class="label">頭文字</span>
@@ -4255,6 +4237,68 @@ window.showAlert = showCustomAlert;
         currentStarterIndex: -1 // Turn-based starter index
     };
 
+    function renderThroneAvatars(players = []) {
+        const visiblePlayers = players.length ? players : (playerProfile ? [playerProfile] : []);
+        document.querySelectorAll('.dosukoi-thrones').forEach(stage => {
+            stage.querySelectorAll('.dosukoi-throne-icon').forEach((icon, index) => {
+                const player = visiblePlayers[index];
+                icon.textContent = player?.emoji || player?.icon || '👤';
+            });
+        });
+    }
+
+    function renderFighterOrbit(orbitId = 'fighterOrbit') {
+        const orbit = document.getElementById(orbitId);
+        if (!orbit) return;
+        const players = Array.isArray(gameState.players) ? gameState.players.slice(0, 10) : [];
+        if (!players.length) {
+            orbit.replaceChildren();
+            return;
+        }
+        const existing = new Map(Array.from(orbit.querySelectorAll('.fighter-seat'))
+            .map(seat => [seat.dataset.playerId, seat]));
+        const ownIndex = players.findIndex(player => player.peerId === client?.peerId);
+        const startIndex = ownIndex >= 0 ? ownIndex : 0;
+        const seatWidth = players.length <= 4 ? 90 : players.length <= 6 ? 78 : 66;
+        players.forEach((_, visualIndex) => {
+            const playerIndex = (startIndex + visualIndex) % players.length;
+            const player = players[playerIndex];
+            // 円周上の等間隔の席を、自分の席に置いた視点から透視投影する。
+            const angle = visualIndex * Math.PI * 2 / players.length;
+            const worldX = Math.sin(angle);
+            const distance = 1 - Math.cos(angle);
+            const perspective = 1 / (1 + distance);
+            const seatX = 50 + worldX * perspective * 62;
+            const seatY = 67 - distance * perspective * 63;
+            const depth = perspective;
+            const playerId = String(player.peerId || playerIndex);
+            const seat = existing.get(playerId) || document.createElement('span');
+            existing.delete(playerId);
+            seat.dataset.playerId = playerId;
+            seat.className = 'fighter-seat';
+            seat.classList.toggle('is-self', visualIndex === 0);
+            seat.style.setProperty('--seat-angle', `${-worldX * 24}deg`);
+            seat.classList.toggle('is-starter', playerIndex === gameState.currentStarterIndex);
+            let avatar = seat.querySelector('.fighter-seat-avatar');
+            if (!avatar) {
+                avatar = document.createElement('span');
+                avatar.className = 'fighter-seat-avatar';
+                seat.appendChild(avatar);
+            }
+            avatar.textContent = player.emoji || player.icon || '👤';
+            seat.title = player.name || player.nickname || 'プレイヤー';
+            seat.style.setProperty('--seat-x', `${seatX}%`);
+            seat.style.setProperty('--seat-y', `${seatY}%`);
+            seat.style.setProperty('--seat-width', `${seatWidth}px`);
+            seat.style.setProperty('--seat-scale', (0.58 + depth * 0.68).toFixed(2));
+            seat.style.setProperty('--seat-opacity', (0.26 + depth * 0.13).toFixed(2));
+            seat.style.setProperty('--float-delay', `${visualIndex * -0.9}s`);
+            seat.style.zIndex = String(Math.round(depth * 10));
+            if (!seat.isConnected) orbit.appendChild(seat);
+        });
+        existing.forEach(seat => seat.remove());
+    }
+
     // Helper for Status Update
     function updateWaitingScreen(roomData) {
         // Fallback or update global players list
@@ -4265,6 +4309,8 @@ window.showAlert = showCustomAlert;
         }
 
         const players = Array.isArray(gameState.players) ? gameState.players : [];
+        renderThroneAvatars(players);
+        renderFighterOrbit('waitingFighterOrbit');
 
         const countSpan = document.getElementById('memberCount');
         if (countSpan) countSpan.textContent = `${players.length} / 10`;
@@ -4337,6 +4383,7 @@ window.showAlert = showCustomAlert;
 
         // 1. プロファイル読み込み
         loadPlayerProfile();
+        renderThroneAvatars();
 
         // 2. クライアント初期化
         if (window.irohClient) {
@@ -4393,11 +4440,46 @@ window.showAlert = showCustomAlert;
             playButton.onclick = () => {
                 playButton.disabled = true;
                 playButton.classList.remove('is-pressing');
+                const sourceCards = Array.from(introScreen.querySelectorAll('.dosukoi-avatar-card'));
+                const movingCards = sourceCards.map((source) => {
+                    const position = source.classList.contains('dosukoi-avatar-card-center') ? 'center'
+                        : source.classList.contains('dosukoi-avatar-card-left') ? 'left' : 'right';
+                    const start = source.getBoundingClientRect();
+                    const clone = source.cloneNode(true);
+                    Object.assign(clone.style, {
+                        position: 'fixed', left: `${start.left}px`, top: `${start.top}px`,
+                        width: `${start.width}px`, height: `${start.height}px`, margin: '0',
+                        transform: 'none', opacity: '0.9', animation: 'none',
+                        pointerEvents: 'none', zIndex: '1000', transformOrigin: 'top left'
+                    });
+                    document.body.appendChild(clone);
+                    source.style.visibility = 'hidden';
+                    return { clone, start, target: roomScreen.querySelector(`.throne-${position}`) };
+                });
+                roomScreen.classList.add('is-arriving');
                 introScreen.classList.add('is-exiting');
                 roomScreen.classList.add('is-visible');
-                window.setTimeout(() => {
+                requestAnimationFrame(async () => {
+                    const motions = movingCards.map(({ clone, start, target }) => {
+                        const end = target.getBoundingClientRect();
+                        const scaleX = end.width / start.width;
+                        const scaleY = end.height / start.height;
+                        const motion = clone.animate([
+                            { transform: 'translate3d(0, 0, 0) scale(1)', opacity: 0.9 },
+                            { transform: `translate3d(${end.left - start.left}px, ${end.top - start.top}px, 0) scale(${scaleX}, ${scaleY})`, opacity: 0.34 }
+                        ], { duration: 760, easing: 'cubic-bezier(0.22, 1, 0.36, 1)', fill: 'forwards' });
+                        return motion.finished;
+                    });
+                    await Promise.all(motions);
+                    roomScreen.classList.remove('is-arriving');
                     introScreen.style.display = 'none';
-                }, 760);
+                    // 同じ位置で短く重ねて切り替え、席と浮遊の開始を連続させる。
+                    await Promise.all(movingCards.map(async ({ clone, target }) => {
+                        target.animate([{ opacity: 0 }, { opacity: 0.34 }], { duration: 180 });
+                        await clone.animate([{ opacity: 0.34 }, { opacity: 0 }], { duration: 180, fill: 'forwards' }).finished;
+                        clone.remove();
+                    }));
+                });
             };
         }
 
@@ -4490,6 +4572,8 @@ window.showAlert = showCustomAlert;
             gameState.phase = 'waiting';
             gameState.wordHistory = [];
             gameState.currentStarterIndex = -1;
+            renderFighterOrbit();
+            renderThroneAvatars();
 
             // Clear UI
             const codeDisplay = getElement('roomCodeDisplay');
@@ -4712,6 +4796,7 @@ window.showAlert = showCustomAlert;
         client.on('game_started', (data) => {
             console.log('Game Started!', data);
             gameState.players = data.players.map(p => ({ ...p, status: 'playing' }));
+            renderFighterOrbit();
 
             if (isHost) {
                 const initialIndex = Math.floor(Math.random() * gameState.players.length);
@@ -4746,6 +4831,7 @@ window.showAlert = showCustomAlert;
     // Phase 1: ドスコイ発言 (ターン制へ変更)
     function startDosukoiPhase() {
         gameState.phase = 'dosukoi';
+        renderFighterOrbit();
 
         // ターン判定
         const starterIndex = gameState.currentStarterIndex;
@@ -4987,8 +5073,8 @@ window.showAlert = showCustomAlert;
                 if (!hasVoted) {
                     actionHtml = `
                         <div class="vote-actions">
-                            <button class="vote-btn approve" onclick="window.castVote('${entry.word}', '${entry.peerId}', 'approve')">承認</button>
-                            <button class="vote-btn reject" onclick="window.castVote('${entry.word}', '${entry.peerId}', 'reject')">却下</button>
+                            <button class="vote-btn approve">承認</button>
+                            <button class="vote-btn reject">却下</button>
                         </div>
                     `;
                 } else {
@@ -5003,13 +5089,22 @@ window.showAlert = showCustomAlert;
 
             item.innerHTML = `
                 <div class="log-content">
-                    <span class="log-word">${entry.word}</span>
-                    <span class="log-player">(${player ? player.name : 'Unknown'})</span>
-                    <span class="log-status">${statusLabel} · ${entry.approvals.length} / ${entry.rejections.length}</span>
+                    <span class="log-word"></span>
+                    <span class="log-player"></span>
+                    <span class="log-status"></span>
                 </div>
                 ${actionHtml}
             `;
-            item.querySelectorAll('button').forEach(button => window.attachDosukoiPressMotion?.(button));
+            // 参加者の入力はHTMLやコードとして解釈せず、文字列として描画する。
+            item.querySelector('.log-word').textContent = entry.word;
+            item.querySelector('.log-player').textContent = `(${player ? player.name : 'Unknown'})`;
+            item.querySelector('.log-status').textContent = `${statusLabel} · ${entry.approvals.length} / ${entry.rejections.length}`;
+            item.querySelectorAll('button').forEach(button => {
+                button.addEventListener('click', () => window.castVote(
+                    entry.word, entry.peerId, button.classList.contains('approve') ? 'approve' : 'reject'
+                ));
+                window.attachDosukoiPressMotion?.(button);
+            });
             logDiv.appendChild(item);
         });
     }
@@ -5360,33 +5455,6 @@ window.showAlert = showCustomAlert;
     gap: 10px;
     text-align: center;
   }
-  .room-kicker {
-    color: #8ad6ff;
-    font-size: 0.72rem;
-    font-weight: 800;
-    letter-spacing: 0.28em;
-  }
-  .hero-icon {
-    width: 54px;
-    height: 54px;
-    border: 1px solid rgba(190, 233, 255, 0.6);
-    border-radius: 18px;
-    background: linear-gradient(145deg, rgba(123, 211, 255, 0.4), rgba(125, 101, 255, 0.32));
-    box-shadow: 0 10px 28px rgba(71, 145, 255, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.58);
-    position: relative;
-  }
-  .hero-icon::before,
-  .hero-icon::after {
-    content: '';
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    border: 2px solid rgba(255, 255, 255, 0.9);
-    border-radius: 50%;
-    transform: translate(-50%, -50%);
-  }
-  .hero-icon::before { width: 25px; height: 25px; }
-  .hero-icon::after { width: 9px; height: 9px; background: #fff; border: 0; }
   .dosukoi-room-screen .hero-title {
     width: 100%;
     margin: 0;
@@ -5587,8 +5655,6 @@ window.showAlert = showCustomAlert;
     to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
   }
   .dosukoi-room-screen.is-visible .hero-title { animation: dosukoiRoomLogoMove 0.82s cubic-bezier(0.2, 0.8, 0.2, 1) 0.04s both; }
-  .dosukoi-room-screen.is-visible .room-kicker,
-  .dosukoi-room-screen.is-visible .hero-icon { animation: dosukoiRoomFeedIn 0.72s cubic-bezier(0.2, 0.8, 0.2, 1) 0.12s both; }
 
   @media (max-width: 520px) {
     .profile-shortcut-wrap { right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); }
@@ -5939,12 +6005,16 @@ window.showAlert = showCustomAlert;
 
   /* Material 3 Expressiveのゲーム画面 */
   #dosukoiGameScreen {
+    position: relative;
+    isolation: isolate;
     align-items: stretch;
     justify-content: flex-start;
     overflow-x: hidden;
     overflow-y: auto;
   }
   .game-shell {
+    position: relative;
+    z-index: 1;
     width: calc(100% - 40px);
     max-width: 640px;
     min-height: 100%;
@@ -5956,6 +6026,14 @@ window.showAlert = showCustomAlert;
     box-sizing: border-box;
   }
   .game-shell > * { flex-shrink: 0; }
+  .game-status-accessible {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
   body[data-dosukoi-screen="dosukoiWaitingScreen"] .profile-shortcut-wrap,
   body[data-dosukoi-screen="dosukoiGameScreen"] .profile-shortcut-wrap {
     opacity: 0;
@@ -5974,7 +6052,7 @@ window.showAlert = showCustomAlert;
     background: transparent;
   }
   .turn-indicator { color: rgba(214, 228, 248, 0.72); font-size: 0.68rem; font-weight: 750; }
-  #turnInfo { display: block !important; }
+  #turnInfo, #gameRoomCode { display: none !important; }
   .game-room-code {
     padding: 8px 10px;
     border-radius: 13px;
@@ -6403,7 +6481,141 @@ window.showAlert = showCustomAlert;
     .sync-badge { padding: 8px 9px; font-size: 0.53rem; }
   }
 
+  /* 三つのプレイヤー席をルーム選択から待機場まで背景に残す。 */
+  .dosukoi-room-screen,
+  #dosukoiWaitingScreen { position: relative; isolation: isolate; }
+  .dosukoi-room-screen > :not(.dosukoi-thrones),
+  #dosukoiWaitingScreen > .waiting-shell { position: relative; z-index: 1; }
+  .dosukoi-thrones {
+    position: absolute;
+    inset: 38px 0 auto;
+    height: 270px;
+    z-index: 0;
+    pointer-events: none;
+    perspective: 850px;
+    overflow: hidden;
+  }
+  .dosukoi-throne {
+    position: absolute;
+    width: 86px;
+    height: 132px;
+    display: grid;
+    place-items: center;
+    border: 1px solid rgba(168, 218, 255, 0.26);
+    border-radius: 28px 28px 37px 37px;
+    background: linear-gradient(165deg, rgba(121, 204, 255, 0.17), rgba(104, 88, 209, 0.08));
+    box-shadow: 0 22px 38px rgba(4, 10, 35, 0.30), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+    backdrop-filter: blur(9px);
+    -webkit-backdrop-filter: blur(9px);
+    opacity: 0.34;
+    transform-style: preserve-3d;
+    transform: translate3d(0, 0, -48px) scale(var(--throne-depth));
+    animation: dosukoiThroneFloat 4.2s ease-in-out infinite alternate both;
+  }
+  .dosukoi-throne::after {
+    content: '';
+    position: absolute;
+    width: 96px;
+    height: 22px;
+    bottom: -24px;
+    border-radius: 50%;
+    background: rgba(78, 150, 240, 0.15);
+    filter: blur(10px);
+  }
+  .dosukoi-throne-icon {
+    width: 58px;
+    height: 58px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: rgba(151, 208, 255, 0.12);
+    font-size: 2.2rem;
+    filter: saturate(0.65);
+  }
+  .throne-left { left: 5%; top: 72px; --throne-depth: 0.76; animation-delay: 0s; }
+  .throne-center { left: calc(50% - 43px); top: 18px; --throne-depth: 0.95; animation-delay: 0.57s; animation-duration: 4.8s; }
+  .throne-right { right: 5%; top: 72px; --throne-depth: 0.76; animation-delay: 1.1s; animation-duration: 5.3s; }
+  .dosukoi-room-screen { transform: none; }
+  .dosukoi-room-screen.is-arriving .dosukoi-throne { visibility: hidden; animation: none; }
+  #phaseWord { min-height: 260px; justify-content: flex-start !important; }
+  .game-arena:has(#phaseWord.active) { min-height: 260px; }
+  #dosukoiWaitingScreen .dosukoi-thrones { top: 86px; height: 320px; }
+  @keyframes dosukoiThroneArrive {
+    from { opacity: 0; transform: translate3d(0, 95px, -160px) scale(0.56); }
+    to { opacity: 0.34; transform: translate3d(0, 0, -48px) scale(var(--throne-depth)); }
+  }
+  @keyframes dosukoiThroneFloat {
+    from { transform: translate3d(0, 0, -48px) scale(var(--throne-depth)); }
+    to { transform: translate3d(0, -12px, -48px) scale(var(--throne-depth)); }
+  }
+
+  /* 対戦者を画面の最背面に奥行きのある円卓として並べる。 */
+  .game-arena { position: relative; isolation: isolate; }
+  .fighter-orbit {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    overflow: hidden;
+    pointer-events: none;
+    perspective: 750px;
+  }
+  .waiting-fighter-orbit { z-index: 0; }
+  .fighter-orbit::before {
+    content: '';
+    position: absolute;
+    width: 120%;
+    height: 62%;
+    left: -10%;
+    top: 48%;
+    border: 1px solid rgba(147, 207, 255, 0.20);
+    border-radius: 50%;
+    transform: rotateX(48deg);
+    box-shadow: 0 0 36px rgba(90, 166, 255, 0.10);
+  }
+  .fighter-orbit .fighter-seat {
+    position: absolute;
+    left: var(--seat-x);
+    top: var(--seat-y);
+    width: var(--seat-width, 82px);
+    height: calc(var(--seat-width, 82px) * 1.42);
+    display: grid;
+    place-items: center;
+    border: 1px solid rgba(177, 219, 255, 0.38);
+    border-radius: 26px 26px 34px 34px;
+    background: linear-gradient(165deg, rgba(121, 204, 255, 0.17), rgba(104, 88, 209, 0.08));
+    color: white;
+    font-size: 1.8rem;
+    opacity: var(--seat-opacity);
+    transform: translate(-50%, -50%) scale(var(--seat-scale)) rotateY(var(--seat-angle, 0deg));
+    box-shadow: 0 22px 38px rgba(4, 10, 35, 0.30), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+    transition: left 520ms ease, top 520ms ease, transform 520ms ease,
+      border-color 380ms ease, background 380ms ease, box-shadow 380ms ease;
+  }
+  .fighter-seat-avatar {
+    display: grid;
+    place-items: center;
+    width: min(58px, calc(var(--seat-width, 82px) * 0.72));
+    height: min(58px, calc(var(--seat-width, 82px) * 0.72));
+    border-radius: 50%;
+    background: rgba(151, 208, 255, 0.12);
+    animation: dosukoiSeatFloat 4.6s ease-in-out var(--float-delay) infinite alternate;
+  }
+  @keyframes dosukoiSeatFloat {
+    from { transform: translateY(5px); }
+    to { transform: translateY(-7px); }
+  }
+  .fighter-orbit .fighter-seat.is-self { display: none; }
+  .fighter-orbit .fighter-seat.is-starter {
+    border-color: #ffc07a;
+    background: rgba(255, 127, 42, 0.42);
+    box-shadow: 0 0 15px rgba(255, 133, 39, 0.75), 0 0 35px rgba(255, 123, 29, 0.32);
+  }
+  .game-arena .phase-wrapper { position: relative; z-index: 1; }
+
   @media (prefers-reduced-motion: reduce) {
+    .dosukoi-throne { animation: none; transform: scale(var(--throne-depth)); opacity: 0.34; }
+    .fighter-orbit .fighter-seat { transition: none; }
+    .fighter-seat-avatar { animation: none; }
     .dosukoi-container::before,
     .dosukoi-container::after,
     .radar-ring,
@@ -6454,7 +6666,7 @@ window.showAlert = showCustomAlert;
     if (overlay) overlay.onclick = () => togglePanel(false);
     if (saveBtn) { saveBtn.onclick = () => {
       const name = nameInput.value.trim();
-      if (name) { localStorage.setItem('essential_profile_name', name); localStorage.setItem('dosukoi_nickname', name); if (window.EssentialProfileBridge && typeof window.EssentialProfileBridge.setProfileName === 'function') window.EssentialProfileBridge.setProfileName(name); if (window.profileManager) { window.profileManager.saveProfile({ nickname: name, emoji: '😊' }); }
+      if (name) { localStorage.setItem('essential_profile_name', name); localStorage.setItem('dosukoi_nickname', name); if (window.EssentialProfileBridge && typeof window.EssentialProfileBridge.postMessage === 'function') window.EssentialProfileBridge.postMessage(JSON.stringify({ name: name })); if (window.profileManager) { window.profileManager.saveProfile({ nickname: name, emoji: '😊' }); }
       if (typeof window.loadPlayerProfile === 'function') window.loadPlayerProfile();
       togglePanel(false); if (window.showCustomAlert) window.showCustomAlert('保存完了', `名前を「${name}」に設定しました。`); }
       else { alert('名前を入力してください'); }

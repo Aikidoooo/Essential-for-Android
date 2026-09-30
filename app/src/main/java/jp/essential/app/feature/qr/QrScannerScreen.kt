@@ -53,6 +53,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -371,7 +372,7 @@ fun QrScannerScreen(onBack: () -> Unit) {
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        ScannerCircleButton("‹", "戻る", onBack)
+                        jp.essential.app.ui.GlassBackButton(onClick = onBack, size = 48.dp)
                         Surface(
                             color = Color.Black.copy(alpha = 0.54f),
                             contentColor = Color.White,
@@ -518,7 +519,7 @@ private data class ZoomRulerMark(
 )
 
 @Composable
-private fun ZoomQuickButtons(
+internal fun ZoomQuickButtons(
     zoomRatio: Float,
     minZoom: Float,
     maxZoom: Float,
@@ -590,7 +591,7 @@ private fun ZoomQuickButtons(
 }
 
 @Composable
-private fun ZoomRuler(
+internal fun ZoomRuler(
     zoomRatio: Float,
     minZoom: Float,
     maxZoom: Float,
@@ -598,10 +599,11 @@ private fun ZoomRuler(
     modifier: Modifier = Modifier,
 ) {
     val currentOnZoomChange by rememberUpdatedState(onZoomChange)
+    val currentZoomRatio by rememberUpdatedState(zoomRatio)
     val curveDepth = 14.dp
     val marks = buildList {
         if (minZoom < 1f) add(ZoomRulerMark("W", minZoom))
-        listOf("1x" to 1f, "3.5x" to 3.5f, "10x" to 10f)
+        ((1..kotlin.math.floor(maxZoom).toInt()).map { "${it}x" to it.toFloat() } + listOf("3.5x" to 3.5f)).sortedBy { it.second }
             .filter { (_, ratio) -> ratio in minZoom..maxZoom }
             .forEach { (label, ratio) -> add(ZoomRulerMark(label, ratio)) }
     }
@@ -610,6 +612,7 @@ private fun ZoomRuler(
     BoxWithConstraints(
         modifier = modifier
             .height(82.dp)
+            .clipToBounds()
             .semantics {
                 contentDescription = "ズーム倍率"
                 stateDescription = "${"%.1f".format(zoomRatio)}倍"
@@ -624,21 +627,26 @@ private fun ZoomRuler(
                 }
             }
             .pointerInput(minZoom, maxZoom) {
+                var dragFraction = 0.5f
                 detectHorizontalDragGestures(
-                    onDragStart = { position ->
-                        val fraction = (position.x / size.width).coerceIn(0f, 1f)
-                        currentOnZoomChange(fractionToZoomRatio(fraction, minZoom, maxZoom))
+                    onDragStart = {
+                        dragFraction = zoomRatioToFraction(currentZoomRatio, minZoom, maxZoom)
                     },
-                ) { change, _ ->
+                ) { change, dragAmount ->
                     change.consume()
-                    val fraction = (change.position.x / size.width).coerceIn(0f, 1f)
-                    currentOnZoomChange(fractionToZoomRatio(fraction, minZoom, maxZoom))
+                    if (maxZoom > minZoom && size.width > 0) {
+                        dragFraction = (dragFraction - dragAmount / size.width).coerceIn(0f, 1f)
+                        currentOnZoomChange((kotlin.math.round(fractionToZoomRatio(dragFraction, minZoom, maxZoom) * 10) / 10f).coerceIn(minZoom, maxZoom))
+                    }
                 }
             }
             .pointerInput(minZoom, maxZoom) {
                 detectTapGestures { position ->
-                    val fraction = (position.x / size.width).coerceIn(0f, 1f)
-                    currentOnZoomChange(fractionToZoomRatio(fraction, minZoom, maxZoom))
+                    if (maxZoom > minZoom && size.width > 0) {
+                        val fraction = zoomRatioToFraction(currentZoomRatio, minZoom, maxZoom)
+                        val selected = (fraction + position.x / size.width - 0.5f).coerceIn(0f, 1f)
+                        currentOnZoomChange((kotlin.math.round(fractionToZoomRatio(selected, minZoom, maxZoom) * 10) / 10f).coerceIn(minZoom, maxZoom))
+                    }
                 }
             },
     ) {
@@ -653,17 +661,22 @@ private fun ZoomRuler(
                 return size.height * 0.48f + centerDip * curve
             }
 
-            for (index in 0..80) {
-                val fraction = index / 80f
-                val x = size.width * fraction
-                val major = index % 10 == 0
+            // 目盛りは画面の等分ではなく実倍率から配置し、整数倍率を大きな目盛りにする。
+            val tickValues = ((kotlin.math.ceil(minZoom * 10).toInt()..kotlin.math.floor(maxZoom * 10).toInt())
+                .map { it / 10f } + listOf(minZoom, maxZoom)).distinct().sorted()
+            for (ratio in tickValues) {
+                val fraction = zoomRatioToFraction(ratio, minZoom, maxZoom)
+                val screenFraction = 0.5f + fraction - currentFraction
+                val x = size.width * screenFraction
+                val index = kotlin.math.round(ratio * 10).toInt()
+                val major = index % 10 == 0 || kotlin.math.abs(ratio - 3.5f) < 0.001f || ratio == minZoom || ratio == maxZoom
                 val medium = index % 5 == 0
                 val tickHeight = when {
                     major -> majorTickHeight
                     medium -> mediumTickHeight
                     else -> minorTickHeight
                 }
-                val baseline = arcBaseline(fraction)
+                val baseline = arcBaseline(screenFraction)
                 drawLine(
                     color = Color.White.copy(alpha = if (major) 0.92f else if (medium) 0.68f else 0.38f),
                     start = Offset(x, baseline - tickHeight / 2f),
@@ -673,8 +686,8 @@ private fun ZoomRuler(
                 )
             }
 
-            val markerX = size.width * currentFraction
-            val markerBaseline = arcBaseline(currentFraction)
+            val markerX = size.width * 0.5f
+            val markerBaseline = arcBaseline(0.5f)
             val markerWidth = 5.dp.toPx()
             val markerHeight = 34.dp.toPx()
             drawRoundRect(
@@ -686,21 +699,35 @@ private fun ZoomRuler(
         }
 
         val labelWidth = 38.dp
+        var lastLabelFraction = -1f
         marks.forEach { mark ->
             val fraction = zoomRatioToFraction(mark.ratio, minZoom, maxZoom)
-            val normalized = fraction * 2f - 1f
-            val curve = 1f - normalized * normalized
-            val labelY = maxHeight * 0.48f + curveDepth * curve - 34.dp
-            Text(
-                text = mark.label,
-                color = Color.White,
-                style = MaterialTheme.typography.labelLarge,
-                textAlign = TextAlign.Center,
-                modifier = Modifier
-                    .offset(x = (maxWidth - labelWidth) * fraction, y = labelY)
-                    .width(labelWidth),
-            )
+            val screenFraction = 0.5f + fraction - currentFraction
+            if (screenFraction in 0.05f..0.95f && kotlin.math.abs(screenFraction - 0.5f) > 0.1f && screenFraction - lastLabelFraction > 0.13f) {
+                lastLabelFraction = screenFraction
+                val normalized = screenFraction * 2f - 1f
+                val curve = 1f - normalized * normalized
+                val labelY = maxHeight * 0.48f + curveDepth * curve - 34.dp
+                Text(
+                    text = mark.label,
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelLarge,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .offset(x = maxWidth * screenFraction - labelWidth / 2, y = labelY)
+                        .width(labelWidth),
+                )
+            }
         }
+        Text(
+            text = String.format(java.util.Locale.US, "%.1fx", zoomRatio),
+            color = Color.White,
+            style = MaterialTheme.typography.labelLarge,
+            textAlign = TextAlign.Center,
+            modifier = Modifier
+                .offset(x = maxWidth / 2 - labelWidth / 2, y = maxHeight * 0.48f + curveDepth - 34.dp)
+                .width(labelWidth),
+        )
     }
 }
 
@@ -831,7 +858,7 @@ private fun openRecognizedUrl(context: Context, value: String): Boolean {
 }
 
 @Composable
-private fun GalleryIcon() {
+internal fun GalleryIcon() {
     Canvas(Modifier.size(20.dp)) {
         val strokeWidth = 1.7.dp.toPx()
         val inset = 2.dp.toPx()
@@ -863,7 +890,7 @@ private fun GalleryIcon() {
 }
 
 @Composable
-private fun ScannerOverlay() {
+internal fun ScannerOverlay() {
     Canvas(modifier = Modifier.fillMaxSize()) {
         val frameWidth = size.width * 0.72f
         val frameHeight = frameWidth
@@ -889,7 +916,7 @@ private fun ScannerOverlay() {
 }
 
 @Composable
-private fun ScannerCircleButton(
+internal fun ScannerCircleButton(
     text: String,
     description: String,
     onClick: () -> Unit,
@@ -981,6 +1008,6 @@ private fun CameraPermissionScreen(
         } else {
             CircularProgressIndicator()
         }
-        Button(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("戻る") }
+        jp.essential.app.ui.GlassBackButton(onClick = onBack)
     }
 }

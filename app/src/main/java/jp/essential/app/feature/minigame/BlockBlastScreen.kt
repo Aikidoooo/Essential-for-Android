@@ -430,16 +430,11 @@ internal fun BlockBlastScreen(onBack: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Box(Modifier.fillMaxWidth().height(50.dp)) {
-                IconButton(
+                jp.essential.app.ui.GlassBackButton(
                     onClick = onBack,
-                    modifier = Modifier
-                        .align(Alignment.CenterStart)
-                        .size(42.dp)
-                        .clip(RoundedCornerShape(15.dp))
-                        .background(Color.White.copy(alpha = 0.48f)),
-                ) {
-                    Text("‹", color = BlockBlastInk, fontSize = 30.sp, fontWeight = FontWeight.Light)
-                }
+                    modifier = Modifier.align(Alignment.CenterStart),
+                    size = 42.dp,
+                )
                 Text(
                     "1.0",
                     modifier = Modifier.align(Alignment.TopCenter),

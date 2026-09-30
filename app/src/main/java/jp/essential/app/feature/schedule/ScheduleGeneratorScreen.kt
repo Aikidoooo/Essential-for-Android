@@ -410,11 +410,7 @@ private fun OutputButton(label: String, modifier: Modifier, isWriting: Boolean, 
 @Composable
 private fun ScheduleTopBar(onBack: () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Surface(
-            shape = CircleShape,
-            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.78f),
-            modifier = Modifier.size(46.dp).clickable(onClick = onBack),
-        ) { Box(contentAlignment = Alignment.Center) { Text("‹", style = MaterialTheme.typography.headlineMedium) } }
+        jp.essential.app.ui.GlassBackButton(onClick = onBack)
         Spacer(Modifier.width(12.dp))
         Column {
             Text("行程表ジェネレーター", style = MaterialTheme.typography.headlineMedium)

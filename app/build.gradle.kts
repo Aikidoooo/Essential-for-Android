@@ -15,8 +15,8 @@ android {
         applicationId = "jp.essential.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 24
-        versionName = "0.6.3"
+        versionCode = 25
+        versionName = "0.6.4"
         buildConfigField("String", "UPDATE_REPOSITORY", "\"$updateRepository\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -104,6 +104,7 @@ dependencies {
     implementation("androidx.camera:camera-lifecycle:1.5.3")
     implementation("androidx.camera:camera-view:1.5.3")
     implementation("com.google.mlkit:barcode-scanning:17.3.0")
+    implementation("com.google.mlkit:text-recognition-japanese:16.0.1")
     implementation("com.google.android.gms:play-services-mlkit-subject-segmentation:16.0.0-beta1")
 
     implementation("io.github.junkfood02.youtubedl-android:library:0.18.1")

@@ -135,6 +135,12 @@ class MainActivity : ComponentActivity() {
         handleIntent(intent)
     }
 
+    override fun onResume() {
+        super.onResume()
+        // HyperOSの省電力・画面復帰後も、実際の対応モードから描画設定を再適用する。
+        applyMotionFps(motionFps.value)
+    }
+
     private fun handleIntent(intent: Intent?) {
         if (intent == null) return
 
