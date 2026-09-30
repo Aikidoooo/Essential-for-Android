@@ -2087,3 +2087,8 @@
 ・プロフィール画像／GIFの共通保存処理に64MB上限を追加。IOスレッドで保存し、失敗時は以前の画像を保持。背景デコードはAndroid9以降で最大辺1920pxへ縮小。GIFのstart／stopにAPI28ガードを追加してAndroid8系との互換性を修正。
 ・更新のホスト／サイズ／ハッシュ／署名確認、非公開インストール画面と通知Receiver、Tile権限、WebViewファイルアクセス無効を確認。SECURITY_REVIEW_0.6.4.mdに範囲と未検証事項を記録。全依存脆弱性の不存在や実機性能は保証しない。
 ・最終Java23／Gradle8.11.1ゲート成功（2分47秒）：testDebugUnitTest 46件失敗0、lintDebug 0 errors／80 warnings、assembleRelease（R8縮小）、installDebug。既存R8のKotlinメタデータ警告は残るがビルド完了。Pixel_10a Android17へ更新、QR／設定のライト白ガラス・ダーク薄灰色ガラス戻るボタンを実画面確認。対戦ログにHTMLと引用符を含む疑似入力を与え、文字描画と投票引数の保持をNodeで確認。
+・Git登録は検証済み25ファイルだけを明示指定。git diff --cached --check成功。公開コミット6e3bff5、main pushと注釈付きv0.6.4タグpush完了。CameraStyleAI系／docsの未追跡資料は公開対象に含めていない。
+・GitHub Actions run 36713346401（https://github.com/Aikidoooo/Essential-for-Android/actions/runs/36713346401）成功。Release https://github.com/Aikidoooo/Essential-for-Android/releases/tag/v0.6.4 はdraft=false／prerelease=false。Android／Xiaomiの初回用・更新用4APKとSHA256SUMS.txt、計5アセットを正式公開。
+・公開APKを独立再取得。Universal SHA-256 a710874501f6fa7c64551978e4f08279f5467524b59f23e52e2baa141fe99f94、Xiaomi SHA-256 a44030ea34e990481b15663405f268e16f4acd3c384d6e5bc8e675a7c44d20a5 がSHA256SUMS.txtと一致。双方jp.essential.app／versionCode25／0.6.4。UniversalのABIはarm64-v8a／armeabi-v7a／x86／x86_64、Xiaomiはarm64-v8a。双方v2署名検証・16KiB zipalign成功。
+・公開v0.6.3 Xiaomi APKも再取得し、v0.6.4との署名証明書SHA-256一致を確認（d9037fa8b1ed3855cd3fad04dd4791e568ffb4123ee8b4f54c5e494a30ab64e8）。エミュレーターに以前からあるjp.essential.app 0.5.5は別署名で、正式APKの上書きはINSTALL_FAILED_UPDATE_INCOMPATIBLEとして拒否された。既存アプリを削除せずデータを保持した。最新Debug版の更新とテーマUI確認は成功しているが、正式署名版の起動確認は未実施。
+・追加でPixel_10aのどすこいメニュー起動／Firebase接続済み表示を確認。複数端末の対戦、実サイト同時ダウンロード、HyperOS3/4実機・省電力・全カメラレンズ・長時間安定性は未確認。ビルド警告80件と既存R8メタデータ警告を残すが公開ゲートは成功。

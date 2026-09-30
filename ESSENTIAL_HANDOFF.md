@@ -15,7 +15,7 @@
 - プロジェクト: `D:\#AI開発\Android\Essential`
 - Git remote: `https://github.com/Aikidoooo/Essential-for-Android.git`
 - 現在のブランチ: `main`
-- 公開準備中のバージョン: `v0.6.4`（versionCode 25）。直近の公開済み版は`v0.6.3`。公開結果は`Work history.txt`の末尾で確認する。
+- 現在の公開バージョン: `v0.6.4`（versionCode 25）。コミット`6e3bff5`、公開CI `36713346401`成功。公開結果とAPK検証は`Work history.txt`の末尾で確認する。
 - 0.6.4の現行仕様は文字スキャン、ホーム並べ替え、複数URL同時ダウンロード、GIFプロフィール背景、専用編集画面、設定開閉motion、テーマ別ガラス戻るボタン、2〜10人のどすこい背景。セキュリティ確認範囲は`SECURITY_REVIEW_0.6.4.md`。
 - v0.6.0はPro Film削除、Downloader拡張、音声分離、アプリ共通レベル／プロフィール、Liquid Glass下部ナビゲーション、日課・QR・ミニゲーム改善、Release初回起動クラッシュ修正、Android／Xiaomi向け4配布モデルを含む。
 - v0.5.9のアプリ公開コミットは`847939d Essential 0.5.9を公開`、Release workflow修正コミットは`421925d Android Release workflowを修正`。タグは`v0.5.0`〜`v0.5.9`。
