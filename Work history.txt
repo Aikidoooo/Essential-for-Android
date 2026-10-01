@@ -2354,3 +2354,13 @@
 ・gfxinfo初回は前テストのダウンローダー画面が残っていたためタブ計測として採用せず、再起動してホームと下部タブを確認して再計測。16回タブ移動は修正前443フレーム中37期限超過（8.35%、中央値21ms）、最終446中32（7.17%、中央値19ms、95百分位61ms）。エミュレーター・Debug・ホスト負荷を含む結果で、実機での改善率や全画面の滑らかさを証明するものではない。フレーム落ちが残ることをRelease説明へ明記。
 ・合計400MB条件を守るため配布からuniversalを除外する方針に変更。容量チェックは配布全APKに本体＋展開ライブラリ＋64MBのデータ枠で適用し、CPU別4種類を保持。利用者のメディア・keepログは増えるため無制限の保存容量は保証しない。CIのYAML構文検査成功。
 ・行程表／ファイル参照／ミニゲーム一覧／日課も開いて最終スクリーンショットを目視確認。画面欠落・重なりなし。ゲーム内の全操作・ファイル加工の全組合せは今回未検証。画面検証画像と階層はapp/build/visual-qa/v065-*に保存。
+
+【2026-10-02 v0.6.5公開完了・公開APK独立検証】
+・確認した87ファイルのみをステージ。まんなか新規ソース3箇所の行末空白を修正し、git diff --cached --check成功後、8e6fee074aa3f0450a95612ab5339d5648e34ca8「Essential v0.6.5: まんなか・通知ログ・統合スキャナーとHyperOS軽量化」をコミット。mainと注釈付きv0.6.5タグをGitHubへpush。研究用2ツリーと無関係なdocs3件を含めず保持。
+・GitHub Actions 36887262866成功。Rust JNI 4 ABI再ビルド、単体・Lint・署名Release・arm64限定構成・配布容量検査が成功。Release https://github.com/Aikidoooo/Essential-for-Android/releases/tag/v0.6.5 はdraft=false・prerelease=false、7 APK＋SHA256SUMS.txt＋SIZE_REPORT.jsonの9アセットで公開。
+・全7 APKと資料2点を公開URLから独立ダウンロードし、全APKでSHA256SUMS一致、jp.essential.app／versionCode 26／versionName 0.6.5、CPU単独、APK v2署名、zipalign -c -P 16 4を検証成功。証明書SHA-256 d9037fa8b1ed3855cd3fad04dd4791e568ffb4123ee8b4f54c5e494a30ab64e8で過去の正式版記録と一致。
+・XIAOMI初回／更新とANDROID初回／arm64更新はすべて97,694,706バイト、SHA-256 a565edc991d0a02190566fc8b4568edaadc7a1013b79fb8a675dd22018ca1353で一致。HyperOS向け設定案内はメーカー判定であり、別の署名・別の機能モデルではない。旧Xiaomi 132,726,735から35,032,029バイト、約26.4%削減。
+・armeabi-v7a 109,417,880バイト（ea248d7f5cc97fe9034770d54bd6238f4b2dcfde22ad369cd9c01fd7dca73b06）、x86 120,054,148（8ea070adfb1d42b9ce8c9a8597a41b8af961f59f44a54a61bfc2fd1bb3cdd1ff）、x86_64 101,134,293（e41f6fca642942559821cb7c13f4d9bce11925214454b16f3bc2ee6ae698fae1）。全配布で本体＋ネイティブ展開＋64MBデータ枠の概算252.1〜292.7MB、400MB以内。
+・arm64／x86_64のELF PT_LOAD整列は全ネイティブライブラリ16KiB以上を確認。32bitは4KiBのライブラリを維持しており、64bit端末での16KiB動作検証と混同しない。64bit旧FFmpegアーカイブなし、Python／FFmpegKitありを公開APKでも確認。
+・追加目視：プロフィール・設定を開閉し、報酬一覧の展開／縮小を確認。保存設定は変更せず、報酬の未解放状態を維持。公開署名APKの実機自己更新・HyperOS実機の背景記録持続性・全画面の実機FPSは未確認。既存の別署名エミュレーター正式版を削除しない。
+・公開証跡：app/build/visual-qa/v065-release.json、v065-public-apk-verification.json、v065-public-hash-size.json、v065-installed-size.json。独立取得APK・署名／badging資料はapp/build/release-verification/v0.6.5。現行引き継ぎのバージョン・配布構成・正しい署名用ビルド環境を更新。

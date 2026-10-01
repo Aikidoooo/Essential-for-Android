@@ -15,8 +15,10 @@
 - プロジェクト: `D:\#AI開発\Android\Essential`
 - Git remote: `https://github.com/Aikidoooo/Essential-for-Android.git`
 - 現在のブランチ: `main`
-- 現在の公開バージョン: `v0.6.4`（versionCode 25）。コミット`6e3bff5`、公開CI `36713346401`成功。公開結果とAPK検証は`Work history.txt`の末尾で確認する。
-- 0.6.4の現行仕様は文字スキャン、ホーム並べ替え、複数URL同時ダウンロード、GIFプロフィール背景、専用編集画面、設定開閉motion、テーマ別ガラス戻るボタン、2〜10人のどすこい背景。セキュリティ確認範囲は`SECURITY_REVIEW_0.6.4.md`。
+- 現在の公開バージョン: `v0.6.5`（versionCode 26）。コミット`8e6fee0`、公開CI `36887262866`成功。公開結果とAPK検証は`Work history.txt`の末尾で確認する。
+- 0.6.5はまんなか、通知ログ、統合スキャナー、ホーム／機能一覧／プロフィールの横スワイプ、更新APK回収、64bitの未使用FFmpeg除去、低メモリ端末の描画負荷削減を含む。単体62件・エミュレーター33件成功。HyperOS実機は未確認、タブのフレーム計測には7.17%の期限超過が残る。
+- 配布はCPU別7 APK＋ハッシュ＋容量レポートの9アセット。universalは容量条件のため配布しない。ANDROID初回はarm64、他CPUは対応UPDATE APKで初回導入可能。XIAOMI版とANDROID arm64は同内容・同署名で、HyperOS案内はメーカー判定で表示。`docs/HYPEROS.md`と`docs/UPDATE_STORAGE.md`を参照。
+- 0.6.4から文字スキャン、ホーム並べ替え、複数URL同時ダウンロード、GIFプロフィール背景、専用編集画面、設定開閉motion、テーマ別ガラス戻るボタン、2〜10人のどすこい背景を維持。前版セキュリティ確認範囲は`SECURITY_REVIEW_0.6.4.md`。
 - v0.6.0はPro Film削除、Downloader拡張、音声分離、アプリ共通レベル／プロフィール、Liquid Glass下部ナビゲーション、日課・QR・ミニゲーム改善、Release初回起動クラッシュ修正、Android／Xiaomi向け4配布モデルを含む。
 - v0.5.9のアプリ公開コミットは`847939d Essential 0.5.9を公開`、Release workflow修正コミットは`421925d Android Release workflowを修正`。タグは`v0.5.0`〜`v0.5.9`。
 - GitHub Release `Essential v0.5.9`は一度正式公開したが、2026-09-21のユーザー指示によりRelease本体と添付アセット6件を削除した。`v0.5.9`タグ、`main`、コミット、GitHub Actions履歴は保持している。再公開する場合は同一タグ向けにReleaseを作り直す必要がある。
@@ -38,8 +40,8 @@
 ## Androidビルド構成
 
 - `applicationId` / namespace: `jp.essential.app`
-- `versionCode = 20`
-- `versionName = "0.5.9"`
+- `versionCode = 26`
+- `versionName = "0.6.5"`
 - `compileSdk = 36`、`targetSdk = 35`、`minSdk = 26`
 - Android Gradle Plugin `8.9.1`
 - Gradle Wrapper `8.11.1`
@@ -47,18 +49,18 @@
 - Java/Kotlin JVM target `17`
 - Jetpack Compose UI/Foundation `1.7.6`
 - Material 3 `1.4.0`
-- 対応ABI: `arm64-v8a`、`armeabi-v7a`、`x86`、`x86_64`、universal APK
+- 対応ABI: `arm64-v8a`、`armeabi-v7a`、`x86`、`x86_64`。universalはローカルビルドのみ、配布しない。`-PHYPEROS_PACKAGE=true`でarm64限定ビルド。
 - Kotlin/Composeのビルドは日本語パスで問題が出ることがあるため、ASCII Junction経由で実行する。
 
 ### 標準ビルド（PowerShell）
 
 ```powershell
 $junction = 'C:\Users\waki1\Desktop\essential-build'
-$env:GRADLE_USER_HOME = 'C:\Users\waki1\Desktop\essential-gradle-home'
-$env:GRADLE_OPTS = '-Dkotlin.compiler.execution.strategy=in-process'
-$env:ANDROID_USER_HOME = 'C:\Users\waki1\Desktop\essential-android-home'
+$env:JAVA_HOME = 'C:\Program Files\Java\jdk-23'
+$env:GRADLE_USER_HOME = "$junction\.gradle-user-home"
+$env:ANDROID_USER_HOME = "$junction\.gradle-user-home\android-user-home"
 Set-Location -LiteralPath $junction
-.\gradlew.bat :app:testDebugUnitTest :app:assembleDebug --no-daemon --max-workers=1
+.\gradlew.bat :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest '-Pkotlin.compiler.execution.strategy=in-process' '-Pkotlin.incremental=false' --no-daemon --max-workers=1
 ```
 
 通常のCI相当検査は`clean test lint assembleDebug --no-daemon --max-workers=1`。Kotlin daemonのアクセス拒否警告後にfallback compilerへ切り替わることがあるが、`BUILD SUCCESSFUL`なら既知の環境警告である。
