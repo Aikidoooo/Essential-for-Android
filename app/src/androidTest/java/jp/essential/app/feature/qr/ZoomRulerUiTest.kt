@@ -1,42 +1,39 @@
 package jp.essential.app.feature.qr
 
-import android.graphics.Bitmap
-import androidx.compose.foundation.layout.width
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.runtime.mutableFloatStateOf
+import android.content.Context
+import androidx.test.core.app.ApplicationProvider
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.asAndroidBitmap
-import androidx.compose.ui.test.click
-import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onNodeWithContentDescription
-import androidx.compose.ui.test.performTouchInput
-import androidx.compose.ui.unit.dp
-import androidx.test.platform.app.InstrumentationRegistry
-import org.junit.Assert.assertEquals
+import java.io.File
 import org.junit.Rule
 import org.junit.Test
-import java.io.File
-import kotlin.math.ln
+import org.junit.Assert.assertTrue
 
 class ZoomRulerUiTest {
-    @get:Rule val rule = createComposeRule()
+    @get:Rule val compose = createComposeRule()
 
-    @Test
-    fun largeTickSelectsExactTwoTimesZoom() {
-        val zoom = mutableFloatStateOf(1f)
-        rule.setContent {
-            MaterialTheme { ZoomRuler(zoom.floatValue, 0.5f, 10f, { zoom.floatValue = it }, Modifier.width(360.dp)) }
+    @Test fun movesContinuouslyWithOnlyRequestedMajorLabels() {
+        var requested = 10f
+        compose.setContent {
+            var zoom by remember { mutableFloatStateOf(10f) }
+            ZoomRuler(zoom, 1f, 30f, { requested = it; zoom = it }, Modifier.fillMaxWidth())
         }
-        val ruler = rule.onNodeWithContentDescription("ズーム倍率")
-        // 2x目盛りの描画位置と同じ対数座標をタップし、整数倍率への一致を確認する。
-        val position = 0.5f + ln(2f / 0.5f) / ln(10f / 0.5f) - ln(1f / 0.5f) / ln(10f / 0.5f)
-        ruler.performTouchInput { click(Offset(width * position, height * 0.6f)) }
-        rule.runOnIdle { assertEquals(2f, zoom.floatValue, 0.0001f) }
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
-        File(context.getExternalFilesDir(null), "zoom-ruler-supported-range.png").outputStream().use {
-            ruler.captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it)
+        compose.onNodeWithText("3.5x").assertDoesNotExist()
+        compose.onNodeWithText("4x").assertDoesNotExist()
+        compose.onNodeWithContentDescription("ズーム倍率").performTouchInput {
+            swipe(center, center.copy(x = center.x - 73f), 300)
+        }
+        compose.waitForIdle()
+        assertTrue(requested > 10f && requested < 30f)
+        assertTrue(kotlin.math.abs(requested * 10f - kotlin.math.round(requested * 10f)) > 0.001f)
+        val bitmap = compose.onRoot().captureToImage().asAndroidBitmap()
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        File(context.cacheDir, "zoom-ruler-ui.png").outputStream().use {
+            bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
         }
     }
 }

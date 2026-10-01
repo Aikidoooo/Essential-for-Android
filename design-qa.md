@@ -679,3 +679,148 @@ final result: passed on AVD; physical-device verification not performed
 - [x] Debug APKビルド、AVDへインストール、画面確認
 
 final result: passed on AVD; physical-device verification not performed
+
+---
+
+## 2026-10-01 まんなか：添付4画面に基づくUI検証
+
+### 比較対象と状態
+
+- Source visual truth（メイン）：`C:/Users/waki1/AppData/Local/Temp/codex-clipboard-9e4e3e93-892d-4d11-9f57-3e8d5a650110.png`
+- Source visual truth（今日）：`C:/Users/waki1/AppData/Local/Temp/codex-clipboard-5b53a050-7802-440c-b413-9eb9655d7e90.png`
+- Source visual truth（明日）：`C:/Users/waki1/AppData/Local/Temp/codex-clipboard-bb3440c4-a098-46ae-9476-2c3e72ce6baf.png`
+- Source visual truth（明後日）：`C:/Users/waki1/AppData/Local/Temp/codex-clipboard-fbbc3e47-506f-4fe3-b4d1-10a55eccb92f.png`
+- 実装：`D:/#AI開発/Android/Essential/app/src/main/java/jp/essential/app/feature/mannaka/MannakaScreen.kt`と`MannakaControls.kt`。既存Androidアプリを変更し、Webモックや新しいサイトは作成していない。
+- Implementation screenshot：`D:/#AI開発/Android/Essential/app/build/visual-qa/mannaka-reference-main.png`、`mannaka-reference-time-today.png`、`mannaka-reference-time-tomorrow.png`、`mannaka-reference-time-day-after.png`。
+- 状態：ライトテーマ、参加者2人・駅未選択、今日19:00。下部パネルは今日／明日／明後日の各選択状態で19:00。MainActivityからopen_feature=mannakaで起動した実アプリの画面を取得した。
+- 参考画像・最終実装画像はともに1290×2796px。AVDをdensity 480の430×932dpへ一時変更して比較。Androidのステータス・ジェスチャーバーはOSの表示を保持し、画像内のiOS表示は再作成していない。検証後は元の1080×2424px／density 420へ戻す。
+- 比較ボードは双方を同じ比率で645×1398pxへ縮小し、同じ入力画像に並べて確認した。CSSサイズはネイティブ実装のため該当なし。
+
+### 比較証跡と確認結果
+
+- Full-view comparison：`app/build/visual-qa/mannaka-comparison-main.png`、`mannaka-comparison-today.png`、`mannaka-comparison-tomorrow.png`、`mannaka-comparison-day-after.png`。両画像を同時に開いて、情報の順序、丸いカード、色、2人の入力、追加ボタン、検索ボタン、集合時間パネルの構成を確認。
+- Focused region comparison：`app/build/visual-qa/mannaka-comparison-time-detail.png`。集合日の選択位置、時刻の大きさ、±30／±5、6プリセット、決定ボタンを文字が読める大きさで確認。
+- フォント・文字組み：太字中心だった従来UIを通常ウェイトへ変更。26spの機能名、18spの時間／行動、17spの名前、38spのパネル時刻、12〜16spの補助情報を使用。時刻・駅入力・下部ボタンに文字欠けや重なりがない。iOSの日本語フォントと同一の書体は同梱せずAndroid標準フォントを使用する。
+- 余白・配置：集合時間→任意の遊び→参加者→追加→入力案内→検索の順を再現。カード半径28dp、下部パネル半径30dpと外側8dpの余白を採用。Androidの戻る導線と標準タップ領域を保持し、プリセット2段目／決定ボタンの縦位置は参照より少し下になる。初期2人で検索ボタン全体が表示されることを確認。
+- 配色：背景FFF8F3、アクセントFF665B、白いカード、FFF0EBの薄い入力面、落ち着いた補助文字で参考のクリーム／コーラル系へ揃えた。上端の緑色を取り除き、システムバーの背面まで同じ背景にした。機能内の文字色は親の緑系から独立させた。
+- 画像・アイコン品質：ラスタ画像のある画面ではない。Google公式Material Iconsの12ベクターをそのまま変換して使用し、大きなビットマップやアイコンSDKを追加していない。ピン、人物、時計、飲食、履歴、歯車、ハート、追加、きらめきの役割が一致し、ぼけ・欠けはない。参照のSF風アイコンとは形状が一部異なる。Apache-2.0全文と出典を同梱。
+- 文言・内容：「まんなか」「みんなの“まんなか”、どこだろう？」「集合時間」「集まって何する？（任意）」「参加者」「名前（任意）」「最寄り駅を選ぶ」「駅まで何分？（任意）」「参加者を追加」「中心駅を探す」を反映。ホームのウィジェット名は依頼どおり「まんなか！」を保持。
+
+### 修正と再比較の履歴
+
+1. 初回ネイティブ表示で検索ボタンがジェスチャーバーの下へ一部隠れるP2を確認（`mannaka-restyled-dark.png`）。要約カードの行間／内側余白と参加者カードの余白を調整。1290×2796pxのメイン実画面を再取得し、検索ボタンが全体表示されることを確認。
+2. 同寸法の比較で上端の緑色、下部パネルの外側余白とドラッグハンドル、時刻ステップが接するP2を確認（`mannaka-main-before-final.png`、`mannaka-time-before-final.png`）。まんなか専用背景を背面へ適用し、パネル外側8dp、ハンドルの余白、ステップの間隔／高さ、時刻の文字サイズを修正。全4状態と時刻部分の比較ボードを再生成して解消を確認。
+3. 最初の自動撮影は別Composeルートを取得してパネルが写らなかったため、MainActivityをActivityScenarioで起動し、UiAutomationで実画面を取得する方法へ修正。押下演出が収まる待機を追加して全4状態を再取得。最終比較ボードはこの実画面から生成した。
+
+### 機能・検証と限界
+
+- `testDebugUnitTest`：55件失敗0。追加2件で時刻の加減算／日付内への折り返し／時刻のゼロ埋めを確認。
+- `MannakaUiTest`：3件成功。実アプリで3日選択、±5分／±30分、18:30プリセット、決定後の表示、参加者3人へ追加して削除、名前、駅まで12分、4テンプレート、自由入力の美術館を確認。選択駅・名前・駅までの時間の保存形式の往復も確認。
+- `lintDebug`：0 errors／83 warnings。今回の機能から出るLint警告は解消。集合日の移動量は配置時に読むoffsetラムダへ変更し、アニメーションの毎フレームの再構成を避けた。
+- `assembleDebug`／`assembleDebugAndroidTest`成功。最終Debug APKはAVDへ更新。
+- ネイティブアプリのためブラウザーコンソール確認は該当なし。実機、200%文字サイズ、回転操作、検索→駅→施設の全通し操作、今回追加したお気に入り／履歴の実操作・端末内永続化、フレーム時間は未検証。これらを今回の画像一致の証明には含めない。
+- 集合時間と駅までの時間は予定のメモ。経路時間・運賃に基づく計算を追加したと説明しない。
+
+### 残る微調整（P3）
+
+- Android標準フォントとGoogle公式アイコンの形状、影、タップ領域による縦位置はiOSの参考と完全一致しない。「こんな感じのUI」という依頼に沿うネイティブ実装上の調整として許容する。画面構成、色、操作順、各パネルの状態を変更するP0／P1／P2は残っていない。
+
+final result: passed
+
+## 2026-10-01 まんなか：カード内駅候補と専用結果画面
+
+### 参照と確認した画像
+
+- 参照：codex-clipboard-db36951e-6e15-4f6a-a858-e4631994e253.png（駅入力中）、codex-clipboard-161ff66c-9f0f-40a5-9284-0778d7e540f4.png（まんなか候補）。
+- 実装：app/build/visual-qa/mannaka-reference-inline.png、mannaka-reference-results.png。Pixel_10a AVDを一時的に1290×2796px／density480へ変更して取得。
+- 全体の比較：mannaka-comparison-inline.png、mannaka-comparison-results.png。
+- 部分の比較：mannaka-comparison-inline-detail.png、mannaka-comparison-map-detail.png、mannaka-comparison-result-card-detail.png。比較はcompare_mannaka_followup.pyで作成し、全体と各領域を確認した。
+- 比較画面の駅と住所はUIテスト用データである。実際の地図タイルを読み込み、テスト用の座標から順位・直線距離を算出している。参考画像の駅順位と移動時間を製品の計算結果として固定していない。
+
+### 検出した差分と修正
+
+1. P0：WebViewの地図が空白。地図ライブラリー・3マーカー・タイルは取得されていたが、地図要素のCSS高さが0pxになっていた。innerWidth／innerHeightを使って実寸を設定し、invalidateSizeで表示を更新。最終DOMは幅398・高さ242・3マーカー・実タイル6枚。最終画像で地図と3マーカーを確認した。
+2. P1：駅入力が独立したパネルになっており、参照のカード内候補と違っていた。参加者カード内に候補4行、ピン付き入力欄、クリア、入力状態の枠線を配置。名前がある場合は先頭文字をアバターへ表示。650ms待機・旧検索の取り消し・一致候補の先行表示で操作を維持した。
+3. P1：結果が入力画面の下へ追加される構成。専用「まんなか候補」画面に移し、戻る・順位案内・地図・本命・他の候補・共有・周辺施設を順に配置。番号マーカーまたは候補行を選んで本命カードを切り替えられる。
+4. P2：本命カードの余白と参加者の最長表示が大きく、アバターの高さが揃わなかった。最長バッジをアバター上へ重ね、文字の行高と余白を調整。最大距離を大きく、別候補は小さな順位行にした。共有ボタンを順位行の直後へ配置した。
+5. P2：地図右下の出典が角丸で切れた。出典の右／下へ余白を設け、最終画像で「© OpenStreetMap contributors」の全文が読めることを確認。
+6. P2：入力が伸びると検索ボタンが下に押し出される。IMEの高さがある場合は案内と検索ボタンをIME上へ固定し、リスト下端へ余白を追加した。今回のAVDはIMEが小型入力バー表示で、通常サイズのキーボードの下端配置を実機で確認した証拠には含めない。
+
+### 検証と範囲
+
+- 単体テスト57件成功。最大距離を平均距離より優先するケース、同じ駅の別要素を候補からまとめるケースを追加。
+- UIテスト4件成功（最終20.415秒）。旧検索を取り消し、一致駅を先に表示し、4行の候補から選択、全員の駅を選んで結果へ遷移、DOMの地図寸法と3マーカー、マーカー操作、候補行の切り替え、入力画面への戻りと選択値保持を確認。従来の集合時間・参加者追加削除・歩行時間・4テンプレートと自由入力・保存形式のテストも継続。
+- Lintは0 errors／83 warnings。ic_mannaka_settingsの既存VectorPath警告を含み、警告ゼロではない。Debug／AndroidTest APKの最終ビルド成功。
+- 実データ取得では町屋の2路線、町屋駅前、町屋二丁目を確認。全国の正規表現・周辺の正規表現はタイムアウトしたため、地域の駅データを取得して端末側で絞る方式へ変更した。周辺取得失敗時でも先に表示した一致駅は利用できる。
+- 地図のコンソールはデバッグ版だけログに記録。ライブラリー・描画関数を読み込み、JavaScriptエラーで空白になった状態を成功扱いせず、実画像とDOMの寸法で修正を確認した。
+- 実機、通常キーボード時の下端配置、200%文字サイズ、回転、極端な人数でのフレーム時間、駅から施設までの実ネットワーク全通し、共有先への送信、履歴とお気に入りの永続化は未検証。
+- 検証データによる端末履歴への影響を防ぐため、UIテスト前後に履歴・お気に入りを退避・復元する処理を追加し、4件成功（19.783秒）を確認。以前の今回のテスト予定だけを完全一致で取り除き、利用者の予定は保持する。画面寸法・density・IME設定・テーマを元の状態へ戻し、実アプリを再起動した。
+
+### 意図した差分と残る微調整
+
+- 電車の経路時間は取得していないため、参考の「13分」などを表示せずkmの直線距離とその計算基準を表示。運賃・乗換を考慮した順位ではない。実経路は外部地図で確認できる。
+- Apple Mapsの地図画像を流用せず、OpenStreetMapの地図を使用。地図の配色・文字・王冠の字形、Android標準の戻る矢印・IME・安全領域、参加者の名前表示は参照と異なる。候補一覧はスクロール可能で、端末寸法によって3件目の表示位置が変わる。
+- 全体と部分の再比較で、今回の対象の画面構成・入力候補・地図表示・候補選択を阻害する未修正のP0／P1／P2は確認していない。上記の未検証条件は画像一致や実機性能の証明へ含めない。
+
+final result: passed
+
+
+## 2026-10-01 Essential配色・戻るボタン統一
+
+ユーザー指示により参考画像のコーラル配色からEssential共通テーマへ変更。入力・結果・シート・地図マーカーが共通配色を参照する。入力と結果にGlassBackButtonを使用し、ヘッダーの歯車を削除。説明シートは下部リンクへ移動して保持。
+
+更新成功後のAndroid UIテスト4件成功。入力／結果のライト画面を目視確認し、緑とクリーム、ボタン形状、ヘッダーに歯車がないこと、結果地図と戻る操作を確認。lintエラー0、警告85（未使用になった旧戻る・歯車vectorの警告を含む）。ダーク配色は共通テーマの参照をコード確認し、実機とダーク画面の目視は未実施。画像：app/build/visual-qa/mannaka-essential-main.png、mannaka-essential-results.png。
+
+
+## 2026-10-01 全国駅オフライン検索と400MB条件
+
+Essential共通配色と戻るボタン、歯車の非表示、テンプレート3種類を維持。実際の全国駅データ（国土交通省2025年度）を使った町屋・両国の入力から中心駅候補表示を確認。施設検索エラー時にも結果・再検索・地図検索を使用可能。機内モードで駅選択と中心駅結果表示を確認した。地図タイルと施設検索は引き続き通信が必要。
+
+最終UI・容量テスト6件成功、単体60件成功、lintエラー0／警告85。容量はAndroidのappBytes＋dataBytesで400MB以下を確認。地図専用キャッシュは12MB以内。CPU別配布APKは約109～139MB、Universalはインストール容量400MB条件を満たさないため対象外。実機の容量や将来の利用者保存データの増加は未保証。
+
+スクリーンショット：app/build/visual-qa/mannaka-offline-final-results.png。数値の詳細：app/build/visual-qa/mannaka-storage-size.json、mannaka-app-size.json。
+
+
+## 2026-10-01 駅選択後の周辺施設画面
+
+中心駅候補検索では施設通信を行わず、駅選択後に専用画面へ遷移。未指定なら3テンプレートと自由入力を表示し、指定済みなら選択駅で施設検索を自動開始。条件の変更、施設エラー、再検索、地図検索、共有、戻る操作を保持。
+
+UI7件＋容量1件の計8件成功。条件選択と自動検索結果の画面を目視確認し、Essential共通配色・戻るボタン・ラベル・検索条件・CTAの表示を確認。自動検索結果の施設は注入したテスト応答。実サービス施設の網羅性や営業状態は未検証。
+
+最新検証端末のアプリ＋データ容量は約375.5MBで400MB以内。CPU別Debug APKの容量検査も成功。実機／Universalインストール容量／保存データによる将来の増加については従来の条件と制限を維持。
+
+画面：app/build/visual-qa/mannaka-facility-activity.png、mannaka-facility-preset-custom.png。検証：mannaka-facility-flow-ui-test.txt、mannaka-facility-flow-size.json。
+
+## 2026-10-01 まんなか Progressive Motion UI
+共通ProgressiveWidgetを入力・駅候補・活動選択・施設結果・シートへ適用。段階別の再生周期、画面内表示時の開始、安定したリストキーを採用。画面切替のWebView二重生成なし。Debug/Lint/AndroidTestビルド成功、既存のUI7件＋容量1件成功。活動選択と施設結果の完了画像に表示欠落なし。実機FPSは未計測。検証エミュレーターでアプリ＋データ373,948,416バイト、400MB以内。ログと画像はapp/build/visual-qa/mannaka-motion-*へ保存。
+
+## 2026-10-01 通知ログ
+ホームの新規ベルアイコンのウィジェットから専用画面へ開くことを、実際のタップとUI hierarchyで確認。Essentialの配色、GlassBackButton、半透明ガラスカード、ProgressiveWidgetを採用。通常ダーク画面とライトのテスト通知カードに文字欠落・重なりなし。秒単位の受信時刻、本文、keep、削除、許可／接続待ち表示を確認。通知アクセス設定は利用者が許可する導線。最終4テスト成功、Lintエラー0。72時間境界とkeepの永続保存は時刻を固定したDBテスト、実受信・内容更新・同じ本文の新規通知は実NotificationManagerで確認。実機と72時間の実時間経過は未検証。インストール容量は検証AVDで368,791,552バイト。ログ・画像はapp/build/visual-qa/notification-*に保存。
+
+## 2026-10-01 メイン3画面の横スワイプ
+ホーム↔機能一覧↔プロフィールを横スワイプで切替。既存のタブ選択・方向別Progressive Motionとスクロール保存を維持。両端は停止、個別機能では無効。最終Compose UI3件成功：双方向・端・タブタップ、縦／短い移動、長押しの実際の並べ替え、機能内の非切替を検証。並べ替え設定はテスト後に復元。Lintエラー0、Debugビルド成功。実機操作感は未確認。ログはapp/build/visual-qa/tab-swipe-*。
+
+## 2026-10-01 統合スキャナー
+参考画像2と実装画像を同じ比較出力で確認。カメラ映像を背景に、倍率→白い撮影ボタン→写真アイコン／モード選択／Autoの順で配置。ユーザー指定のQR・文字への名称変更、QR限定Auto、倍率プリセット40%縮小を反映。QR／文字の両画面で文字欠落・重なりなし。Essentialの戻る操作とガラス調選択を維持。
+最新エミュレーターUI7件と容量1件成功。モード復元と旧ショートカット、撮影処理、倍率、タブ操作を検証。実機と複数レンズは未検証。画像：app/build/visual-qa/scanner-qr-ui.png、scanner-text-ui.png。
+final result: passed
+
+## 2026-10-01 スキャナー倍率・モード切替
+初期表示は1.4倍のプリセットだけでシャッター直上。ドラッグ時のみ既存目盛りへ切替し、停止後に復帰。文字モードのAutoは位置を固定して減光と斜線を表示し、使用不可のセマンティクスを確認。QR・文字のライブカメラ画像に重なり・文字欠落なし。選択ピルはホームのバネ設定で移動し、次の映像までは直前のフレームを引き継ぐ。複数レンズ実機とFPSは未検証。
+画像：app/build/visual-qa/scanner-gesture-qr.png、scanner-gesture-text.png。UI5件成功。
+final result: passed
+
+## 2026-10-01 切替時の段階表示を解除
+QR・文字画面でProgressiveWidget再生と映像フェードを削除し、ガラス選択ピルの移動は維持。QRシャッターの斜線と無効状態、文字側の撮影可能状態を確認。倍率目盛りの横ドラッグ展開、連続更新、プリセット変更時の表示、停止後の復帰をUIテストで確認。更新後にUI5件＋容量1件成功。QR画像に文字欠落・重なりなし。実機のFPSと複数レンズは未確認。
+画像：app/build/visual-qa/scanner-no-reload-qr.png、scanner-no-reload-text.png。
+final result: passed
+
+## 2026-10-01 各要素の切替モーション
+斜線を連続線描画＋透過、上部ラベルを縦移動＋透過と幅補間、緑QR枠を微小拡縮＋透過で出入りさせる。共通のモード進行度で同期し、画面全体の再表示演出はなし。切替96msの中間状態と両方向の完了状態をテストで確認。UI5件＋容量1件成功。文字側の静止画で緑枠と撮影斜線が消え、Auto斜線が残ることを確認。実機FPSは未計測。
+画像：app/build/visual-qa/scanner-element-motion-qr.png、scanner-element-motion-text.png。
+final result: passed
+
+## 2026-10-01 通知アクセス設定欄とロゴ
+許可済みの実画面で通知アクセス設定カードがなく、戻るボタン横に水色ベルロゴがあることを確認。画面を開いたまま通知アクセスを取消・付与してカードの再表示・非表示をUIテストで確認。元のアクセス状態へ反映完了まで待って復元。既存通知受信・keep・削除と容量を含む5件成功。実機は未確認。
+画像：app/build/visual-qa/notification-access-header.png。結果：notification-access-verified-tests.txt。
+final result: passed

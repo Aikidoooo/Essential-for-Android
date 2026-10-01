@@ -114,6 +114,7 @@ internal object StorageMaintenancePolicy {
         "Essential-",
         "essential-",
         "yt-dlp",
+        "text-scan-",
     )
 
     fun isTransientCacheName(name: String): Boolean =

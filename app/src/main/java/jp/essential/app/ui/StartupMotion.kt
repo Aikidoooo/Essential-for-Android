@@ -31,6 +31,7 @@ import jp.essential.app.ui.theme.LocalEssentialDark
 internal val LocalProgressiveMotionCycle = compositionLocalOf { 0L }
 internal val LocalProgressiveMotionDirection = compositionLocalOf { 0 }
 internal val LocalProgressiveMotionCompleted = compositionLocalOf { false }
+internal val LocalProgressiveMotionEager = compositionLocalOf { false }
 
 @Composable
 internal fun StartupGate(content: @Composable () -> Unit) {
@@ -74,6 +75,7 @@ internal fun ProgressiveWidget(index: Int, modifier: Modifier = Modifier, conten
     val motionCycle = LocalProgressiveMotionCycle.current
     val horizontalDirection = LocalProgressiveMotionDirection.current
     val motionCompleted = LocalProgressiveMotionCompleted.current
+    val eagerMotion = LocalProgressiveMotionEager.current
     // タブ入場時は保存済みの表示完了状態を復元せず、毎回最初から再生する。
     var revealed by if (motionCycle == 0L) {
         rememberSaveable { mutableStateOf(false) }
@@ -83,12 +85,13 @@ internal fun ProgressiveWidget(index: Int, modifier: Modifier = Modifier, conten
     var visibleInViewport by remember { mutableStateOf(false) }
     val progress = remember(motionCycle) { Animatable(if (revealed) 1f else 0f) }
     val rootView = LocalView.current
-    LaunchedEffect(visibleInViewport, revealed, motionCycle, motionCompleted) {
+    // 全体の表示完了通知で、スクロール後に始まった演出を途中停止しない。
+    LaunchedEffect(if (eagerMotion) true else visibleInViewport, revealed, motionCycle) {
         if (motionCompleted) {
             progress.snapTo(1f)
             revealed = true
-        } else if (visibleInViewport && !revealed) {
-            // 画面内の項目だけを、上から順に短い間隔で表示する。
+        } else if ((eagerMotion || visibleInViewport) && !revealed) {
+            // ホームは画面外も含め、それ以外は画面内の項目を上から順に表示する。
             progress.snapTo(0f)
             delay(index.coerceIn(0, 7) * 72L)
             progress.animateTo(1f, tween(440, easing = FastOutSlowInEasing))

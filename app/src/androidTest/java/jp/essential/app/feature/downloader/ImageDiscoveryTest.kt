@@ -5,16 +5,17 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ImageDiscoveryTest {
-    @Test fun allPhotosAreDistinctAndVideoThumbnailsAreExcluded() {
+    @Test fun photosAndVideoThumbnailsAreIncluded() {
         val json = JSONObject("""{"mediaDetails":[
             {"type":"photo","media_url_https":"https://pbs.twimg.com/media/one.jpg"},
             {"type":"video","media_url_https":"https://pbs.twimg.com/video.jpg"},
             {"type":"photo","media_url_https":"https://pbs.twimg.com/media/two.png"}
         ]}""")
         val images = ImageDiscovery.parseTwitter(json)
-        assertEquals(2, images.size)
-        assertEquals(2, images.map { it.id }.toSet().size)
-        assertTrue(images.all { it.url.endsWith("name=orig") })
+        assertEquals(3, images.size)
+        assertEquals(3, images.map { it.id }.toSet().size)
+        assertTrue(images.filter { it.label.startsWith("画像") }.all { it.url.endsWith("name=orig") })
+        assertEquals("動画のサムネイル 2", images[1].label)
     }
 
     @Test fun htmlResolvesLazyImagesAndDoesNotTruncateAtFifty() {

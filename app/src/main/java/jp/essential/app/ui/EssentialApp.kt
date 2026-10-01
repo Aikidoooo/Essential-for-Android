@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.material3.OutlinedButton
 import android.content.Context
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.testTag
 
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
@@ -155,8 +156,11 @@ import jp.essential.app.feature.downloader.YtDlpUpdateSettingsCard
 import jp.essential.app.storage.StorageMaintenance
 import jp.essential.app.feature.files.FileReferenceScreen
 import jp.essential.app.feature.minigame.MiniGameScreen
-import jp.essential.app.feature.textscan.TextScanScreen
-import jp.essential.app.feature.qr.QrScannerScreen
+import jp.essential.app.feature.scanner.ScannerScreen
+import jp.essential.app.feature.notificationlog.NotificationLogScreen
+import jp.essential.app.feature.notificationlog.drawNotificationLogLogo
+import jp.essential.app.feature.mannaka.MannakaScreen
+import jp.essential.app.feature.mannaka.meetingBackgroundColor
 import jp.essential.app.feature.routine.RoutineScreen
 import jp.essential.app.feature.schedule.ScheduleGeneratorScreen
 import jp.essential.app.profile.AppProgressStore
@@ -205,6 +209,7 @@ private enum class EssentialSymbol {
     Download,
     Qr,
     Calendar,
+    Notification,
     Game,
     Routine,
     TextScan,
@@ -212,13 +217,19 @@ private enum class EssentialSymbol {
 
 private enum class FeatureRoute(val requestId: String) {
     Downloader("downloader"),
-    QrScanner("qr_scanner"),
+    Scanner("scanner"),
     Schedule("schedule"),
     Files("files"),
     MiniGame("mini_game"),
     Routine("routine"),
-    TextScan("text_scan"),
+    Mannaka("mannaka"),
+    NotificationLog("notification_log"),
 }
+
+// 旧ショートカットとクイック設定からも、最後に使った統合モードを開く。
+private fun featureRouteFromId(id: String?): FeatureRoute? =
+    if (id == "qr_scanner" || id == "text_scan") FeatureRoute.Scanner
+    else FeatureRoute.entries.firstOrNull { it.requestId == id }
 
 private data class FeatureItem(
     val title: String,
@@ -327,7 +338,7 @@ private fun EssentialApp(
     var activeFeature by rememberSaveable { mutableStateOf<FeatureRoute?>(null) }
     var dosukoiActive by rememberSaveable { mutableStateOf(false) }
     var homeShortcut by rememberSaveable {
-        mutableStateOf(FeatureRoute.entries.firstOrNull { it.requestId == initialHomeShortcut } ?: FeatureRoute.Downloader)
+        mutableStateOf(featureRouteFromId(initialHomeShortcut) ?: FeatureRoute.Downloader)
     }
     var appIconId by rememberSaveable { mutableStateOf(initialAppIconId) }
     LaunchedEffect(darkTheme) {
@@ -349,7 +360,7 @@ private fun EssentialApp(
     }
 
     LaunchedEffect(requestedFeature, sharedUrl) {
-        FeatureRoute.entries.firstOrNull { it.requestId == requestedFeature }?.let {
+        featureRouteFromId(requestedFeature)?.let {
             activeFeature = it
         }
         if (!sharedUrl.isNullOrBlank()) {
@@ -369,6 +380,9 @@ private fun EssentialApp(
         if (dosukoiActive) {
             // DOSUKOIはWebView自身がFluid Gradientを描画するため、背面のCanvasを止めて二重描画を避ける。
             Box(Modifier.fillMaxSize().background(Color(0xFF0F0F1A)))
+        } else if (activeFeature == FeatureRoute.Mannaka) {
+            // まんなかの背景色をシステムバーの背面まで連続させる。
+            Box(Modifier.fillMaxSize().background(meetingBackgroundColor()))
         } else {
             AnimatedBackdrop(AppIconManager.optionForId(appIconId))
         }
@@ -415,8 +429,9 @@ private fun EssentialApp(
                             selectDestination(Destination.Profile)
                         },
                     )
-                    FeatureRoute.TextScan -> TextScanScreen { activeFeature = null }
-                    FeatureRoute.QrScanner -> QrScannerScreen { activeFeature = null }
+                    FeatureRoute.Mannaka -> MannakaScreen { activeFeature = null }
+                    FeatureRoute.NotificationLog -> NotificationLogScreen { activeFeature = null }
+                    FeatureRoute.Scanner -> ScannerScreen { activeFeature = null }
                     FeatureRoute.Schedule -> ScheduleGeneratorScreen { activeFeature = null }
                     FeatureRoute.Files -> FileReferenceScreen { activeFeature = null }
                     FeatureRoute.MiniGame -> MiniGameScreen(
@@ -427,7 +442,9 @@ private fun EssentialApp(
                     FeatureRoute.Routine -> RoutineScreen { activeFeature = null }
                     null -> AnimatedContent(
                         targetState = destination,
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier.fillMaxSize().testTag("main-tabs").tabSwipeNavigation { direction ->
+                            Destination.entries.getOrNull(currentDestination.ordinal + direction)?.let(::selectDestination)
+                        },
                         transitionSpec = {
                             val direction = tabEntryDirections[targetState] ?: 0
                             // 起動と再表示は縦の項目演出だけにし、タブ移動時だけ横方向へ入れる。
@@ -453,6 +470,8 @@ private fun EssentialApp(
                             LocalProgressiveMotionCycle provides motionCycle,
                             LocalProgressiveMotionDirection provides (tabEntryDirections[current] ?: 0),
                             LocalProgressiveMotionCompleted provides motionCompleted,
+                            // 画面外のカードの描画レイヤーを毎フレーム更新しない。
+                            LocalProgressiveMotionEager provides false,
                         ) {
                         destinationState.SaveableStateProvider(current.name) {
                         when (current) {
@@ -551,7 +570,8 @@ private fun HomeScreen(
 ) {
     val preferences = LocalContext.current.getSharedPreferences("appearance", Context.MODE_PRIVATE)
     var widgetOrder by remember {
-        mutableStateOf(preferences.getString("home_widget_order", "").orEmpty().split(",").filter { it.isNotBlank() })
+        mutableStateOf(preferences.getString("home_widget_order", "").orEmpty().split(",").filter { it.isNotBlank() }
+            .map { if (it in setOf("qr_scanner", "text_scan")) "scanner" else it }.distinct())
     }
     val homeListState = rememberLazyListState()
     LazyColumn(
@@ -565,31 +585,35 @@ private fun HomeScreen(
         ),
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
-        progressiveItem(0) { AppHeader() }
-        progressiveItem(1) { HeroCard(shortcut) { onOpenFeature(shortcut) } }
-        progressiveItem(2) { SectionHeader(title = "使える機能", action = "すべて見る", onAction = onOpenAll) }
-        item(key = "home-feature-grid") {
-            FeatureGrid(
-                features = listOf(
-                    FeatureItem("ダウンローダー", "動画・音声・画像を端末へ", EssentialSymbol.Download, EssentialOrange, FeatureRoute.Downloader),
-                    FeatureItem("QRスキャナー", "純正カメラ経路で高速読取", EssentialSymbol.Qr, EssentialLime, FeatureRoute.QrScanner),
-                    FeatureItem("行程表", "経由地を含めて3形式へ", EssentialSymbol.Calendar, EssentialYellow, FeatureRoute.Schedule),
-                    FeatureItem("ファイル参照", "圧縮・変換・背景透過", EssentialSymbol.Media, EssentialRed, FeatureRoute.Files),
-                    FeatureItem("ミニゲーム", "言葉遊び・マインスイーパー", EssentialSymbol.Game, Color(0xFF9C6BFF), FeatureRoute.MiniGame),
-                    FeatureItem("日課", "毎日の目標をポイントに", EssentialSymbol.Routine, Color(0xFF27B99A), FeatureRoute.Routine),
-                    FeatureItem("文字スキャン", "カメラ・写真の文字をコードブロックへ", EssentialSymbol.TextScan, Color(0xFF78D9EF), FeatureRoute.TextScan),
-                ).sortedBy { widgetOrder.indexOf(it.route?.requestId).takeIf { index -> index >= 0 } ?: Int.MAX_VALUE },
-                onReorder = { reordered ->
-                    widgetOrder = reordered.mapNotNull { it.route?.requestId }
-                    preferences.edit().putString("home_widget_order", widgetOrder.joinToString(",")).apply()
-                },
-                scrollState = homeListState,
-                onClick = { feature ->
-                    feature.route?.let(onOpenFeature) ?: onComingSoon()
-                },
-            )
+        // 全項目を一緒に構成し、画面外のカードもホーム入場時から演出を進める。
+        item(key = "home-content") {
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                ProgressiveWidget(0) { AppHeader() }
+                ProgressiveWidget(1) { HeroCard(shortcut) { onOpenFeature(shortcut) } }
+                ProgressiveWidget(2) { SectionHeader(title = "使える機能", action = "すべて見る", onAction = onOpenAll) }
+
+                FeatureGrid(
+                    features = listOf(
+                        FeatureItem("ダウンローダー", "動画・音声・画像を端末へ", EssentialSymbol.Download, EssentialOrange, FeatureRoute.Downloader),
+                        FeatureItem("スキャナー", "QRコード・写真の文字を読み取る", EssentialSymbol.Qr, EssentialLime, FeatureRoute.Scanner),
+                        FeatureItem("行程表", "経由地を含めて3形式へ", EssentialSymbol.Calendar, EssentialYellow, FeatureRoute.Schedule),
+                        FeatureItem("ファイル参照", "圧縮・変換・背景透過", EssentialSymbol.Media, EssentialRed, FeatureRoute.Files),
+                        FeatureItem("ミニゲーム", "言葉遊び・マインスイーパー", EssentialSymbol.Game, Color(0xFF9C6BFF), FeatureRoute.MiniGame),
+                        FeatureItem("日課", "毎日の目標をポイントに", EssentialSymbol.Routine, Color(0xFF27B99A), FeatureRoute.Routine),
+                        FeatureItem("まんなか！", "みんなの駅から集合・遊びを提案", EssentialSymbol.Spark, Color(0xFFFF90B5), FeatureRoute.Mannaka),
+                        FeatureItem("通知ログ", "通知を秒単位で記録・keep", EssentialSymbol.Notification, Color(0xFF78D9EF), FeatureRoute.NotificationLog),
+                    ).sortedBy { widgetOrder.indexOf(it.route?.requestId).takeIf { index -> index >= 0 } ?: Int.MAX_VALUE },
+                    onReorder = { reordered ->
+                        widgetOrder = reordered.mapNotNull { it.route?.requestId }
+                        preferences.edit().putString("home_widget_order", widgetOrder.joinToString(",")).apply()
+                    },
+                    scrollState = homeListState,
+                    onClick = { feature ->
+                        feature.route?.let(onOpenFeature) ?: onComingSoon()
+                    },
+                )
+            }
         }
-        progressiveItem(6) { RustCoreBanner() }
     }
 }
 
@@ -760,12 +784,22 @@ private fun LiquidGlassHeroBackdrop(
     accent: Color,
 ) {
     val shape = RoundedCornerShape(36.dp)
+    val context = LocalContext.current
+    val lowMemoryDevice = remember(context) {
+        context.getSystemService(android.app.ActivityManager::class.java)?.isLowRamDevice == true
+    }
     val shader = remember {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        if (!lowMemoryDevice && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             runCatching { RuntimeShader(LIQUID_GLASS_SHADER_SOURCE) }.getOrNull()
         } else {
             null
         }
+    }
+    // 同じシェーダーの効果を再利用し、レイヤー更新ごとの生成を避ける。
+    val glassEffect = remember(shader) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && shader != null) {
+            RenderEffect.createRuntimeShaderEffect(shader, "contents").asComposeRenderEffect()
+        } else null
     }
     val lightTransition = rememberInfiniteTransition(label = "液体ガラスの光")
     val lightTravel by lightTransition.animateFloat(
@@ -783,16 +817,14 @@ private fun LiquidGlassHeroBackdrop(
             .fillMaxSize()
             .clip(shape)
             .graphicsLayer {
-                compositingStrategy = CompositingStrategy.Offscreen
+                compositingStrategy = if (glassEffect != null) CompositingStrategy.Offscreen else CompositingStrategy.Auto
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && shader != null) {
                     shader.setFloatUniform(
                         "resolution",
                         size.width.toFloat().coerceAtLeast(1f),
                         size.height.toFloat().coerceAtLeast(1f),
                     )
-                    renderEffect = RenderEffect
-                        .createRuntimeShaderEffect(shader, "contents")
-                        .asComposeRenderEffect()
+                    renderEffect = glassEffect
                 } else {
                     renderEffect = null
                 }
@@ -1061,44 +1093,6 @@ private fun FeatureCard(
 }
 
 @Composable
-private fun RustCoreBanner() {
-    val coreVersion = remember { EssentialCore.version() }
-
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .glassSurface(24.dp)
-            .padding(horizontal = 18.dp, vertical = 15.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(10.dp)
-                    .background(
-                        if (coreVersion > 0) EssentialLime else EssentialRed,
-                        CircleShape,
-                    ),
-            )
-            Spacer(Modifier.width(11.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text("Rust Core", style = MaterialTheme.typography.titleMedium)
-                Text(
-                    text = if (coreVersion > 0) "接続済み・Core v$coreVersion" else "ライブラリ未接続",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            EssentialSymbol(
-                symbol = if (coreVersion > 0) EssentialSymbol.Check else EssentialSymbol.Settings,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(22.dp),
-                description = null,
-            )
-        }
-    }
-}
-
-@Composable
 private fun FeaturesScreen(
     onOpenFeature: (FeatureRoute) -> Unit,
     onComingSoon: () -> Unit,
@@ -1114,77 +1108,93 @@ private fun FeaturesScreen(
         ),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        progressiveItem(0) {
-            Text("機能一覧", style = MaterialTheme.typography.headlineLarge)
-            Spacer(Modifier.height(5.dp))
-            Text(
-                "利用可能な機能と、これから追加する機能です。",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        progressiveItem(1) {
-            CategoryPanel(
-                title = "ダウンローダー",
-                description = "yt-dlpとFFmpegで動画・音声・画像を保存",
-                symbol = EssentialSymbol.Download,
-                accent = EssentialOrange,
-                onClick = { onOpenFeature(FeatureRoute.Downloader) },
-            )
-        }
-        progressiveItem(2) {
-            CategoryPanel(
-                title = "QRスキャナー",
-                description = "Camera HALを通る高性能カメラ経路で読み取り",
-                symbol = EssentialSymbol.Qr,
-                accent = EssentialLime,
-                onClick = { onOpenFeature(FeatureRoute.QrScanner) },
-            )
-        }
-        progressiveItem(3) {
-            CategoryPanel(
-                title = "行程表ジェネレーター",
-                description = "経由地を含む行程をPDF・文章・画像へ出力",
-                symbol = EssentialSymbol.Calendar,
-                accent = EssentialYellow,
-                onClick = { onOpenFeature(FeatureRoute.Schedule) },
-            )
-        }
-        progressiveItem(4) {
-            CategoryPanel(
-                title = "ファイル参照",
-                description = "画像・動画・音声の圧縮、変換、切り取り",
-                symbol = EssentialSymbol.Media,
-                accent = EssentialRed,
-                onClick = { onOpenFeature(FeatureRoute.Files) },
-            )
-        }
-        progressiveItem(5) {
-            CategoryPanel(
-                title = "ミニゲーム",
-                description = "言葉遊び・マインスイーパー",
-                symbol = EssentialSymbol.Game,
-                accent = Color(0xFF9C6BFF),
-                onClick = { onOpenFeature(FeatureRoute.MiniGame) },
-            )
-        }
-        progressiveItem(6) {
-            CategoryPanel(
-                title = "日課",
-                description = "デイリー・ウィークリー目標とポイントを管理",
-                symbol = EssentialSymbol.Routine,
-                accent = Color(0xFF27B99A),
-                onClick = { onOpenFeature(FeatureRoute.Routine) },
-            )
-        }
-        progressiveItem(7) {
-            CategoryPanel(
-                title = "文字スキャン",
-                description = "撮影・写真から文字を認識してコピー",
-                symbol = EssentialSymbol.TextScan,
-                accent = Color(0xFF78D9EF),
-                onClick = { onOpenFeature(FeatureRoute.TextScan) },
-            )
+        // 画面外の機能も同時に構成し、一覧への入場時から順番に演出する。
+        item(key = "features-content") {
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                ProgressiveWidget(0) {
+                    Column(Modifier.fillMaxWidth()) {
+                        Text("機能一覧", style = MaterialTheme.typography.headlineLarge)
+                        Spacer(Modifier.height(5.dp))
+                        Text(
+                            "利用可能な機能と、これから追加する機能です。",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                ProgressiveWidget(1) {
+                    CategoryPanel(
+                        title = "ダウンローダー",
+                        description = "yt-dlpとFFmpegで動画・音声・画像を保存",
+                        symbol = EssentialSymbol.Download,
+                        accent = EssentialOrange,
+                        onClick = { onOpenFeature(FeatureRoute.Downloader) },
+                    )
+                }
+                ProgressiveWidget(2) {
+                    CategoryPanel(
+                        title = "スキャナー",
+                        description = "QRコード・カメラや写真の文字を読み取る",
+                        symbol = EssentialSymbol.Qr,
+                        accent = EssentialLime,
+                        onClick = { onOpenFeature(FeatureRoute.Scanner) },
+                    )
+                }
+                ProgressiveWidget(3) {
+                    CategoryPanel(
+                        title = "行程表ジェネレーター",
+                        description = "経由地を含む行程をPDF・文章・画像へ出力",
+                        symbol = EssentialSymbol.Calendar,
+                        accent = EssentialYellow,
+                        onClick = { onOpenFeature(FeatureRoute.Schedule) },
+                    )
+                }
+                ProgressiveWidget(4) {
+                    CategoryPanel(
+                        title = "ファイル参照",
+                        description = "画像・動画・音声の圧縮、変換、切り取り",
+                        symbol = EssentialSymbol.Media,
+                        accent = EssentialRed,
+                        onClick = { onOpenFeature(FeatureRoute.Files) },
+                    )
+                }
+                ProgressiveWidget(5) {
+                    CategoryPanel(
+                        title = "ミニゲーム",
+                        description = "言葉遊び・マインスイーパー",
+                        symbol = EssentialSymbol.Game,
+                        accent = Color(0xFF9C6BFF),
+                        onClick = { onOpenFeature(FeatureRoute.MiniGame) },
+                    )
+                }
+                ProgressiveWidget(6) {
+                    CategoryPanel(
+                        title = "日課",
+                        description = "デイリー・ウィークリー目標とポイントを管理",
+                        symbol = EssentialSymbol.Routine,
+                        accent = Color(0xFF27B99A),
+                        onClick = { onOpenFeature(FeatureRoute.Routine) },
+                    )
+                }
+                ProgressiveWidget(8) {
+                    CategoryPanel(
+                        title = "まんなか！",
+                        description = "何人でも、最寄り駅から集合場所と遊びを探す",
+                        symbol = EssentialSymbol.Spark,
+                        accent = Color(0xFFFF90B5),
+                        onClick = { onOpenFeature(FeatureRoute.Mannaka) },
+                    )
+                }
+                ProgressiveWidget(9) {
+                    CategoryPanel(
+                        title = "通知ログ",
+                        description = "届いた通知を秒単位で記録。keepして保存",
+                        symbol = EssentialSymbol.Notification,
+                        accent = Color(0xFF78D9EF),
+                        onClick = { onOpenFeature(FeatureRoute.NotificationLog) },
+                    )
+                }
+            }
         }
     }
 }
@@ -1275,7 +1285,6 @@ private fun ProfileScreen(
         mutableStateOf(if (initialSetupRequired) ProfilePanel.Arrange else ProfilePanel.Main)
     }
     BackHandler(enabled = panel != ProfilePanel.Main) { panel = ProfilePanel.Main }
-    val coreVersion = remember { EssentialCore.version() }
     val profileImagePicker = rememberLauncherForActivityResult(EssentialMediaPickerContract()) { uri ->
         if (uri != null) {
             settingsScope.launch {
@@ -1505,7 +1514,6 @@ private fun ProfileScreen(
             ) {
                 SettingValue("アプリ", "Essential ${BuildConfig.VERSION_NAME}")
                 SettingValue("UI", "Material 3 Expressive")
-                SettingValue("コア", if (coreVersion > 0) "Rust Core v$coreVersion・接続済み" else "未接続")
                 SettingValue("状態", "3機能を搭載")
             }
         }
@@ -2579,6 +2587,7 @@ private fun EssentialSymbol(
                     size = Size(block * 0.42f, block * 0.42f),
                 )
             }
+            EssentialSymbol.Notification -> drawNotificationLogLogo(tint, stroke)
             EssentialSymbol.Calendar -> {
                 drawRoundRect(
                     color = tint,
@@ -2644,22 +2653,24 @@ private fun EssentialSymbol(
 }
 
 private fun FeatureRoute.displayName(): String = when (this) {
+    FeatureRoute.NotificationLog -> "通知ログ"
+    FeatureRoute.Mannaka -> "まんなか！"
     FeatureRoute.Downloader -> "ダウンローダー"
-    FeatureRoute.QrScanner -> "QRスキャナー"
+    FeatureRoute.Scanner -> "スキャナー"
     FeatureRoute.Schedule -> "行程表ジェネレーター"
     FeatureRoute.Files -> "ファイル参照"
     FeatureRoute.MiniGame -> "ミニゲーム"
-    FeatureRoute.TextScan -> "文字スキャン"
     FeatureRoute.Routine -> "日課"
 }
 
 private fun FeatureRoute.symbol(): EssentialSymbol = when (this) {
+    FeatureRoute.NotificationLog -> EssentialSymbol.Notification
+    FeatureRoute.Mannaka -> EssentialSymbol.Spark
     FeatureRoute.Downloader -> EssentialSymbol.Download
-    FeatureRoute.QrScanner -> EssentialSymbol.Qr
+    FeatureRoute.Scanner -> EssentialSymbol.Qr
     FeatureRoute.Schedule -> EssentialSymbol.Calendar
     FeatureRoute.Files -> EssentialSymbol.Media
     FeatureRoute.MiniGame -> EssentialSymbol.Game
-    FeatureRoute.TextScan -> EssentialSymbol.TextScan
     FeatureRoute.Routine -> EssentialSymbol.Routine
 }
 

@@ -23,12 +23,19 @@ internal object UpdatePolicy {
         val updateApks = apks.filter { it.contains("-UPDATE-", ignoreCase = true) }
         if (updateApks.isNotEmpty()) {
             val xiaomiOptimized = isXiaomiFamily(manufacturer, brand) && "arm64-v8a" in abis
-            val preferredSuffix = if (xiaomiOptimized) {
-                "-UPDATE-XIAOMI-arm64-v8a.apk"
-            } else {
-                "-UPDATE-ANDROID-universal.apk"
+            if (xiaomiOptimized) {
+                updateApks.singleOrNull { it.endsWith("-UPDATE-XIAOMI-arm64-v8a.apk", ignoreCase = true) }
+                    ?.let { return it }
             }
-            updateApks.singleOrNull { it.endsWith(preferredSuffix, ignoreCase = true) }?.let { return it }
+            // 端末の優先ABIに合わせ、他CPU向けライブラリを含まない更新を選ぶ。
+            for (abi in abis) {
+                updateApks.singleOrNull { it.endsWith("-UPDATE-ANDROID-$abi.apk", ignoreCase = true) }
+                    ?.let { return it }
+                // XIAOMI版も同じパッケージ・機能のarm64で、他のarm64端末でも更新可能。
+                if (abi == "arm64-v8a") updateApks.singleOrNull {
+                    it.endsWith("-UPDATE-XIAOMI-arm64-v8a.apk", ignoreCase = true)
+                }?.let { return it }
+            }
             return updateApks.singleOrNull { it.endsWith("-UPDATE-ANDROID-universal.apk", ignoreCase = true) }
         }
 

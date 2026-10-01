@@ -308,6 +308,8 @@ fun DownloaderScreen(
                 ImageCandidateCard(candidate, candidate.id in selectedCandidateIds, analyzedUrl == url,
                     modifier = Modifier.width(168.dp),
                     loadPreview = engine::preview,
+                    previewKey = "$imageQuality-$imageFormat",
+                    loadExpandedPreview = { engine.expandedPreview(it, imageQuality, imageFormat) },
                     onToggle = {
                         selectedCandidateIds = if (candidate.id in selectedCandidateIds) selectedCandidateIds - candidate.id
                         else selectedCandidateIds + candidate.id
@@ -440,6 +442,8 @@ internal fun ImageCandidateCard(
     loadPreview: suspend (ImageCandidate) -> android.graphics.Bitmap?,
     onToggle: () -> Unit,
     modifier: Modifier = Modifier,
+    previewKey: String = "",
+    loadExpandedPreview: suspend (ImageCandidate) -> android.graphics.Bitmap? = loadPreview,
 ) {
     var showPreview by remember(candidate.url) { mutableStateOf(false) }
     var previewFailed by remember(candidate.url) { mutableStateOf(false) }
@@ -472,6 +476,18 @@ internal fun ImageCandidateCard(
         }
     }
     if (showPreview) {
+        var expandedFailed by remember(candidate.url, previewKey) { mutableStateOf(false) }
+        val expanded by produceState<android.graphics.Bitmap?>(null, candidate.url, previewKey) {
+            try {
+                value = loadExpandedPreview(candidate)
+                expandedFailed = value == null
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                expandedFailed = true
+            } catch (_: OutOfMemoryError) {
+                expandedFailed = true
+            }
+        }
         Dialog(onDismissRequest = { showPreview = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
             val backgroundInteraction = remember { MutableInteractionSource() }
             BoxWithConstraints(
@@ -485,7 +501,7 @@ internal fun ImageCandidateCard(
                     ),
                 contentAlignment = Alignment.Center,
             ) {
-                val bitmap = preview
+                val bitmap = expanded
                 if (bitmap != null) {
                     val density = LocalDensity.current
                     val availableWidth = with(density) { maxWidth.toPx() }
@@ -509,7 +525,7 @@ internal fun ImageCandidateCard(
                             ),
                         contentScale = ContentScale.Fit,
                     )
-                } else if (previewFailed) {
+                } else if (expandedFailed) {
                     Text("プレビューを読み込めませんでした", color = Color.White)
                 } else {
                     CircularProgressIndicator(color = Color.White)

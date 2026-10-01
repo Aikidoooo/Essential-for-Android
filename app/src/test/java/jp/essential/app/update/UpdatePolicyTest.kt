@@ -20,10 +20,10 @@ class UpdatePolicyTest {
             assertTrue(runCatching { UpdatePolicy.version(it) }.isFailure)
         }
     }
-    @Test fun Android端末はAndroid更新用を選ぶ() {
+    @Test fun Android端末は旧配布でも小さい対応CPUの更新を選ぶ() {
         val names = fourDistributionModels()
         assertEquals(
-            "Essential-1.0.0-UPDATE-ANDROID-universal.apk",
+            "Essential-1.0.0-UPDATE-XIAOMI-arm64-v8a.apk",
             UpdatePolicy.chooseAsset(names, listOf("arm64-v8a"), manufacturer = "Google", brand = "google"),
         )
     }
@@ -67,6 +67,17 @@ class UpdatePolicyTest {
         listOf("http://github.com/owner/repo/releases/download/v1/a.apk", "https://github.com/other/repo/releases/download/v1/a.apk", "https://evil.example/a.apk").forEach {
             assertTrue(runCatching { UpdatePolicy.validateAssetUrl(it, "owner/repo") }.isFailure)
         }
+    }
+
+    @Test fun 対応CPU向けの小さい更新を選ぶ() {
+        val names = fourDistributionModels() + listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
+            .map { "Essential-1.0.0-UPDATE-ANDROID-$it.apk" }
+        for (abi in listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64")) {
+            assertEquals("Essential-1.0.0-UPDATE-ANDROID-$abi.apk", UpdatePolicy.chooseAsset(names, listOf(abi)))
+        }
+        assertEquals("Essential-1.0.0-UPDATE-XIAOMI-arm64-v8a.apk",
+            UpdatePolicy.chooseAsset(names, listOf("arm64-v8a"), manufacturer = "Xiaomi"))
+        assertEquals("Essential-1.0.0-UPDATE-ANDROID-universal.apk", UpdatePolicy.chooseAsset(names, listOf("unknown")))
     }
 
     private fun fourDistributionModels() = listOf(

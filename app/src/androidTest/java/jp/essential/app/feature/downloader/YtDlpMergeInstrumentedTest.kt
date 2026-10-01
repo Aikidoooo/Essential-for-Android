@@ -16,6 +16,18 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class YtDlpMergeInstrumentedTest {
     @Test
+    fun 旧FFmpeg同梱を除いてもPythonでバージョンを取得できる() {
+        assumeTrue(Build.SUPPORTED_ABIS.firstOrNull() in setOf("arm64-v8a", "x86_64"))
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        assertTrue(!File(context.applicationInfo.nativeLibraryDir, "libffmpeg.zip.so").exists())
+        val engine = com.yausername.youtubedl_android.YoutubeDL.getInstance()
+        engine.init(context)
+        // 通信を行わず、実際のPython・yt-dlp実行経路を検証する。
+        val response = engine.execute(com.yausername.youtubedl_android.YoutubeDLRequest(emptyList()).addOption("--version"))
+        assertTrue(response.out.trim().matches(Regex("\\d{4}\\.\\d{2}\\.\\d{2}.*")))
+    }
+
+    @Test
     fun 短い音声でも映像終盤のフレームを保持する() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val directory = File(context.cacheDir, "merge-motion-${System.nanoTime()}").apply { mkdirs() }

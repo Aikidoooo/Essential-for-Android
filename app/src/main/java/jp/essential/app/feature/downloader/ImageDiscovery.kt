@@ -87,7 +87,17 @@ internal class ImageDiscovery {
                 if (detail.optInt("statusCode", 0) != 0) continue
                 val item = detail.optJSONObject("itemInfo")?.optJSONObject("itemStruct") ?: continue
                 if (expectedId != null && item.optString("id") != expectedId) continue
-                val images = item.optJSONObject("imagePost")?.optJSONArray("images") ?: continue
+                val images = item.optJSONObject("imagePost")?.optJSONArray("images")
+                if (images == null) {
+                    val video = item.optJSONObject("video") ?: continue
+                    val covers = listOf("originCover", "cover", "dynamicCover").mapNotNull {
+                        video.optString(it).takeIf { value -> value.startsWith("https://") }
+                    }.distinct()
+                    if (covers.isNotEmpty()) return listOf(ImageCandidate("tiktok-${item.optString("id")}-cover",
+                        covers.first(), video.optInt("width").takeIf { it > 0 }, video.optInt("height").takeIf { it > 0 },
+                        "動画のサムネイル", covers.drop(1)))
+                    continue
+                }
                 return buildList {
                     for (index in 0 until images.length()) {
                         val image = images.optJSONObject(index) ?: continue
@@ -111,10 +121,11 @@ internal class ImageDiscovery {
             val urls = buildList {
                 if (media != null) for (index in 0 until media.length()) {
                     val item = media.optJSONObject(index) ?: continue
-                    if (item.optString("type") != "photo") continue
+                    val type = item.optString("type")
+                    if (type !in setOf("photo", "video", "animated_gif")) continue
                     val size = item.optJSONObject("original_info")
                     val raw = item.optString("media_url_https")
-                    if (raw.isNotBlank()) add(candidate(originalTwitterImage(raw), "画像 ${index + 1}", size?.optInt("width"), size?.optInt("height")))
+                    if (raw.isNotBlank()) add(candidate(originalTwitterImage(raw), if (type == "photo") "画像 ${index + 1}" else "動画のサムネイル ${index + 1}", size?.optInt("width"), size?.optInt("height")))
                 }
                 if (isEmpty()) {
                     val photos = json.optJSONArray("photos")
@@ -144,6 +155,15 @@ internal class ImageDiscovery {
                 val uri = runCatching { URI(resolved) }.getOrNull() ?: return
                 if (uri.scheme !in setOf("http", "https") || uri.host == null || uri.userInfo != null) return
                 images.putIfAbsent(resolved, candidate(resolved, label.ifBlank { "画像 ${images.size + 1}" }))
+            }
+            // 動画ページは本文の画像やロゴより、動画の表紙画像を優先する。
+            if (document.select("video, meta[property=og:video], meta[property=og:video:url], meta[property=og:video:secure_url]").isNotEmpty() ||
+                document.select("meta[property=og:type]").any { it.attr("content").startsWith("video") }) {
+                for (element in document.select("video[poster]")) add(element.attr("poster"), "動画のサムネイル")
+                for (element in document.select("meta[property=og:image], meta[name=twitter:image]")) {
+                    add(element.attr("content"), "動画のサムネイル")
+                }
+                if (images.isNotEmpty()) return images.values.toList()
             }
             for (element in document.select("img")) {
                 val sourceSet = element.attr("data-srcset").ifBlank { element.attr("srcset") }

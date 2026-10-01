@@ -50,6 +50,20 @@ class YtDlpDownloadEngine(private val context: Context) {
             } finally { source.delete() }
         }
     }
+    /** 拡大表示は保存時と同じ元画像・解像度・形式で生成する。一覧の縮小キャッシュは使わない。 */
+    suspend fun expandedPreview(candidate: ImageCandidate, quality: ImageQuality, format: ImageFormat): Bitmap? =
+        withContext(Dispatchers.IO) {
+            val source = downloadCandidateToCache(candidate, 0)
+            try {
+                renderExpandedPreview(source, quality, format)
+            } finally { source.delete() }
+        }
+
+    internal fun renderExpandedPreview(source: File, quality: ImageQuality, format: ImageFormat): Bitmap? {
+        val output = transcodeImage(source, 0, quality, format)
+        return try { BitmapFactory.decodeFile(output.absolutePath) } finally { output.delete() }
+    }
+
     suspend fun analyzeImages(url: String): Result<List<ImageCandidate>> = withContext(Dispatchers.IO) {
         runCatching {
             val safeUrl = resolveTikTokShareUrl(validatePublicUrl(url))
@@ -64,7 +78,11 @@ class YtDlpDownloadEngine(private val context: Context) {
             val response = YoutubeDL.getInstance().execute(request)
             val json = extractJsonObject(response.out)
             buildList {
-                collectThumbnails(json.optJSONArray("thumbnails"), "メイン", this)
+                collectThumbnails(json.optJSONArray("thumbnails"), "動画のサムネイル", this)
+                if (isEmpty() && json.optString("thumbnail").isNotBlank()) {
+                    val thumbnail = json.getString("thumbnail")
+                    add(ImageCandidate(thumbnail, thumbnail, null, null, "動画のサムネイル"))
+                }
                 val entries = json.optJSONArray("entries")
                 if (entries != null) {
                     for (index in 0 until entries.length()) {
@@ -506,7 +524,7 @@ class YtDlpDownloadEngine(private val context: Context) {
         }
         val output = File(
             context.cacheDir,
-            "Essential-image-${index + 1}-${scaled.width}x${scaled.height}.${format.extension}",
+            "Essential-image-${index + 1}-${scaled.width}x${scaled.height}-${UUID.randomUUID()}.${format.extension}",
         )
         FileOutputStream(output).use { stream ->
             val compressFormat = if (format == ImageFormat.Png) {

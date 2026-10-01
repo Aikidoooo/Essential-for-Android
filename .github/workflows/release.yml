@@ -66,6 +66,9 @@ jobs:
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RELEASE_STORE_FILE"
           trap 'rm -f "$RELEASE_STORE_FILE"' EXIT
           bash gradlew testDebugUnitTest lintDebug assembleRelease "-PUPDATE_REPOSITORY=$UPDATE_REPO" --no-daemon
+          mkdir -p app/build/standard-release
+          cp app/build/outputs/apk/release/*.apk app/build/standard-release/
+          bash gradlew assembleRelease -PHYPEROS_PACKAGE=true "-PUPDATE_REPOSITORY=$UPDATE_REPO" --no-daemon
       - name: 配布ファイルとハッシュを作成
         shell: bash
         env:
@@ -73,7 +76,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p release-assets
-          android_apk="app/build/outputs/apk/release/app-universal-release.apk"
+          android_apk="app/build/standard-release/app-arm64-v8a-release.apk"
           xiaomi_apk="app/build/outputs/apk/release/app-arm64-v8a-release.apk"
           for apk in "$android_apk" "$xiaomi_apk"; do
             "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify "$apk"
@@ -83,8 +86,14 @@ jobs:
           version="${RELEASE_TAG#v}"
           cp "$android_apk" "release-assets/Essential-$version-FIRST-INSTALL-ANDROID.apk"
           cp "$xiaomi_apk" "release-assets/Essential-$version-FIRST-INSTALL-XIAOMI.apk"
-          cp "$android_apk" "release-assets/Essential-$version-UPDATE-ANDROID-universal.apk"
           cp "$xiaomi_apk" "release-assets/Essential-$version-UPDATE-XIAOMI-arm64-v8a.apk"
+          for abi in arm64-v8a armeabi-v7a x86 x86_64; do
+            abi_apk="app/build/standard-release/app-$abi-release.apk"
+            "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify "$abi_apk"
+            "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -P 16 4 "$abi_apk"
+            cp "$abi_apk" "release-assets/Essential-$version-UPDATE-ANDROID-$abi.apk"
+          done
+          python3 scripts/check_app_size.py release-assets --output release-assets/SIZE_REPORT.json
           cd release-assets
           sha256sum *.apk > SHA256SUMS.txt
       - name: 全ファイルを添付してからReleaseを公開
@@ -94,9 +103,19 @@ jobs:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          notes=(--generate-notes)
+          # 初回用と更新用は完全APK。差分配布という誤解を避け、CPU別を案内する。
+          cat > "$RUNNER_TEMP/distribution-notes.md" <<'NOTES'
+          ## ダウンロードと更新
+          初回用・更新用はいずれも完全な署名付きAPKです。UPDATEは差分パッチではありません。同じ配布モデルの初回用と更新用は同じ内容・容量です。FIRST-INSTALL-ANDROIDはarm64向けです。他CPUの初回インストールにも対応するUPDATE-ANDROIDのCPU別APKを使用してください。
+          XIAOMIはHyperOS向けarm64版です。64bit版で未使用の旧FFmpegアーカイブを除き、ダウンロード・インストール容量を減らしました。保存データ・機能・パッケージ・署名は共通です。
+          端末のCPUに合うUPDATE-ANDROID-arm64-v8a / armeabi-v7a / x86 / x86_64を選んでください。本体＋64MBのデータ枠の概算で400MB以内を検査し、v0.6.5ではuniversalを配布しません。
+          更新時は既存のアプリ本体を置き換え、保存データは引き継ぎます。アプリ内で取得した更新APKはインストーラーへの転送後と更新完了直後に回収します。インストール中は一時的な空き容量が必要です。
+          ブラウザーでDownloadsへ保存したAPKはアプリの管理対象外です。不要になったコピーは利用者が削除してください。
+          NOTES
+          notes=(--notes-file "$RUNNER_TEMP/distribution-notes.md" --generate-notes)
           if [ -f ".github/release-notes/$RELEASE_TAG.md" ]; then
-            notes=(--notes-file ".github/release-notes/$RELEASE_TAG.md")
+            cat ".github/release-notes/$RELEASE_TAG.md" >> "$RUNNER_TEMP/distribution-notes.md"
+            notes=(--notes-file "$RUNNER_TEMP/distribution-notes.md")
           fi
           gh release create "$RELEASE_TAG" release-assets/* --draft --verify-tag "${notes[@]}" --title "Essential $RELEASE_TAG"
           gh release edit "$RELEASE_TAG" --draft=false --latest

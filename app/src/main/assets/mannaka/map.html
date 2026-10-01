@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<link rel="stylesheet" href="leaflet.css">
+<style>html,body{height:100vh;margin:0;background:#eee8df}#map{position:absolute;inset:0;height:100vh;width:100vw}body{font-family:sans-serif}.candidate{border:2px solid white;border-radius:50%;background:var(--marker,#4f6700);color:var(--text,white);box-shadow:0 3px 12px #0004;text-align:center;line-height:34px;font-size:18px}.first{background:var(--first,#8a4b00);color:var(--firstText,white)}.selected{outline:3px solid var(--marker,#4f6700)}.leaflet-container .leaflet-control-attribution{font-size:9px;margin:0 18px 8px 0;white-space:normal;max-width:calc(100vw - 36px)}#failure{display:none;position:absolute;bottom:30px;left:10px;right:10px;z-index:900;background:#fffc;border-radius:12px;padding:8px;font-size:12px}</style></head>
+<body><div id="map" style="height:100vh;width:100vw;position:absolute;top:0;left:0" role="img" aria-label="集合駅候補の地図"></div><div id="failure">地図を読み込めません。集合場所の地図リンクから確認できます。</div><script src="leaflet.js"></script><script>
+const map=L.map('map',{zoomControl:true,scrollWheelZoom:false});
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>'})
+ .on('tileerror',()=>document.getElementById('failure').style.display='block').addTo(map);
+let markers=[],signature='';
+function resizeMap(){
+ // WebViewでvhがゼロになる場合にも、実際の表示寸法で地図を描画する。
+ const container=document.getElementById('map');
+ container.style.height=innerHeight+'px';container.style.width=innerWidth+'px';map.invalidateSize();
+}
+window.addEventListener('resize',resizeMap);
+function render(points,selected,palette){
+ if(palette)Object.entries(palette).forEach(([key,value])=>document.documentElement.style.setProperty('--'+key,value));
+ resizeMap();
+ const next=JSON.stringify(points.map(p=>[p.latitude,p.longitude]));
+ markers.forEach(m=>map.removeLayer(m));
+ markers=points.map((p,i)=>{
+  const marker=L.marker([p.latitude,p.longitude],{icon:L.divIcon({className:'candidate '+(i===0?'first ':'')+(i===selected?'selected':''),html:i===0?'♛':String(i+1),iconSize:[34,34],iconAnchor:[17,17]})}).addTo(map);
+  const label=document.createElement('span');label.textContent=p.name;marker.bindTooltip(label);
+  marker.on('click',()=>location.href='essential://candidate/'+i);return marker;
+ });
+ if(next!==signature&&points.length){map.fitBounds(points.map(p=>[p.latitude,p.longitude]),{padding:[48,48],maxZoom:14});signature=next;}
+}
+</script></body></html>

@@ -38,6 +38,13 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.text.selection.SelectionContainer
+import com.google.mlkit.vision.barcode.BarcodeScanning
+import com.google.mlkit.vision.barcode.BarcodeScannerOptions
+import com.google.mlkit.vision.barcode.common.Barcode
+import com.google.android.gms.tasks.Task
+import com.google.android.gms.tasks.Tasks
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -61,7 +68,10 @@ import jp.essential.app.feature.qr.ScannerCircleButton
 import jp.essential.app.feature.qr.ZoomQuickButtons
 import jp.essential.app.feature.qr.ZoomRuler
 import jp.essential.app.ui.GlassBackButton
-import jp.essential.app.ui.ProgressiveWidget
+import jp.essential.app.feature.scanner.ScannerCameraControls
+import jp.essential.app.feature.scanner.ScannerPreviewTransition
+import jp.essential.app.feature.scanner.ScannerModeHeader
+import jp.essential.app.feature.qr.ScannerOverlay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -79,13 +89,24 @@ internal fun textAsCodeBlock(text: String): String {
     return "$fence\n$text\n$fence"
 }
 
+private suspend fun <T> Task<T>.awaitScan(): T = suspendCancellableCoroutine { continuation ->
+    addOnSuccessListener { if (continuation.isActive) continuation.resume(it) }
+    addOnFailureListener { if (continuation.isActive) continuation.resumeWithException(it) }
+    addOnCanceledListener { continuation.cancel() }
+}
+
 @Composable
-fun TextScanScreen(onBack: () -> Unit) {
+fun TextScanScreen(modePosition: Float = 1f, transitionFrame: android.graphics.Bitmap? = null,
+    onTransitionFrame: (android.graphics.Bitmap?) -> Unit = {},
+    onTransitionFinished: () -> Unit = {}, onModeChange: () -> Unit = {}, onBack: () -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val haptics = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
     val recognizer = remember { TextRecognition.getClient(JapaneseTextRecognizerOptions.Builder().build()) }
+    val qrScanner = remember { BarcodeScanning.getClient(BarcodeScannerOptions.Builder().setBarcodeFormats(Barcode.FORMAT_QR_CODE).build()) }
+    var qrUrls by rememberSaveable { mutableStateOf(arrayListOf<String>()) }
+    var scanWarning by remember { mutableStateOf<String?>(null) }
     var permissionGranted by remember {
         mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED)
     }
@@ -106,7 +127,7 @@ fun TextScanScreen(onBack: () -> Unit) {
     }
     LaunchedEffect(Unit) { if (!permissionGranted) permissionLauncher.launch(Manifest.permission.CAMERA) }
     DisposableEffect(Unit) {
-        onDispose { alive.set(false); recognizer.close() }
+        onDispose { alive.set(false); recognizer.close(); qrScanner.close() }
     }
 
     fun recognize(uri: Uri, temporaryFile: File? = null) {
@@ -115,14 +136,40 @@ fun TextScanScreen(onBack: () -> Unit) {
         scope.launch {
             try {
                 val input = withContext(Dispatchers.IO) { InputImage.fromFilePath(context, uri) }
-                val text = suspendCancellableCoroutine<String> { continuation ->
-                    recognizer.process(input)
-                        .addOnSuccessListener { if (continuation.isActive) continuation.resume(it.text) }
-                        .addOnFailureListener { if (continuation.isActive) continuation.resumeWithException(it) }
-                        .addOnCompleteListener { temporaryFile?.delete() }
+                val textTask = recognizer.process(input)
+                val qrTask = qrScanner.process(input)
+                // 両方の認識が画像を読み終えた後に、一時撮影ファイルを回収する。
+                Tasks.whenAllComplete(textTask, qrTask).addOnCompleteListener { temporaryFile?.delete() }
+                val recognized = runCatching { textTask.awaitScan() }.getOrElse {
+                    if (it is kotlinx.coroutines.CancellationException) throw it
+                    null
                 }
-                if (text.isBlank()) {
-                    error = "文字が見つかりませんでした。明るさやピントを確認して、もう一度お試しください。"
+                val codes = runCatching { qrTask.awaitScan() }.getOrElse {
+                    if (it is kotlinx.coroutines.CancellationException) throw it
+                    null
+                }
+                val pieces = recognized?.textBlocks.orEmpty().flatMap { it.lines }.flatMap { line ->
+                    line.elements.mapNotNull { element ->
+                        element.boundingBox?.let { bounds ->
+                            ScanTextPiece(element.text, bounds.left, bounds.top, bounds.right, bounds.bottom)
+                        }
+                    }
+                }
+                val text = withContext(Dispatchers.Default) { formatScanLayout(pieces) }
+                    .ifBlank { recognized?.text.orEmpty() }
+                qrUrls = ArrayList(codes.orEmpty().mapNotNull { code ->
+                    (code.url?.url ?: code.rawValue)?.takeIf { value ->
+                        val parsed = Uri.parse(value)
+                        parsed.scheme?.lowercase() in setOf("http", "https") && !parsed.host.isNullOrBlank()
+                    }
+                }.distinct())
+                scanWarning = when {
+                    recognized == null -> "文字の読み取りに失敗しました。"
+                    codes == null -> "QRコードの読み取りに失敗しました。"
+                    else -> null
+                }
+                if (text.isBlank() && qrUrls.isEmpty()) {
+                    error = "文字やURLのQRコードが見つかりませんでした。明るさやピントを確認して、もう一度お試しください。"
                 } else {
                     result = text
                     copied = false
@@ -155,6 +202,9 @@ fun TextScanScreen(onBack: () -> Unit) {
                 }
             }, modifier = Modifier.fillMaxSize())
         }
+        ScannerPreviewTransition(transitionFrame, previewView, onTransitionFinished)
+        ScannerOverlay(1f - modePosition)
+
         DisposableEffect(previewView, permissionGranted, lifecycleOwner) {
             val view = previewView
             val active = AtomicBoolean(true)
@@ -208,19 +258,17 @@ fun TextScanScreen(onBack: () -> Unit) {
                 torch = false
             }
         }
-        ProgressiveWidget(0, Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize()) {
             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(
                 Color.Black.copy(alpha = 0.2f), Color.Transparent, Color.Black.copy(alpha = 0.35f),
             ))))
         }
-        ProgressiveWidget(1, Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().padding(start = 18.dp, top = 18.dp, end = 18.dp, bottom = 24.dp),
                 verticalArrangement = Arrangement.SpaceBetween) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     GlassBackButton(onClick = onBack, size = 48.dp)
-                    Surface(color = Color.Black.copy(alpha = 0.54f), contentColor = Color.White, shape = CircleShape) {
-                        Text("文字スキャン", modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp))
-                    }
+                    ScannerModeHeader(true, modePosition)
                     ScannerCircleButton(text = if (torch) "●" else "○", description = "ライト", onClick = {
                         if (camera?.cameraInfo?.hasFlashUnit() == true) {
                             torch = !torch
@@ -245,27 +293,22 @@ fun TextScanScreen(onBack: () -> Unit) {
                     if (busy) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             CircularProgressIndicator(Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
-                            Text("文字を読み取り中", color = Color.White)
+                            Text("文字とQRコードを読み取り中", color = Color.White)
                         }
                     }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Surface(onClick = { photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-                            enabled = !busy, color = Color.Black.copy(alpha = 0.34f), contentColor = Color.White,
-                            shape = CircleShape, modifier = Modifier.width(104.dp).height(48.dp)) {
-                            Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                                GalleryIcon()
-                                Spacer(Modifier.width(7.dp))
-                                Text("写真", style = MaterialTheme.typography.labelLarge)
-                            }
-                        }
-                        Surface(onClick = {
-                            val photoCapture = capture ?: return@Surface
+                    ScannerCameraControls(
+                            modePosition = modePosition,
+                        textMode = true, onModeChange = { onTransitionFrame(previewView?.bitmap); onModeChange() },
+                        zoom = zoom, minZoom = minZoom, maxZoom = maxZoom, onZoom = applyZoom,
+                        onPhoto = { photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                        onCapture = {
+                            val photoCapture = capture ?: return@ScannerCameraControls
                             busy = true
                             error = null
                             val file = runCatching { File.createTempFile("text-scan-", ".jpg", context.cacheDir) }.getOrElse {
                                 busy = false
                                 error = "撮影用の空き容量を確保できませんでした"
-                                return@Surface
+                                return@ScannerCameraControls
                             }
                             photoCapture.targetRotation = previewView?.display?.rotation ?: android.view.Surface.ROTATION_0
                             photoCapture.takePicture(ImageCapture.OutputFileOptions.Builder(file).build(), ContextCompat.getMainExecutor(context),
@@ -278,16 +321,9 @@ fun TextScanScreen(onBack: () -> Unit) {
                                         if (alive.get()) { busy = false; error = "撮影できませんでした。もう一度お試しください。" }
                                     }
                                 })
-                        }, enabled = capture != null && !busy, color = Color.White, contentColor = Color(0xFF122537),
-                            shape = CircleShape, modifier = Modifier.size(68.dp).border(4.dp, Color.White.copy(alpha = 0.45f), CircleShape)) {
-                            Box(contentAlignment = Alignment.Center) { Text("撮影", style = MaterialTheme.typography.labelLarge) }
-                        }
-                        Spacer(Modifier.width(104.dp))
-                    }
-                    if (permissionGranted && camera != null) {
-                        ZoomQuickButtons(zoom, minZoom, maxZoom, applyZoom)
-                        ZoomRuler(zoom, minZoom, maxZoom, applyZoom, Modifier.fillMaxWidth())
-                    }
+
+                        }, captureEnabled = capture != null, busy = busy,
+                    )
                 }
             }
         }
@@ -300,10 +336,22 @@ fun TextScanScreen(onBack: () -> Unit) {
                         GlassBackButton(onClick = { result = null })
                         Text("読み取り結果", style = MaterialTheme.typography.titleLarge)
                     }
+                    if (qrUrls.isNotEmpty()) {
+                        Surface(shape = RoundedCornerShape(20.dp), color = Color.White.copy(alpha = 0.1f)) {
+                            Column(Modifier.fillMaxWidth().heightIn(max = 180.dp).verticalScroll(rememberScrollState()).padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("QRコードのURL", color = Color(0xFFAAE6F3), style = MaterialTheme.typography.titleSmall)
+                                SelectionContainer { Text(qrUrls.joinToString("\n"), color = Color.White) }
+                            }
+                        }
+                    }
+                    scanWarning?.let { Text(it, color = Color(0xFFFFD9A8)) }
                     Surface(Modifier.weight(1f).fillMaxWidth().border(1.dp, Color.White.copy(alpha = 0.22f), RoundedCornerShape(24.dp)),
                         shape = RoundedCornerShape(24.dp), color = Color.Black.copy(alpha = 0.4f), contentColor = Color(0xFFE5F6FF)) {
                         Box(Modifier.fillMaxSize()) {
                             var selectableText by remember(result) { mutableStateOf(TextFieldValue(result.orEmpty())) }
+                            Box(Modifier.fillMaxSize().padding(start = 18.dp, top = 56.dp, end = 18.dp, bottom = 18.dp)
+                                .verticalScroll(rememberScrollState()).horizontalScroll(rememberScrollState())) {
                             BasicTextField(
                                 value = selectableText,
                                 onValueChange = { selectableText = it },
@@ -311,9 +359,9 @@ fun TextScanScreen(onBack: () -> Unit) {
                                 textStyle = MaterialTheme.typography.bodyLarge.copy(
                                     color = Color(0xFFE5F6FF), fontFamily = FontFamily.Monospace,
                                 ),
-                                modifier = Modifier.fillMaxSize().padding(start = 18.dp, top = 18.dp, end = 56.dp, bottom = 18.dp)
-                                    .verticalScroll(rememberScrollState()),
+                                modifier = Modifier.widthIn(min = 260.dp),
                             )
+                            }
                             IconButton(
                                 onClick = {
                                     (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)

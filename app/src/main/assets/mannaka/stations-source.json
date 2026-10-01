@@ -1,0 +1,12 @@
+{
+  "source": "国土交通省 国土数値情報 鉄道データ 2025年度",
+  "url": "https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-N02-2025.html",
+  "license": "CC BY 4.0",
+  "reference_date": "2025-12-31",
+  "retrieved": "2026-10-01",
+  "processing": "駅の線形座標を平均して代表点に変換。駅コードで統合し、駅名・路線・運営会社・座標のみを収録。",
+  "count": 10154,
+  "bytes": 711505,
+  "sha256": "5e21aebb341a06f087de4b301371cbb34a26882cafd05c539144b0c3a4a51a2a",
+  "archive_sha256": "aaf76af133b2e771e538fabc4646d2e443dc1d5a67b221382a28d744e706cc9f"
+}

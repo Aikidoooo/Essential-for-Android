@@ -5,6 +5,9 @@ plugins {
 }
 
 val updateRepository = providers.gradleProperty("UPDATE_REPOSITORY").orElse("").get()
+// HyperOS向けの検証・配布はarm64に限定する。
+val hyperOsPackage = providers.gradleProperty("HYPEROS_PACKAGE").orElse("false").get().toBooleanStrict()
+val supportedAbis = if (hyperOsPackage) listOf("arm64-v8a") else listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
 require(updateRepository.isEmpty() || updateRepository.matches(Regex("[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")))
 
 android {
@@ -15,14 +18,15 @@ android {
         applicationId = "jp.essential.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 25
-        versionName = "0.6.4"
+        versionCode = 26
+        versionName = "0.6.5"
         buildConfigField("String", "UPDATE_REPOSITORY", "\"$updateRepository\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         ndk {
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
+            // universalなしのABI splitとndkフィルターはAGPで競合する。
+            if (!hyperOsPackage) abiFilters += supportedAbis
         }
     }
 
@@ -30,8 +34,8 @@ android {
         abi {
             isEnable = true
             reset()
-            include("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
-            isUniversalApk = true
+            include(*supportedAbis.toTypedArray())
+            isUniversalApk = !hyperOsPackage
         }
     }
 
@@ -77,7 +81,10 @@ android {
 
     packaging {
         jniLibs {
+            // Python実行環境は実ファイルを必要とするため、展開方式を維持する。
             useLegacyPackaging = true
+            // 64bitではFFmpegKitを使用。未使用の旧FFmpegアーカイブだけを同梱から除く。
+            excludes += setOf("**/arm64-v8a/libffmpeg.zip.so", "**/x86_64/libffmpeg.zip.so")
         }
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"

@@ -11,7 +11,7 @@ class QrScannerTileService : TileService() {
     override fun onStartListening() {
         super.onStartListening()
         qsTile?.apply {
-            label = "QRスキャナー"
+            label = "スキャナー"
             state = Tile.STATE_INACTIVE
             updateTile()
         }

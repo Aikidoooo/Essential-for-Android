@@ -96,6 +96,8 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.material3.TextButton
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -110,10 +112,16 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import jp.essential.app.device.DeviceOptimizer
 import jp.essential.app.R
-import jp.essential.app.ui.ProgressiveWidget
+import jp.essential.app.feature.scanner.ScannerCameraControls
+import jp.essential.app.feature.scanner.ScannerPreviewTransition
+import jp.essential.app.feature.scanner.ScannerModeHeader
+import jp.essential.app.feature.scanner.ScannerMotionProgress
+import androidx.compose.ui.platform.testTag
 
 @Composable
-fun QrScannerScreen(onBack: () -> Unit) {
+fun QrScannerScreen(modePosition: Float = 0f, transitionFrame: android.graphics.Bitmap? = null,
+    onTransitionFrame: (android.graphics.Bitmap?) -> Unit = {},
+    onTransitionFinished: () -> Unit = {}, onModeChange: () -> Unit = {}, onBack: () -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val haptics = LocalHapticFeedback.current
@@ -158,18 +166,24 @@ fun QrScannerScreen(onBack: () -> Unit) {
     }
 
     if (!permissionGranted) {
-        ProgressiveWidget(0, Modifier.fillMaxSize()) {
-            CameraPermissionScreen(
-                denied = permissionDenied,
-                onRequest = { permissionLauncher.launch(Manifest.permission.CAMERA) },
-                onBack = onBack,
-            )
+        Box(Modifier.fillMaxSize()) {
+            Box(Modifier.fillMaxSize()) {
+                CameraPermissionScreen(
+                    denied = permissionDenied,
+                    onRequest = { permissionLauncher.launch(Manifest.permission.CAMERA) },
+                    onBack = onBack,
+                )
+                TextButton(onClick = onModeChange, modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 28.dp)) {
+                    Text("文字スキャンへ切り替える")
+                }
+            }
         }
         return
     }
 
     val scanner = remember { createQrBarcodeScanner() }
     val photoScanner = remember { createQrBarcodeScanner() }
+    val photoAlive = remember { AtomicBoolean(true) }
     val analysisExecutor = remember { Executors.newSingleThreadExecutor() }
     val analysisGate = remember { AtomicBoolean(false) }
     val qrHitTarget = remember { AtomicReference<QrHitTarget?>(null) }
@@ -193,6 +207,7 @@ fun QrScannerScreen(onBack: () -> Unit) {
                 val mainExecutor = ContextCompat.getMainExecutor(context)
                 photoScanner.process(inputImage)
                     .addOnSuccessListener(mainExecutor) { barcodes ->
+                        if (!photoAlive.get()) return@addOnSuccessListener
                         photoScanInProgress = false
                         val value = barcodes
                             .filter { it.rawValue != null }
@@ -214,6 +229,7 @@ fun QrScannerScreen(onBack: () -> Unit) {
                         }
                     }
                     .addOnFailureListener(mainExecutor) {
+                        if (!photoAlive.get()) return@addOnFailureListener
                         photoScanInProgress = false
                         Toast.makeText(context, "写真のQRコードを読み取れませんでした", Toast.LENGTH_LONG).show()
                     }
@@ -222,7 +238,7 @@ fun QrScannerScreen(onBack: () -> Unit) {
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        ProgressiveWidget(0, Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize()) {
         AndroidView(
             factory = { viewContext ->
                 PreviewView(viewContext).apply {
@@ -238,6 +254,8 @@ fun QrScannerScreen(onBack: () -> Unit) {
             modifier = Modifier.fillMaxSize(),
         )
         }
+
+        ScannerPreviewTransition(transitionFrame, previewView, onTransitionFinished)
 
         DisposableEffect(previewView, lifecycleOwner) {
             val view = previewView
@@ -351,15 +369,16 @@ fun QrScannerScreen(onBack: () -> Unit) {
 
         DisposableEffect(Unit) {
             onDispose {
+                photoAlive.set(false)
                 scanner.close()
                 photoScanner.close()
                 analysisExecutor.shutdownNow()
             }
         }
 
-        ProgressiveWidget(1, Modifier.fillMaxSize()) { ScannerOverlay() }
+        Box(Modifier.fillMaxSize()) { ScannerOverlay(1f - modePosition) }
 
-        ProgressiveWidget(2, Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize()) {
             Box(modifier = Modifier.fillMaxSize()) {
                 Column(
                     modifier = Modifier
@@ -373,18 +392,7 @@ fun QrScannerScreen(onBack: () -> Unit) {
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         jp.essential.app.ui.GlassBackButton(onClick = onBack, size = 48.dp)
-                        Surface(
-                            color = Color.Black.copy(alpha = 0.54f),
-                            contentColor = Color.White,
-                            shape = CircleShape,
-                            modifier = Modifier.clickable { requestQrTile(context) },
-                        ) {
-                            Text(
-                                "クイック設定に追加",
-                                style = MaterialTheme.typography.labelLarge,
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
-                            )
-                        }
+                        ScannerModeHeader(false, modePosition) { requestQrTile(context) }
                         ScannerCircleButton(
                             text = if (torchEnabled) "●" else "○",
                             description = "ライト",
@@ -438,68 +446,19 @@ fun QrScannerScreen(onBack: () -> Unit) {
                                 Text("写真のQRコードを確認中", color = Color.White, style = MaterialTheme.typography.labelLarge)
                             }
                         }
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Surface(
-                                onClick = {
-                                    haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
-                                    photoPickerLauncher.launch(
-                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
-                                    )
-                                },
-                                color = Color.Black.copy(alpha = 0.34f),
-                                contentColor = Color.White,
-                                shape = CircleShape,
-                                modifier = Modifier.width(104.dp).height(48.dp),
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxSize(),
-                                    horizontalArrangement = Arrangement.Center,
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    GalleryIcon()
-                                    Spacer(Modifier.width(7.dp))
-                                    Text("写真", style = MaterialTheme.typography.labelLarge)
-                                }
-                            }
-                            Row(
-                                modifier = Modifier
-                                    .width(104.dp)
-                                    .height(48.dp)
-                                    .background(Color.Black.copy(alpha = 0.34f), CircleShape),
-                                horizontalArrangement = Arrangement.Center,
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text("Auto", color = Color.White, style = MaterialTheme.typography.labelLarge)
-                                Checkbox(
-                                    checked = autoOpenRecognizedUrls,
-                                    onCheckedChange = { enabled ->
-                                        autoOpenRecognizedUrls = enabled
-                                        qrPreferences.edit()
-                                            .putBoolean("auto_open_urls", enabled)
-                                            .apply()
-                                    },
-                                )
-                            }
-                        }
-                        if (maxZoom >= minZoom) {
-                            ZoomQuickButtons(
-                                zoomRatio = zoomRatio,
-                                minZoom = minZoom,
-                                maxZoom = maxZoom,
-                                onZoomChange = applyZoomRatio,
-                            )
-                            ZoomRuler(
-                                zoomRatio = zoomRatio,
-                                minZoom = minZoom,
-                                maxZoom = maxZoom,
-                                onZoomChange = applyZoomRatio,
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                        }
+                        ScannerCameraControls(
+                            modePosition = modePosition,
+                            textMode = false, onModeChange = { onTransitionFrame(previewView?.bitmap); onModeChange() },
+                            zoom = zoomRatio, minZoom = minZoom, maxZoom = maxZoom, onZoom = applyZoomRatio,
+                            onPhoto = { photoPickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                            onCapture = {},
+                            captureEnabled = camera != null, busy = photoScanInProgress,
+                            auto = autoOpenRecognizedUrls,
+                            onAutoChange = { enabled ->
+                                autoOpenRecognizedUrls = enabled
+                                qrPreferences.edit().putBoolean("auto_open_urls", enabled).apply()
+                            },
+                        )
                     }
                 }
             }
@@ -541,8 +500,8 @@ internal fun ZoomQuickButtons(
         shadowElevation = 5.dp,
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 5.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(3.dp),
+            modifier = Modifier.padding(horizontal = 4.2.dp, vertical = 3.36.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.52.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             presets.forEach { preset ->
@@ -561,7 +520,7 @@ internal fun ZoomQuickButtons(
                 )
                 Box(
                     modifier = Modifier
-                        .size(46.dp)
+                        .size(38.64.dp)
                         .graphicsLayer(scaleX = scale, scaleY = scale)
                         .background(Color.White.copy(alpha = 0.10f * selectionAlpha), CircleShape)
                         .border(
@@ -582,7 +541,7 @@ internal fun ZoomQuickButtons(
                     Text(
                         text = preset.label,
                         color = Color.White.copy(alpha = if (preset.available) 1f else 0.38f),
-                        style = MaterialTheme.typography.labelLarge,
+                        style = MaterialTheme.typography.labelLarge.copy(fontSize = 14.sp),
                     )
                 }
             }
@@ -597,17 +556,25 @@ internal fun ZoomRuler(
     maxZoom: Float,
     onZoomChange: (Float) -> Unit,
     modifier: Modifier = Modifier,
+    gesturesEnabled: Boolean = true,
 ) {
     val currentOnZoomChange by rememberUpdatedState(onZoomChange)
     val currentZoomRatio by rememberUpdatedState(zoomRatio)
     val curveDepth = 14.dp
-    val marks = buildList {
-        if (minZoom < 1f) add(ZoomRulerMark("W", minZoom))
-        ((1..kotlin.math.floor(maxZoom).toInt()).map { "${it}x" to it.toFloat() } + listOf("3.5x" to 3.5f)).sortedBy { it.second }
-            .filter { (_, ratio) -> ratio in minZoom..maxZoom }
-            .forEach { (label, ratio) -> add(ZoomRulerMark(label, ratio)) }
+    val mainRatios = listOf(1f, 2f, 3f, 5f, 10f, 15f, 20f, 25f, 30f)
+    val marks = remember(minZoom, maxZoom) {
+        mainRatios.filter { it in minZoom..maxZoom }.map { ZoomRulerMark("${it.toInt()}x", it) }
     }
-    val currentFraction = zoomRatioToFraction(zoomRatio, minZoom, maxZoom)
+    // 目盛りを横へ広く配置し、高倍率側でも主目盛りの文字を重ねない。
+    val rulerSpan = 2.5f
+    val currentFraction = animateFloatAsState(
+        targetValue = zoomRatioToFraction(zoomRatio, minZoom, maxZoom),
+        animationSpec = tween(100, easing = androidx.compose.animation.core.LinearEasing),
+        label = "ズーム目盛りの滑走",
+    )
+    val tickValues = remember(minZoom, maxZoom) {
+        (kotlin.math.ceil(minZoom * 10).toInt()..kotlin.math.floor(maxZoom * 10).toInt()).map { it / 10f }
+    }
 
     BoxWithConstraints(
         modifier = modifier
@@ -628,24 +595,24 @@ internal fun ZoomRuler(
             }
             .pointerInput(minZoom, maxZoom) {
                 var dragFraction = 0.5f
-                detectHorizontalDragGestures(
+                if (gesturesEnabled) detectHorizontalDragGestures(
                     onDragStart = {
                         dragFraction = zoomRatioToFraction(currentZoomRatio, minZoom, maxZoom)
                     },
                 ) { change, dragAmount ->
                     change.consume()
                     if (maxZoom > minZoom && size.width > 0) {
-                        dragFraction = (dragFraction - dragAmount / size.width).coerceIn(0f, 1f)
-                        currentOnZoomChange((kotlin.math.round(fractionToZoomRatio(dragFraction, minZoom, maxZoom) * 10) / 10f).coerceIn(minZoom, maxZoom))
+                        dragFraction = (dragFraction - dragAmount / (size.width * rulerSpan)).coerceIn(0f, 1f)
+                        currentOnZoomChange(fractionToZoomRatio(dragFraction, minZoom, maxZoom))
                     }
                 }
             }
             .pointerInput(minZoom, maxZoom) {
-                detectTapGestures { position ->
+                if (gesturesEnabled) detectTapGestures { position ->
                     if (maxZoom > minZoom && size.width > 0) {
-                        val fraction = zoomRatioToFraction(currentZoomRatio, minZoom, maxZoom)
-                        val selected = (fraction + position.x / size.width - 0.5f).coerceIn(0f, 1f)
-                        currentOnZoomChange((kotlin.math.round(fractionToZoomRatio(selected, minZoom, maxZoom) * 10) / 10f).coerceIn(minZoom, maxZoom))
+                        val fraction = currentFraction.value
+                        val selected = (fraction + (position.x / size.width - 0.5f) / rulerSpan).coerceIn(0f, 1f)
+                        currentOnZoomChange(fractionToZoomRatio(selected, minZoom, maxZoom))
                     }
                 }
             },
@@ -661,15 +628,14 @@ internal fun ZoomRuler(
                 return size.height * 0.48f + centerDip * curve
             }
 
-            // 目盛りは画面の等分ではなく実倍率から配置し、整数倍率を大きな目盛りにする。
-            val tickValues = ((kotlin.math.ceil(minZoom * 10).toInt()..kotlin.math.floor(maxZoom * 10).toInt())
-                .map { it / 10f } + listOf(minZoom, maxZoom)).distinct().sorted()
+            // 指定の主目盛りに加え、0.1倍刻みの短い補助目盛りを描く。
             for (ratio in tickValues) {
                 val fraction = zoomRatioToFraction(ratio, minZoom, maxZoom)
-                val screenFraction = 0.5f + fraction - currentFraction
+                val screenFraction = 0.5f + (fraction - currentFraction.value) * rulerSpan
+                if (screenFraction !in -0.02f..1.02f) continue
                 val x = size.width * screenFraction
                 val index = kotlin.math.round(ratio * 10).toInt()
-                val major = index % 10 == 0 || kotlin.math.abs(ratio - 3.5f) < 0.001f || ratio == minZoom || ratio == maxZoom
+                val major = mainRatios.any { kotlin.math.abs(ratio - it) < 0.001f }
                 val medium = index % 5 == 0
                 val tickHeight = when {
                     major -> majorTickHeight
@@ -699,25 +665,25 @@ internal fun ZoomRuler(
         }
 
         val labelWidth = 38.dp
-        var lastLabelFraction = -1f
         marks.forEach { mark ->
             val fraction = zoomRatioToFraction(mark.ratio, minZoom, maxZoom)
-            val screenFraction = 0.5f + fraction - currentFraction
-            if (screenFraction in 0.05f..0.95f && kotlin.math.abs(screenFraction - 0.5f) > 0.1f && screenFraction - lastLabelFraction > 0.13f) {
-                lastLabelFraction = screenFraction
-                val normalized = screenFraction * 2f - 1f
-                val curve = 1f - normalized * normalized
-                val labelY = maxHeight * 0.48f + curveDepth * curve - 34.dp
-                Text(
-                    text = mark.label,
-                    color = Color.White,
-                    style = MaterialTheme.typography.labelLarge,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier
-                        .offset(x = maxWidth * screenFraction - labelWidth / 2, y = labelY)
-                        .width(labelWidth),
-                )
-            }
+            Text(
+                text = mark.label,
+                color = Color.White,
+                style = MaterialTheme.typography.labelLarge,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.width(labelWidth).graphicsLayer {
+                    val screenFraction = 0.5f + (fraction - currentFraction.value) * rulerSpan
+                    val normalized = screenFraction * 2f - 1f
+                    val curve = 1f - normalized * normalized
+                    translationX = maxWidth.toPx() * screenFraction - labelWidth.toPx() / 2f
+                    translationY = maxHeight.toPx() * 0.48f + curveDepth.toPx() * curve - 34.dp.toPx()
+                    // 端と中央の倍率表示へ近づくと、文字を滑らかに薄くする。
+                    val edgeFade = minOf(screenFraction, 1f - screenFraction) / 0.06f
+                    val centerFade = (kotlin.math.abs(screenFraction - 0.5f) - 0.06f) / 0.05f
+                    alpha = minOf(edgeFade, centerFade).coerceIn(0f, 1f)
+                },
+            )
         }
         Text(
             text = String.format(java.util.Locale.US, "%.1fx", zoomRatio),
@@ -731,7 +697,7 @@ internal fun ZoomRuler(
     }
 }
 
-private fun zoomRatioToFraction(value: Float, minZoom: Float, maxZoom: Float): Float {
+internal fun zoomRatioToFraction(value: Float, minZoom: Float, maxZoom: Float): Float {
     if (minZoom <= 0f || maxZoom <= minZoom) return 0.5f
     return (
         kotlin.math.ln(value.coerceIn(minZoom, maxZoom) / minZoom) /
@@ -739,7 +705,7 @@ private fun zoomRatioToFraction(value: Float, minZoom: Float, maxZoom: Float): F
         ).coerceIn(0f, 1f)
 }
 
-private fun fractionToZoomRatio(fraction: Float, minZoom: Float, maxZoom: Float): Float {
+internal fun fractionToZoomRatio(fraction: Float, minZoom: Float, maxZoom: Float): Float {
     if (minZoom <= 0f || maxZoom <= minZoom) return minZoom
     return (minZoom * kotlin.math.exp(kotlin.math.ln(maxZoom / minZoom) * fraction.coerceIn(0f, 1f)))
         .coerceIn(minZoom, maxZoom)
@@ -751,7 +717,7 @@ private fun requestQrTile(context: Context) {
         val component = ComponentName(context, QrScannerTileService::class.java)
         manager.requestAddTileService(
             component,
-            "QRスキャナー",
+            "スキャナー",
             Icon.createWithResource(context, R.drawable.ic_qr_tile),
             ContextCompat.getMainExecutor(context),
         ) { result ->
@@ -762,7 +728,7 @@ private fun requestQrTile(context: Context) {
             }
         }
     } else {
-        Toast.makeText(context, "クイック設定の編集画面からQRスキャナーを追加してください", Toast.LENGTH_LONG).show()
+        Toast.makeText(context, "クイック設定の編集画面からスキャナーを追加してください", Toast.LENGTH_LONG).show()
     }
 }
 
@@ -890,8 +856,15 @@ internal fun GalleryIcon() {
 }
 
 @Composable
-internal fun ScannerOverlay() {
-    Canvas(modifier = Modifier.fillMaxSize()) {
+internal fun ScannerOverlay(visibility: Float = 1f) {
+    val progress = visibility.coerceIn(0f, 1f)
+    Canvas(modifier = Modifier.fillMaxSize().testTag("scanner-qr-frame")
+        .semantics { this[ScannerMotionProgress] = progress }
+        .graphicsLayer {
+            alpha = progress
+            scaleX = 0.96f + 0.04f * progress
+            scaleY = scaleX
+        }) {
         val frameWidth = size.width * 0.72f
         val frameHeight = frameWidth
         val left = (size.width - frameWidth) / 2f
@@ -994,7 +967,7 @@ private fun CameraPermissionScreen(
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text("QRスキャナー", style = MaterialTheme.typography.headlineLarge)
+        Text("スキャナー", style = MaterialTheme.typography.headlineLarge)
         Spacer(Modifier.height(12.dp))
         Text(
             if (denied) "カメラ権限が拒否されました。QRコードの読み取りには権限が必要です。" else "カメラを準備しています。",

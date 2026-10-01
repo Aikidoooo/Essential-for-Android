@@ -12,6 +12,8 @@ class StorageMaintenanceTest {
         assertTrue(StorageMaintenancePolicy.isTransientCacheName("Essential-source-123.bin"))
         assertTrue(StorageMaintenancePolicy.isTransientCacheName("essential-download-abcd"))
         assertTrue(StorageMaintenancePolicy.isTransientCacheName("yt-dlp123"))
+        assertTrue(StorageMaintenancePolicy.isTransientCacheName("text-scan-123.jpg"))
+        assertFalse(StorageMaintenancePolicy.isTransientCacheName("profile.jpg"))
         assertFalse(StorageMaintenancePolicy.isTransientCacheName("webview-cache"))
     }
 

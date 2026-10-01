@@ -13,8 +13,9 @@ internal object UpdateStoragePolicy {
         nowMillis: Long,
     ): Boolean {
         if (targetVersion.isNullOrBlank() || sourceVersionCode <= 0L || downloadedAtMillis <= 0L) return true
-        if (sourceVersionCode > currentVersionCode) return true
-        if (!UpdatePolicy.isNewer(targetVersion, currentVersionName)) return true
-        return nowMillis - downloadedAtMillis > DOWNLOAD_RETENTION_MILLIS
+        if (sourceVersionCode != currentVersionCode) return true
+        if (runCatching { UpdatePolicy.isNewer(targetVersion, currentVersionName) }.getOrDefault(false).not()) return true
+        if (nowMillis < downloadedAtMillis) return true
+        return nowMillis - downloadedAtMillis >= DOWNLOAD_RETENTION_MILLIS
     }
 }

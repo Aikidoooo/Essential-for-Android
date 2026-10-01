@@ -17,12 +17,13 @@ class InstagramImageDiscoveryTest {
         return "<img src='https://example.com/avatar.jpg'><script type='application/json'>$wrapper</script>"
     }
 
-    @Test fun extractsEveryPhotoInOrderWithoutCoverOrVideo() {
+    @Test fun extractsEveryPhotoAndVideoThumbnailWithoutUnrelatedCover() {
         val edges = (1..20).joinToString(",") { """{"node":${photo(it)}}""" }
         val post = """{"shortcode":"abc","__typename":"GraphSidecar","display_url":"https://example.com/cover.jpg","edge_sidecar_to_children":{"edges":[$edges,{"node":{"id":"video","is_video":true,"display_url":"https://example.com/video.jpg"}}]}}"""
         val images = InstagramImageParser.parse(page(post), "abc")
-        assertEquals(20, images.size)
-        assertEquals("画像 20", images.last().label)
+        assertEquals(21, images.size)
+        assertEquals("画像 20", images[19].label)
+        assertEquals("動画のサムネイル 21", images.last().label)
         assertEquals("https://example.com/1.jpg?sig=a%2Fb", images.first().url)
         assertEquals(1350, images.first().height)
         assertTrue(InstagramImageParser.parse(page(post), "different").isEmpty())

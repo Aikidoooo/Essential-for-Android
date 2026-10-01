@@ -180,7 +180,7 @@ class MainActivity : ComponentActivity() {
     companion object {
         const val EXTRA_OPEN_FEATURE = "open_feature"
         const val FEATURE_DOWNLOADER = "downloader"
-        const val FEATURE_QR_SCANNER = "qr_scanner"
+        const val FEATURE_QR_SCANNER = "scanner"
         const val FEATURE_SCHEDULE = "schedule"
         const val FEATURE_FILES = "files"
 

@@ -33,7 +33,7 @@ internal class GitHubUpdateRepository(private val context: Context) {
             targetVersion = preferences.getString(KEY_TARGET_VERSION, null),
             sourceVersionCode = preferences.getLong(KEY_SOURCE_VERSION_CODE, -1L),
             downloadedAtMillis = preferences.getLong(KEY_DOWNLOADED_AT, -1L),
-            currentVersionName = BuildConfig.VERSION_NAME,
+            currentVersionName = BuildConfig.VERSION_NAME.removeSuffix("-debug"),
             currentVersionCode = BuildConfig.VERSION_CODE.toLong(),
             nowMillis = nowMillis,
         )
@@ -41,10 +41,21 @@ internal class GitHubUpdateRepository(private val context: Context) {
         return reclaimedBytes
     }
 
+    /** 外部からの更新でも、アプリを開く前に更新用コピーを回収する。 */
+    fun cleanupAfterPackageReplacement(): Long {
+        var reclaimed = discardDownloadedApk()
+        directory.listFiles().orEmpty().forEach { file ->
+            val bytes = file.sizeRecursively()
+            if (file.deleteRecursively()) reclaimed += bytes
+        }
+        if (directory.list().isNullOrEmpty()) directory.delete()
+        return reclaimed
+    }
+
     /** PackageInstallerへコピー済みの元APKと管理情報を直ちに削除する。 */
     fun discardDownloadedApk(): Long {
         val bytes = apk.sizeRecursively()
-        apk.delete()
+        if (apk.exists() && !apk.delete()) return 0L
         preferences.edit()
             .remove(KEY_TARGET_VERSION)
             .remove(KEY_SOURCE_VERSION_CODE)

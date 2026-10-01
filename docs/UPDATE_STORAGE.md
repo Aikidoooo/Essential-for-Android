@@ -1,0 +1,16 @@
+# 初回用・更新用APKと端末容量
+
+初回用も更新用も署名付きの完全APK。同じCPU用なら内容・容量は同じです。現在の配布名UPDATEは差分を意味しません。少量の差分だけを配るには、旧APKとの対応、パッチ配信、完全APKの復元・署名検証と失敗時の再取得を備えた別の仕組みが必要です。
+
+更新はMODE_FULL_INSTALLで以前のAPKを置き換えます。アプリ内更新ではダウンロードAPKをPackageInstallerへ同期した後に削除し、OSのMY_PACKAGE_REPLACEDでも残ったコピーを回収します。起動時の回収はフォールバックとして残します。保存データは維持します。
+
+端末のCPU用APKを優先します。旧配布のXIAOMI名のAPKは同じビルドのarm64出力なので、他メーカーのarm64端末でも対応します。universalには全CPU向けライブラリが入り、容量が大きくなります。
+
+インストール中にはダウンロード・インストーラー・既存アプリが一時的に共存するため空き容量が必要です。ブラウザーのDownloadsに保存されたAPKはアプリ専用データではなく、自動削除の対象外です。利用者が保存するメディアやkeep通知の増加も、更新APKの蓄積とは別です。
+
+検証AVDの実上書き更新では、起動前に更新APKと中断ファイルを回収し、保存設定を維持。本体307,269,632→307,269,632バイトで加算なし。0.6.5の軽量化後は本体229,785,600バイト、Python実行テスト後のアプリ＋データ308,559,872バイトでした。実機と配布署名APKの自己更新は未検証。0.6.5に修正を含めます。
+
+0.6.5は容量条件を超えるuniversalを配布せず、全4CPU別APKを用意します。ANDROID初回用はarm64です。他CPUは対応するUPDATE APKで初回インストールもできます。
+
+公式資料：https://developer.android.com/reference/android/content/pm/PackageInstaller.SessionParams#MODE_FULL_INSTALL
+公開版確認：https://github.com/Aikidoooo/Essential-for-Android/releases/tag/v0.6.4

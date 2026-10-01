@@ -40,4 +40,14 @@ class UpdateStoragePolicyTest {
         assertTrue(UpdateStoragePolicy.shouldDeleteDownloadedApk(null, -1, -1, "0.5.4", 15, now))
         assertTrue(UpdateStoragePolicy.shouldDeleteDownloadedApk("0.5.5", 15, 1, "0.5.4", 15, now))
     }
+    @Test fun `別経路で更新された場合も以前のダウンロードを回収する`() {
+        assertTrue(UpdateStoragePolicy.shouldDeleteDownloadedApk("0.7.0", 25, 1000, "0.6.5", 26, 2000))
+    }
+    @Test fun `破損した管理情報と時計巻き戻りと期限境界を回収する`() {
+        assertTrue(UpdateStoragePolicy.shouldDeleteDownloadedApk("bad", 25, 1000, "0.6.4", 25, 2000))
+        assertTrue(UpdateStoragePolicy.shouldDeleteDownloadedApk("0.6.5", 25, 2000, "0.6.4", 25, 1000))
+        assertTrue(UpdateStoragePolicy.shouldDeleteDownloadedApk("0.6.5", 25, 1000, "0.6.4", 25,
+            1000 + UpdateStoragePolicy.DOWNLOAD_RETENTION_MILLIS))
+    }
+
 }

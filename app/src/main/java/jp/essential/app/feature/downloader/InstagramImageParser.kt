@@ -54,7 +54,7 @@ internal object InstagramImageParser {
             listOf(post)
         }
         return nodes.mapIndexedNotNull { index, node ->
-            if (node.optBoolean("is_video") || node.optString("__typename") == "GraphVideo") return@mapIndexedNotNull null
+            val video = node.optBoolean("is_video") || node.optString("__typename") == "GraphVideo"
             val resources = node.optJSONArray("display_resources") ?: JSONArray()
             val variants = (0 until resources.length()).mapNotNull { resources.optJSONObject(it) }
                 .sortedByDescending { it.optLong("config_width") * it.optLong("config_height") }
@@ -69,7 +69,7 @@ internal object InstagramImageParser {
                 "instagram-${node.optString("id", index.toString())}", urls.first(),
                 dimensions?.optInt("width")?.takeIf { it > 0 },
                 dimensions?.optInt("height")?.takeIf { it > 0 },
-                "画像 ${index + 1}", urls.drop(1),
+                if (video) "動画のサムネイル ${index + 1}" else "画像 ${index + 1}", urls.drop(1),
             )
         }.distinctBy { it.id }
     }
