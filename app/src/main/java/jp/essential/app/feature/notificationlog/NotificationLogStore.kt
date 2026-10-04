@@ -24,6 +24,7 @@ internal class NotificationLogStore(context: Context, databaseName: String = "no
     SQLiteOpenHelper(context, java.io.File(context.noBackupFilesDir, databaseName).absolutePath, null, 1) {
     private val updates = MutableStateFlow(0L)
     val revision = updates.asStateFlow()
+    private var nextPruneAt = 0L
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE logs (id INTEGER PRIMARY KEY AUTOINCREMENT, package_name TEXT NOT NULL, app_name TEXT NOT NULL, title TEXT NOT NULL, body TEXT NOT NULL, received_at INTEGER NOT NULL, kept INTEGER NOT NULL DEFAULT 0)")
@@ -39,7 +40,7 @@ internal class NotificationLogStore(context: Context, databaseName: String = "no
         db.beginTransaction()
         val id: Long
         try {
-            pruneRows(db, now)
+            pruneIfDue(db, now)
             id = db.insertOrThrow("logs", null, ContentValues().apply {
                 put("package_name", packageName.take(512))
                 put("app_name", appName.take(256))
@@ -86,6 +87,15 @@ internal class NotificationLogStore(context: Context, databaseName: String = "no
     @Synchronized
     fun prune(now: Long = System.currentTimeMillis()) {
         if (pruneRows(writableDatabase, now) > 0) updates.value += 1
+        nextPruneAt = now + 60 * 60 * 1000L
+    }
+
+    /** 受信のたびに期限削除の書き込みを行わず、表示時には期限切れを読ませない。 */
+    private fun pruneIfDue(db: SQLiteDatabase, now: Long): Int {
+        if (now < nextPruneAt && now >= nextPruneAt - 60 * 60 * 1000L) return 0
+        val removed = pruneRows(db, now)
+        nextPruneAt = now + 60 * 60 * 1000L
+        return removed
     }
 
     private fun pruneRows(db: SQLiteDatabase, now: Long): Int =

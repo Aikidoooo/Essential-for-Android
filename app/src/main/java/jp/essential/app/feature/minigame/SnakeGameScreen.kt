@@ -1,5 +1,9 @@
 package jp.essential.app.feature.minigame
 
+import jp.essential.app.ui.fixedHeader
+import jp.essential.app.ui.FeatureHeader
+import jp.essential.app.ui.GlassFeatureTitle
+
 import android.content.Context
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.RepeatMode
@@ -160,15 +164,7 @@ internal fun SnakeGameScreen(onBack: () -> Unit) {
             .padding(start = 20.dp, top = 12.dp, end = 20.dp, bottom = 12.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            GameBackButton(onClick = onBack)
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text("ヘビゲーム", style = MaterialTheme.typography.headlineLarge)
-                Text("スワイプまたは移動スティックで操作", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Text("🐍", fontSize = 32.sp)
-        }
+        FeatureHeader("ヘビゲーム", onBack)
 
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             SnakeStat("スコア", score.toString(), Modifier.weight(1f))

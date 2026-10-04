@@ -1,5 +1,9 @@
 package jp.essential.app.feature.minigame
 
+import jp.essential.app.ui.fixedHeader
+import jp.essential.app.ui.FeatureHeader
+import jp.essential.app.ui.GlassFeatureTitle
+
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.ClipboardManager
@@ -124,15 +128,8 @@ private fun MiniGameMenu(
         contentPadding = PaddingValues(start = 20.dp, top = 22.dp, end = 20.dp, bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        progressiveItem(0) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                GameBackButton(onClick = onBack)
-                Spacer(Modifier.width(12.dp))
-                Column {
-                    Text("ミニゲーム", style = MaterialTheme.typography.headlineLarge)
-                    Text("すきま時間に遊べるゲーム", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
+        fixedHeader {
+    FeatureHeader("ミニゲーム", onBack)
         }
         progressiveItem(1) {
             GameMenuCard(
@@ -273,15 +270,8 @@ private fun MinesweeperSizeScreen(
         contentPadding = PaddingValues(start = 20.dp, top = 22.dp, end = 20.dp, bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        progressiveItem(0) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                GameBackButton(onClick = onBack)
-                Spacer(Modifier.width(12.dp))
-                Column {
-                    Text("マス目を選択", style = MaterialTheme.typography.headlineLarge)
-                    Text("遊びやすい盤面サイズを選んでください", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
+        fixedHeader {
+    FeatureHeader("マス目を選択", onBack)
         }
         MineDifficulty.entries.forEachIndexed { index, option ->
             progressiveItem(index + 1) {
@@ -360,15 +350,8 @@ private fun MinesweeperScreen(difficulty: MineDifficulty, onBack: () -> Unit) {
         contentPadding = PaddingValues(start = 20.dp, top = 22.dp, end = 20.dp, bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        progressiveItem(0) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                GameBackButton(onClick = onBack)
-                Spacer(Modifier.width(12.dp))
-                Column {
-                    Text("マインスイーパー", style = MaterialTheme.typography.headlineLarge)
-                    Text("${difficulty.label}・地雷${mineCount}個", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
+        fixedHeader {
+    FeatureHeader("マインスイーパー", onBack)
         }
         progressiveItem(1) {
             Column(
@@ -586,8 +569,7 @@ private fun DosukoiWebViewScreen(onBack: () -> Unit, motionFps: Int) {
             GameBackButton(onClick = onBack, darkSurface = true)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text("どすこい", color = Color(0xFFF1EBFF), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                Text("言葉遊び", color = Color(0xFFBFC7D9))
+                GlassFeatureTitle("どすこい")
             }
             Text(connectionState, style = MaterialTheme.typography.labelSmall, color = Color(0xFFBFC7D9))
         }

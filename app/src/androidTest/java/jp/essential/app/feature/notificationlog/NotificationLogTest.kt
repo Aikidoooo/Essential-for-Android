@@ -71,8 +71,8 @@ class NotificationLogTest {
             compose.onNodeWithTag("notification-entry-$id").performScrollTo()
             val expected = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss").format(Instant.ofEpochMilli(now).atZone(ZoneId.systemDefault()))
             compose.onNodeWithText(expected).assertExists()
-            compose.onNodeWithText("keepする").performClick()
-            compose.waitUntil(10000) { compose.onAllNodesWithText("keep中").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithContentDescription("keepする").performClick()
+            compose.waitUntil(10000) { compose.onAllNodesWithContentDescription("keep中").fetchSemanticsNodes().isNotEmpty() }
             val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
             compose.mainClock.advanceTimeBy(600)
             compose.waitForIdle()

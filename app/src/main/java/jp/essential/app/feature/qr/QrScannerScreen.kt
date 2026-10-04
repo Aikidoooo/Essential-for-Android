@@ -1,5 +1,9 @@
 package jp.essential.app.feature.qr
 
+import jp.essential.app.ui.fixedHeader
+import jp.essential.app.ui.FeatureHeader
+import jp.essential.app.ui.GlassFeatureTitle
+
 import android.Manifest
 import android.app.StatusBarManager
 import android.content.ComponentName
@@ -392,7 +396,9 @@ fun QrScannerScreen(modePosition: Float = 0f, transitionFrame: android.graphics.
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         jp.essential.app.ui.GlassBackButton(onClick = onBack, size = 48.dp)
-                        ScannerModeHeader(false, modePosition) { requestQrTile(context) }
+                        Box(Modifier.weight(1f).padding(horizontal = 10.dp)) {
+                            GlassFeatureTitle("スキャナー")
+                        }
                         ScannerCircleButton(
                             text = if (torchEnabled) "●" else "○",
                             description = "ライト",
@@ -408,6 +414,7 @@ fun QrScannerScreen(modePosition: Float = 0f, transitionFrame: android.graphics.
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
+                        TextButton(onClick = { requestQrTile(context) }) { Text("クイック設定に追加") }
                         AnimatedVisibility(
                             visible = scannedValue != null,
                             enter = fadeIn() + scaleIn(initialScale = 0.92f),
@@ -967,7 +974,8 @@ private fun CameraPermissionScreen(
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text("スキャナー", style = MaterialTheme.typography.headlineLarge)
+        FeatureHeader("スキャナー", onBack)
+        Spacer(Modifier.weight(1f))
         Spacer(Modifier.height(12.dp))
         Text(
             if (denied) "カメラ権限が拒否されました。QRコードの読み取りには権限が必要です。" else "カメラを準備しています。",
@@ -981,6 +989,6 @@ private fun CameraPermissionScreen(
         } else {
             CircularProgressIndicator()
         }
-        jp.essential.app.ui.GlassBackButton(onClick = onBack)
+        Spacer(Modifier.weight(1f))
     }
 }

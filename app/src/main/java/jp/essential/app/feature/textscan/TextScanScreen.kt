@@ -1,5 +1,9 @@
 package jp.essential.app.feature.textscan
 
+import jp.essential.app.ui.fixedHeader
+import jp.essential.app.ui.FeatureHeader
+import jp.essential.app.ui.GlassFeatureTitle
+
 import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -268,7 +272,9 @@ fun TextScanScreen(modePosition: Float = 1f, transitionFrame: android.graphics.B
                 verticalArrangement = Arrangement.SpaceBetween) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     GlassBackButton(onClick = onBack, size = 48.dp)
-                    ScannerModeHeader(true, modePosition)
+                    Box(Modifier.weight(1f).padding(horizontal = 10.dp)) {
+                        GlassFeatureTitle("スキャナー")
+                    }
                     ScannerCircleButton(text = if (torch) "●" else "○", description = "ライト", onClick = {
                         if (camera?.cameraInfo?.hasFlashUnit() == true) {
                             torch = !torch
@@ -334,7 +340,7 @@ fun TextScanScreen(modePosition: Float = 1f, transitionFrame: android.graphics.B
                     verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                         GlassBackButton(onClick = { result = null })
-                        Text("読み取り結果", style = MaterialTheme.typography.titleLarge)
+                        GlassFeatureTitle("読み取り結果", Modifier.weight(1f))
                     }
                     if (qrUrls.isNotEmpty()) {
                         Surface(shape = RoundedCornerShape(20.dp), color = Color.White.copy(alpha = 0.1f)) {

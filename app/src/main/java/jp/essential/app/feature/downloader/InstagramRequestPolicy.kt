@@ -13,6 +13,15 @@ internal object InstagramRequestPolicy {
         return host == "instagram.com" || host.endsWith(".instagram.com")
     }
 
+    /** 投稿IDを保ち、共有用パラメーターを取得要求から除く。 */
+    fun canonicalUrl(rawUrl: String): String {
+        if (!isInstagramUrl(rawUrl)) return rawUrl
+        val path = URI(rawUrl).path
+        val match = Regex("^/(p|reel|reels|tv)/([A-Za-z0-9_-]+)(?:/|$)").find(path) ?: return rawUrl
+        val type = if (match.groupValues[1] == "reels") "reel" else match.groupValues[1]
+        return "https://www.instagram.com/$type/${match.groupValues[2]}/"
+    }
+
     /** 投稿が公開制限ではなく、extractorの仕様変更で失敗した場合だけ更新対象にする。 */
     internal fun isRecoverableExtractorFailure(rawMessage: String): Boolean {
         val message = rawMessage.lowercase()
@@ -25,6 +34,7 @@ internal object InstagramRequestPolicy {
             ).any(message::contains)
         ) return false
         return listOf(
+            "empty media response",
             "unable to extract",
             "failed to parse json",
             "no video formats found",
@@ -37,6 +47,8 @@ internal object InstagramRequestPolicy {
     internal fun userFacingFailure(rawMessage: String): String? {
         val message = rawMessage.lowercase()
         return when {
+            "empty media response" in message ->
+                "Instagramから動画情報が返されませんでした。取得処理を更新しても改善しない場合は、ブラウザーでログインせずに投稿が開けるか確認してください。公開投稿でもInstagram側の制限で取得できない場合があります"
             listOf(
                 "requested content is not available",
                 "rate-limit reached",

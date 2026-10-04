@@ -10,11 +10,11 @@ class TextScanLayoutTest {
             ScanTextPiece("right", 100, 0, 150, 20),
             ScanTextPiece("left", 0, 0, 40, 20),
         )
-        assertEquals("left      right\n    next", formatScanLayout(pieces))
+        assertEquals("left right\nnext", formatScanLayout(pieces))
     }
 
     @Test fun preservesBlankRowsAndMixedJapaneseColumns() {
-        assertEquals("日本語  ABC\n\n    end", formatScanLayout(listOf(
+        assertEquals("日本語 ABC\n\nend", formatScanLayout(listOf(
             ScanTextPiece("日本語", 0, 0, 60, 20),
             ScanTextPiece("ABC", 80, 0, 110, 20),
             ScanTextPiece("end", 40, 60, 70, 80),
@@ -23,5 +23,12 @@ class TextScanLayoutTest {
 
     @Test fun ignoresMissingOrEmptyBounds() {
         assertEquals("", formatScanLayout(listOf(ScanTextPiece("", 0, 0, 0, 0))))
+    }
+
+    @Test fun joinsTouchingPiecesAndNormalizesSpaces() {
+        assertEquals("日本語 A B", formatScanLayout(listOf(
+            ScanTextPiece("日本", 0, 0, 20, 20),
+            ScanTextPiece("語　A  B", 20, 0, 80, 20),
+        )))
     }
 }

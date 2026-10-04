@@ -1,5 +1,9 @@
 package jp.essential.app.feature.schedule
 
+import jp.essential.app.ui.fixedHeader
+import jp.essential.app.ui.FeatureHeader
+import jp.essential.app.ui.GlassFeatureTitle
+
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -25,16 +29,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DatePickerDialog
-import androidx.compose.material3.DateRangePicker
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberDateRangePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -49,9 +49,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import java.time.Instant
-import java.time.ZoneOffset
-import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.launch
 import jp.essential.app.ui.ProgressiveWidget
 import jp.essential.app.ui.progressiveItem
@@ -122,7 +119,7 @@ fun ScheduleGeneratorScreen(onBack: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         var motionIndex = 0
-        progressiveItem(motionIndex++) { ScheduleTopBar(onBack) }
+        fixedHeader { ScheduleTopBar(onBack) }
         progressiveItem(motionIndex++) {
             Box(
                 modifier = Modifier.fillMaxWidth()
@@ -228,7 +225,6 @@ fun ScheduleGeneratorScreen(onBack: () -> Unit) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun DateRangeField(startDate: String, endDate: String, onSelected: (String, String) -> Unit) {
     var showPicker by remember { mutableStateOf(false) }
@@ -246,38 +242,11 @@ private fun DateRangeField(startDate: String, endDate: String, onSelected: (Stri
         Text("カレンダー")
     }
     if (showPicker) {
-        val pickerState = rememberDateRangePickerState()
-        DatePickerDialog(
-            onDismissRequest = { showPicker = false },
-            confirmButton = {
-                TextButton(
-                    enabled = pickerState.selectedStartDateMillis != null,
-                    onClick = {
-                        val start = formatDate(pickerState.selectedStartDateMillis)
-                        val end = formatDate(pickerState.selectedEndDateMillis ?: pickerState.selectedStartDateMillis)
-                        onSelected(start, end)
-                        showPicker = false
-                    },
-                ) { Text("決定") }
-            },
-            dismissButton = { TextButton(onClick = { showPicker = false }) { Text("キャンセル") } },
-        ) {
-            DateRangePicker(
-                state = pickerState,
-                title = { Text("開始日と終了日を選択", modifier = Modifier.padding(16.dp)) },
-                headline = { Text("開始日 － 終了日", modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) },
-                showModeToggle = false,
-                modifier = Modifier.heightIn(max = 560.dp),
-            )
+        EssentialCalendar(startDate, endDate, onDismiss = { showPicker = false }) { start, end ->
+            onSelected(start, end)
+            showPicker = false
         }
     }
-}
-
-private fun formatDate(millis: Long?): String {
-    if (millis == null) return ""
-    return DateTimeFormatter.ofPattern("yyyy/MM/dd")
-        .withZone(ZoneOffset.UTC)
-        .format(Instant.ofEpochMilli(millis))
 }
 
 @Composable
@@ -409,16 +378,5 @@ private fun OutputButton(label: String, modifier: Modifier, isWriting: Boolean, 
 
 @Composable
 private fun ScheduleTopBar(onBack: () -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        jp.essential.app.ui.GlassBackButton(onClick = onBack)
-        Spacer(Modifier.width(12.dp))
-        Column {
-            Text("行程表ジェネレーター", style = MaterialTheme.typography.headlineMedium)
-            Text(
-                "経由地を含む行程からPDF・文章・画像へ",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
+    FeatureHeader("行程表ジェネレーター", onBack)
 }

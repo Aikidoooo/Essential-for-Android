@@ -5,11 +5,10 @@ import kotlin.math.roundToInt
 /** 認識した文字片と、回転補正後の画像内の位置。 */
 internal data class ScanTextPiece(val text: String, val left: Int, val top: Int, val right: Int, val bottom: Int)
 
-/** 等幅文字の空白と改行で、行・字下げ・横並びの位置関係を近似する。 */
+/** 縦の行間を保持し、横の隙間は半角スペース一つへ詰める。 */
 internal fun formatScanLayout(pieces: List<ScanTextPiece>): String {
     val valid = pieces.filter { it.text.isNotBlank() && it.right > it.left && it.bottom > it.top }
     if (valid.isEmpty()) return ""
-    val origin = valid.minOf { it.left }
     val widths = valid.map { (it.right - it.left).toFloat() / scanTextColumns(it.text).coerceAtLeast(1) }.sorted()
     val cellWidth = widths[widths.size / 2].coerceAtLeast(1f)
     val heights = valid.map { it.bottom - it.top }.sorted()
@@ -30,13 +29,11 @@ internal fun formatScanLayout(pieces: List<ScanTextPiece>): String {
                 val gap = row.minOf { it.top } - previousBottom!!
                 append("\n".repeat(1 + (gap.toFloat() / (lineHeight * 1.4f)).roundToInt().coerceIn(0, 8)))
             }
-            var column = 0
+            var previousRight: Int? = null
             row.sortedBy { it.left }.forEach { piece ->
-                val target = ((piece.left - origin) / cellWidth).roundToInt().coerceIn(0, 512)
-                val spaces = (target - column).coerceAtLeast(if (column > 0) 1 else 0)
-                append(" ".repeat(spaces))
-                append(piece.text)
-                column += spaces + scanTextColumns(piece.text)
+                if (previousRight != null && piece.left - previousRight!! >= cellWidth * 0.35f) append(' ')
+                append(piece.text.replace('\u3000', ' ').replace(Regex("[ \\t]+"), " ").trim())
+                previousRight = maxOf(previousRight ?: piece.right, piece.right)
             }
             previousBottom = row.maxOf { it.bottom }
         }

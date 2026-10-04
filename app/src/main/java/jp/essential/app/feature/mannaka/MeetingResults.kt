@@ -1,5 +1,9 @@
 package jp.essential.app.feature.mannaka
 
+import jp.essential.app.ui.fixedHeader
+import jp.essential.app.ui.FeatureHeader
+import jp.essential.app.ui.GlassFeatureTitle
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -58,15 +62,7 @@ internal fun MeetingResults(participants: List<MeetingParticipant>, stations: Li
     val longest = distances.indices.maxByOrNull { distances[it] }
     LazyColumn(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).testTag("mannaka-results"),
         contentPadding = PaddingValues(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 40.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        progressiveItem(0, keyPrefix = "mannaka-candidates") {
-            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                GlassBackButton(onClick = onBack, modifier = Modifier.semantics { contentDescription = "駅入力に戻る" })
-                Column {
-                    Text("まんなか候補", fontSize = 27.sp)
-                    Text(origins.joinToString("・") { it.name.removeSuffix("駅") } + " のまんなか", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                }
-            }
-        }
+        fixedHeader { FeatureHeader("まんなか候補", onBack, backDescription = "駅入力に戻る") }
         progressiveItem(1, keyPrefix = "mannaka-candidates") {
             Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.primaryContainer) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {

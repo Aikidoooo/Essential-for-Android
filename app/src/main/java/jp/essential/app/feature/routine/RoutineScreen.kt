@@ -1,5 +1,9 @@
 package jp.essential.app.feature.routine
 
+import jp.essential.app.ui.fixedHeader
+import jp.essential.app.ui.FeatureHeader
+import jp.essential.app.ui.GlassFeatureTitle
+
 import android.content.Context
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -237,7 +241,7 @@ internal fun RoutineScreen(onBack: () -> Unit) {
         contentPadding = PaddingValues(start = 20.dp, top = 22.dp, end = 20.dp, bottom = 30.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        progressiveItem(0) { RoutineHeader(onBack) }
+        fixedHeader { RoutineHeader(onBack) }
         progressiveItem(1) {
             RoutineLevelCard(
                 totalPoints = totalPoints,
@@ -319,14 +323,7 @@ internal fun RoutineScreen(onBack: () -> Unit) {
 
 @Composable
 private fun RoutineHeader(onBack: () -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        jp.essential.app.ui.GlassBackButton(onClick = onBack)
-        Spacer(Modifier.width(14.dp))
-        Column {
-            Text("日課", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Black)
-            Text("小さな達成を、毎日の力に。", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
+    FeatureHeader("日課", onBack)
 }
 
 /** 日課の表示対象を複数選択できるフィルター。 */
@@ -485,6 +482,7 @@ private fun RoutineTaskCard(
             AnimatedVisibility(completed, enter = fadeIn() + scaleIn()) {
                 Text("達成済み", color = Color(0xFF15836E), fontWeight = FontWeight.Black)
             }
+            TextButton(onClick = { onDelete(task) }) { Text("削除", color = MaterialTheme.colorScheme.error) }
         }
         if (task.notificationEnabled || task.cadence == RoutineCadence.Event) {
             Text(
@@ -511,7 +509,6 @@ private fun RoutineTaskCard(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             TextButton(onClick = { onEdit(task) }) { Text("設定") }
-            TextButton(onClick = { onDelete(task) }) { Text("削除", color = MaterialTheme.colorScheme.error) }
             if (!completed && active) {
                 Spacer(Modifier.width(8.dp))
                 Button(

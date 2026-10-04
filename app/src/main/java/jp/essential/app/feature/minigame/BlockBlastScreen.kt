@@ -1,5 +1,9 @@
 package jp.essential.app.feature.minigame
 
+import jp.essential.app.ui.fixedHeader
+import jp.essential.app.ui.FeatureHeader
+import jp.essential.app.ui.GlassFeatureTitle
+
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
@@ -259,11 +263,11 @@ private fun blockPreviewOffset(
 }
 
 /** 掴んだ指を隠さず、ブロックの下端が指の少し上へ来る表示・当たり判定位置を返す。 */
-private fun blockPointerAboveFinger(pointer: Offset, shape: Int, cellSizePx: Float, gapPx: Float): Offset {
+private fun blockPointerAboveFinger(pointer: Offset, shape: Int, cellSizePx: Float, gapPx: Float, extraLiftPx: Float): Offset {
     val metrics = blockShapeMetrics(shape) ?: return pointer
     val pitch = cellSizePx + gapPx
     val lift = (metrics.maxY - metrics.minY + 1f) * pitch * 0.72f
-    return Offset(pointer.x, pointer.y - lift)
+    return Offset(pointer.x, pointer.y - lift - extraLiftPx)
 }
 
 /** 参考画面の淡い盤面と、ドラッグ配置に対応したBlock Blast画面。 */
@@ -314,7 +318,7 @@ internal fun BlockBlastScreen(onBack: () -> Unit) {
     }
     val draggingShape = hand.getOrNull(draggingIndex) ?: -1
     val dragTargetPointer = dragPointer?.let { pointer ->
-        blockPointerAboveFinger(pointer, draggingShape, with(density) { 18.dp.toPx() }, with(density) { 1.dp.toPx() })
+        blockPointerAboveFinger(pointer, draggingShape, with(density) { 18.dp.toPx() }, with(density) { 1.dp.toPx() }, with(density) { 16.dp.toPx() })
     }
     val dropCell = dragTargetPointer?.let { pointer ->
         gridBounds?.let { grid ->
@@ -401,7 +405,7 @@ internal fun BlockBlastScreen(onBack: () -> Unit) {
     fun dropDraggedShape(index: Int, pointer: Offset?) {
         val shape = hand.getOrNull(index) ?: -1
         val targetPointer = pointer?.let { current ->
-            blockPointerAboveFinger(current, shape, with(density) { 18.dp.toPx() }, with(density) { 1.dp.toPx() })
+            blockPointerAboveFinger(current, shape, with(density) { 18.dp.toPx() }, with(density) { 1.dp.toPx() }, with(density) { 16.dp.toPx() })
         }
         val cell = targetPointer?.let { current ->
             gridBounds?.let { grid ->
@@ -429,20 +433,7 @@ internal fun BlockBlastScreen(onBack: () -> Unit) {
                 .padding(start = 18.dp, top = 8.dp, end = 18.dp, bottom = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Box(Modifier.fillMaxWidth().height(50.dp)) {
-                jp.essential.app.ui.GlassBackButton(
-                    onClick = onBack,
-                    modifier = Modifier.align(Alignment.CenterStart),
-                    size = 42.dp,
-                )
-                Text(
-                    "1.0",
-                    modifier = Modifier.align(Alignment.TopCenter),
-                    color = BlockBlastInk.copy(alpha = 0.13f),
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                )
-            }
+            FeatureHeader("Block Blast", onBack)
 
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),

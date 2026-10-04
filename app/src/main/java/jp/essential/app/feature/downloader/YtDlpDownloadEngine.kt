@@ -105,7 +105,7 @@ class YtDlpDownloadEngine(private val context: Context) {
         try {
             val safeUrl = validatePublicUrl(selection.url)
             val effectiveSelection = selection.copy(
-                url = resolveTikTokShareUrl(safeUrl),
+                url = InstagramRequestPolicy.canonicalUrl(resolveTikTokShareUrl(safeUrl)),
             )
             Result.success(when (effectiveSelection.mediaType) {
                 DownloadMediaType.Image -> downloadImages(effectiveSelection, onState)

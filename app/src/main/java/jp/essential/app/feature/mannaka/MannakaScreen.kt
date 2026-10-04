@@ -1,5 +1,9 @@
 package jp.essential.app.feature.mannaka
 
+import jp.essential.app.ui.fixedHeader
+import jp.essential.app.ui.FeatureHeader
+import jp.essential.app.ui.GlassFeatureTitle
+
 import androidx.activity.compose.BackHandler
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -7,6 +11,9 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -261,23 +268,21 @@ internal fun MannakaContent(onBack: () -> Unit, repository: MeetingDataSource = 
         contentPadding = PaddingValues(start = 16.dp, top = 24.dp, end = 16.dp, bottom = if (keyboardOpen) 150.dp else 56.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        item {
-            ProgressiveWidget(0) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        GlassBackButton(onClick = onBack, modifier = Modifier.padding(end = 8.dp).semantics { contentDescription = "ホームに戻る" })
-                        Icon(painterResource(R.drawable.ic_mannaka_place), null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
-                        Text("まんなか", style = MaterialTheme.typography.headlineLarge, modifier = Modifier.weight(1f).padding(start = 7.dp), maxLines = 1)
-                        IconButton(onClick = { openSheet(MeetingSheet.Favorites) }, modifier = Modifier.size(38.dp)) {
-                            Icon(painterResource(R.drawable.ic_mannaka_favorite_border), "お気に入り", tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        IconButton(onClick = { openSheet(MeetingSheet.History) }, modifier = Modifier.size(38.dp)) {
-                            Icon(painterResource(R.drawable.ic_mannaka_history), "履歴", tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-
-                    }
-                    Text("みんなの“まんなか”、どこだろう？", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 15.sp,
-                        modifier = Modifier.padding(start = 4.dp, bottom = 4.dp))
+        fixedHeader {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                GlassBackButton(onClick = onBack, modifier = Modifier.semantics { contentDescription = "ホームに戻る" })
+                Box(Modifier.weight(1f)) { GlassFeatureTitle("まんなか") }
+                val actionShape = RoundedCornerShape(28.dp)
+                Row(Modifier.background(Color.White.copy(alpha = 0.17f), actionShape)
+                    .border(1.dp, Color.White.copy(alpha = 0.48f), actionShape)
+                    .padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { openSheet(MeetingSheet.Favorites) }, modifier = Modifier.size(46.dp)) {
+                    Icon(painterResource(R.drawable.ic_mannaka_favorite_border), "お気に入り", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                IconButton(onClick = { openSheet(MeetingSheet.History) }, modifier = Modifier.size(46.dp)) {
+                    Icon(painterResource(R.drawable.ic_mannaka_history), "履歴", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
                 }
             }
         }

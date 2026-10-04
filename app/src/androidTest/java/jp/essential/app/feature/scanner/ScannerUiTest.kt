@@ -95,8 +95,7 @@ class ScannerUiTest {
         try {
             compose.onNodeWithTag("scanner-text-mode").performClick()
             compose.mainClock.advanceTimeBy(96)
-            val progress = compose.onNodeWithTag("scanner-mode-header").fetchSemanticsNode().config[ScannerMotionProgress]
-            assertTrue("上部ラベルが切替途中になる", progress > 0f && progress < 1f)
+            compose.onNodeWithText("スキャナー", substring = false).assertIsDisplayed()
             val frame = compose.onNodeWithTag("scanner-qr-frame").fetchSemanticsNode().config[ScannerMotionProgress]
             assertTrue("QR枠が徐々に消える", frame > 0f && frame < 1f)
             compose.onNodeWithTag("scanner-shutter-disabled-mark", useUnmergedTree = true).assertExists()
@@ -106,8 +105,7 @@ class ScannerUiTest {
             compose.onNodeWithTag("scanner-auto").assertIsNotEnabled()
             compose.onNodeWithTag("scanner-qr-mode").performClick()
             compose.mainClock.advanceTimeBy(96)
-            val reverse = compose.onNodeWithTag("scanner-mode-header").fetchSemanticsNode().config[ScannerMotionProgress]
-            assertTrue("逆方向も切替途中になる", reverse > 0f && reverse < 1f)
+            compose.onNodeWithText("スキャナー", substring = false).assertIsDisplayed()
             compose.mainClock.advanceTimeBy(1200)
             compose.onNodeWithTag("scanner-shutter").assertIsNotEnabled()
             compose.onNodeWithTag("scanner-auto").assertIsEnabled()

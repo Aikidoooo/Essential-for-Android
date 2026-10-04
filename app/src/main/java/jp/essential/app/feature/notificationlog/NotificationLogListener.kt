@@ -27,6 +27,7 @@ internal object NotificationLogConnection {
 class NotificationLogListener : NotificationListenerService() {
     private val dispatcher = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
+    private val appNames = android.util.LruCache<String, String>(128)
     private val recent = object : LinkedHashMap<String, Triple<String, String, Long>>(128, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Triple<String, String, Long>>?): Boolean = size > 512
     }
@@ -63,8 +64,9 @@ class NotificationLogListener : NotificationListenerService() {
             val fingerprint = Triple(title, body, postedAt)
             if (recent[sourceKey] == fingerprint) return@launch
             runCatching {
-                val appName = runCatching { packageManager.getApplicationLabel(
+                val appName = appNames.get(packageName) ?: runCatching { packageManager.getApplicationLabel(
                     packageManager.getApplicationInfo(packageName, 0)).toString() }.getOrDefault(packageName)
+                    .also { appNames.put(packageName, it) }
                 NotificationLogStore.get(this@NotificationLogListener).record(packageName, appName, title, body, receivedAt)
                 recent[sourceKey] = fingerprint
             }.onFailure { android.util.Log.e("NotificationLog", "通知ログの保存に失敗", it) }
@@ -101,9 +103,9 @@ class NotificationLogCleanup : JobService() {
         fun schedule(context: Context) {
             val scheduler = context.getSystemService(JobScheduler::class.java)
             val id = 74031
-            if (scheduler.getPendingJob(id) == null) {
+            if (scheduler.getPendingJob(id)?.intervalMillis != 6 * 60 * 60 * 1000L) {
                 scheduler.schedule(JobInfo.Builder(id, ComponentName(context, NotificationLogCleanup::class.java))
-                    .setPeriodic(60 * 60 * 1000L).setPersisted(true).build())
+                    .setPeriodic(6 * 60 * 60 * 1000L, 60 * 60 * 1000L).setPersisted(true).build())
             }
         }
     }

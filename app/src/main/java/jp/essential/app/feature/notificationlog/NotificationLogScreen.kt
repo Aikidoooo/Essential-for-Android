@@ -1,5 +1,9 @@
 package jp.essential.app.feature.notificationlog
 
+import jp.essential.app.ui.fixedHeader
+import jp.essential.app.ui.FeatureHeader
+import jp.essential.app.ui.GlassFeatureTitle
+
 import android.content.ComponentName
 import android.content.Intent
 import android.database.ContentObserver
@@ -14,6 +18,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
@@ -85,7 +95,15 @@ internal fun NotificationLogScreen(storeOverride: NotificationLogStore? = null, 
     }
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) { NotificationLogCleanup.schedule(context) }
-        while (true) { delay(60_000); refresh += 1 }
+    }
+    // 一定間隔のポーリングを避け、表示中の最短期限に合わせて一度だけ更新する。
+    LaunchedEffect(entries, lifecycle) {
+        val expiresAt = entries.filterNot { it.kept }.minOfOrNull { it.receivedAt + LOG_RETENTION_MILLIS }
+            ?: return@LaunchedEffect
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            delay((expiresAt - System.currentTimeMillis()).coerceAtLeast(1L))
+            refresh += 1
+        }
     }
     LaunchedEffect(revision, keptOnly, limit, refresh) {
         loading = true
@@ -111,14 +129,10 @@ internal fun NotificationLogScreen(storeOverride: NotificationLogStore? = null, 
         contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 12.dp, bottom = 110.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        progressiveItem(0, "notification-header") {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                GlassBackButton(onBack)
-                NotificationLogLogo()
-            }
-            Spacer(Modifier.height(18.dp))
-            Text("通知ログ", style = MaterialTheme.typography.headlineLarge)
-            Text("届いた通知を、秒単位で振り返る", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        fixedHeader {
+            FeatureHeader("通知ログ", onBack) { NotificationLogLogo() }
+        }
+        item("notification-connection") {
             if (allowed) Text(if (connected) "通知を記録しています" else "通知サービスの接続待ち",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -170,17 +184,34 @@ internal fun NotificationLogScreen(storeOverride: NotificationLogStore? = null, 
         itemsIndexed(entries.take(limit), key = { _, entry -> entry.id }) { index, entry ->
             ProgressiveWidget(index + 3) {
                 LogGlassCard(Modifier.testTag("notification-entry-${entry.id}")) {
-                    Text(entry.appName, style = MaterialTheme.typography.titleMedium)
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(entry.appName, style = MaterialTheme.typography.titleMedium)
+                            if (entry.title.isNotBlank()) Text(entry.title, style = MaterialTheme.typography.titleSmall)
+                        }
+                        IconToggleButton(checked = entry.kept, onCheckedChange = { kept ->
+                            if (!kept && entry.receivedAt <= System.currentTimeMillis() - LOG_RETENTION_MILLIS) releaseKeep = entry
+                            else change { store.keep(entry.id, kept) }
+                        }, modifier = Modifier.testTag("notification-keep-${entry.id}")) {
+                            val color = if (entry.kept) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            Canvas(Modifier.size(24.dp).semantics { contentDescription = if (entry.kept) "keep中" else "keepする" }) {
+                                val path = Path().apply {
+                                    moveTo(size.width * 0.22f, size.height * 0.1f)
+                                    lineTo(size.width * 0.78f, size.height * 0.1f)
+                                    lineTo(size.width * 0.78f, size.height * 0.9f)
+                                    lineTo(size.width * 0.5f, size.height * 0.7f)
+                                    lineTo(size.width * 0.22f, size.height * 0.9f)
+                                    close()
+                                }
+                                if (entry.kept) drawPath(path, color) else drawPath(path, color, style = Stroke(2.dp.toPx()))
+                            }
+                        }
+                    }
                     Text(formatter.format(Instant.ofEpochMilli(entry.receivedAt).atZone(ZoneId.systemDefault())),
                         style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                    if (entry.title.isNotBlank()) Text(entry.title, style = MaterialTheme.typography.titleSmall)
                     Text(entry.body.ifBlank { "通知に表示できる本文がありません" }, style = MaterialTheme.typography.bodyMedium)
                     Text(entry.packageName, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(selected = entry.kept, onClick = {
-                            if (entry.kept && entry.receivedAt <= System.currentTimeMillis() - LOG_RETENTION_MILLIS) releaseKeep = entry
-                            else change { store.keep(entry.id, !entry.kept) }
-                        }, label = { Text(if (entry.kept) "keep中" else "keepする") })
                         TextButton(onClick = { deletion = entry }) { Text("削除", color = MaterialTheme.colorScheme.error) }
                     }
                 }

@@ -1,5 +1,9 @@
 package jp.essential.app.feature.downloader
 
+import jp.essential.app.ui.fixedHeader
+import jp.essential.app.ui.FeatureHeader
+import jp.essential.app.ui.GlassFeatureTitle
+
 import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -173,7 +177,7 @@ fun DownloaderScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         var motionIndex = 0
-        progressiveItem(motionIndex++) {
+        fixedHeader {
             FeatureTopBar(
                 title = "ダウンローダー",
                 subtitle = "yt-dlp + FFmpeg・端末内処理",
@@ -633,18 +637,7 @@ private fun FeatureTopBar(
     subtitle: String,
     onBack: () -> Unit,
 ) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        jp.essential.app.ui.GlassBackButton(onClick = onBack)
-        Spacer(Modifier.width(12.dp))
-        Column {
-            Text(title, style = MaterialTheme.typography.headlineMedium)
-            Text(
-                subtitle,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
+    FeatureHeader(title, onBack)
 }
 
 @OptIn(ExperimentalFoundationApi::class)

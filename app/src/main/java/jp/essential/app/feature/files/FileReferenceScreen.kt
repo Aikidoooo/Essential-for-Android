@@ -1,5 +1,9 @@
 package jp.essential.app.feature.files
 
+import jp.essential.app.ui.fixedHeader
+import jp.essential.app.ui.FeatureHeader
+import jp.essential.app.ui.GlassFeatureTitle
+
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.animation.AnimatedContent
@@ -159,7 +163,7 @@ fun FileReferenceScreen(onBack: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(15.dp),
     ) {
         var motionIndex = 0
-        progressiveItem(motionIndex++) { FileTopBar(onBack) }
+        fixedHeader { FileTopBar(onBack) }
         progressiveItem(motionIndex++) {
             Surface(
                 color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.74f),
@@ -449,7 +453,7 @@ private fun FrameExtractionScreen(
         verticalArrangement = Arrangement.spacedBy(15.dp),
     ) {
         var motionIndex = 0
-        progressiveItem(motionIndex++) { FrameTopBar(onBack) }
+        fixedHeader { FrameTopBar(onBack) }
         progressiveItem(motionIndex++) {
             Box(
                 modifier = Modifier.fillMaxWidth(),
@@ -634,14 +638,7 @@ private fun FrameExtractionScreen(
 
 @Composable
 private fun FrameTopBar(onBack: () -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        jp.essential.app.ui.GlassBackButton(onClick = onBack)
-        Spacer(Modifier.width(12.dp))
-        Column {
-            Text("フレーム切り取り", style = MaterialTheme.typography.headlineMedium)
-            Text("動画を見ながら一瞬を選択", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
+    FeatureHeader("フレーム切り取り", onBack)
 }
 
 @Composable
@@ -722,14 +719,7 @@ private fun ActionButton(label: String, processingLabel: String?, onClick: () ->
 
 @Composable
 private fun FileTopBar(onBack: () -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        jp.essential.app.ui.GlassBackButton(onClick = onBack)
-        Spacer(Modifier.width(12.dp))
-        Column {
-            Text("ファイル参照", style = MaterialTheme.typography.headlineMedium)
-            Text("圧縮・変換・切り取り・AI背景透過", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
+    FeatureHeader("ファイル参照", onBack)
 }
 
 private fun formatTime(millis: Long): String {

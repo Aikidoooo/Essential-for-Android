@@ -1,5 +1,9 @@
 package jp.essential.app.feature.mannaka
 
+import jp.essential.app.ui.fixedHeader
+import jp.essential.app.ui.FeatureHeader
+import jp.essential.app.ui.GlassFeatureTitle
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -28,14 +32,9 @@ internal fun MeetingFacilities(station: MeetingPoint, categories: List<String>, 
     LazyColumn(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).imePadding()
         .testTag("mannaka-facilities"), contentPadding = PaddingValues(16.dp, 8.dp, 16.dp, 40.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        progressiveItem(0, keyPrefix = "mannaka-facilities") {
-            GlassBackButton(onClick = onBack, modifier = Modifier.semantics { contentDescription = "中心駅候補に戻る" })
-        }
-        progressiveItem(1, keyPrefix = "mannaka-facilities") {
-            Text(if (choosingActivity) "集まって何する？" else "付近の施設", style = MaterialTheme.typography.headlineLarge)
-            Text("${station.name}の周りで遊ぶ", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(station.detail, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
+        fixedHeader { FeatureHeader(if (choosingActivity) "集まって何する？" else "付近の施設", onBack,
+            backDescription = "中心駅候補に戻る") }
+        item("facility-station") { Text(station.name, style = MaterialTheme.typography.titleMedium) }
         if (choosingActivity) {
             progressiveItem(2, keyPrefix = "mannaka-facilities") {
                 MeetingGlassCard(Modifier.testTag("mannaka-facility-activity"), padding = 0.dp) {

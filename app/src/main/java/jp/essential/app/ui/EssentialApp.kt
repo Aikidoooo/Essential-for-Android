@@ -1331,7 +1331,7 @@ private fun ProfileScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         if (settingsVisible) {
-            progressiveItem(0, keyPrefix = "profile-settings") {
+            fixedHeader {
                 ProfilePanelHeader(title = "設定", onBack = { panel = ProfilePanel.Main })
             }
         } else {
@@ -1665,14 +1665,7 @@ private fun ProfileActionButton(
 
 @Composable
 private fun ProfilePanelHeader(title: String, onBack: () -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        GlassBackButton(onClick = onBack)
-        Spacer(Modifier.width(4.dp))
-        Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
-    }
+    FeatureHeader(title, onBack)
 }
 
 @Composable

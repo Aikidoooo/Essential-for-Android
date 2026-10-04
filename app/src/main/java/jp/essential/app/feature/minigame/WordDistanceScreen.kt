@@ -1,5 +1,9 @@
 package jp.essential.app.feature.minigame
 
+import jp.essential.app.ui.fixedHeader
+import jp.essential.app.ui.FeatureHeader
+import jp.essential.app.ui.GlassFeatureTitle
+
 import android.annotation.SuppressLint
 import android.app.ActivityManager
 import android.content.res.Configuration
@@ -31,6 +35,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -154,9 +159,10 @@ internal fun WordDistanceScreen(onBack: () -> Unit) {
             .fillMaxSize()
             .background(Color(0xFF151622))
             .statusBarsPadding()
-            .navigationBarsPadding(),
+            .navigationBarsPadding()
+            .imePadding(),
     ) {
-        ProgressiveChrome(visible = chromeStarted, index = 0, duration = motionDuration) {
+        Box {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -170,18 +176,7 @@ internal fun WordDistanceScreen(onBack: () -> Unit) {
             ) {
                 jp.essential.app.ui.GlassBackButton(onClick = ::navigateBack, size = 42.dp)
                 Spacer(Modifier.width(if (landscapeMode) 8.dp else 12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        "一番遠い言葉",
-                        color = Color(0xFFF3F1FF),
-                        style = if (landscapeMode) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                    )
-                    if (!landscapeMode) {
-                        Text("公式ゲームをEssential内でプレイ", color = Color(0xFFBFC2D3), style = MaterialTheme.typography.bodySmall)
-                    }
-                }
+                GlassFeatureTitle("一番遠い言葉", Modifier.weight(1f))
                 GlassActionButton(contentDescription = "再読み込み", onClick = ::loadGame) {
                     Text("↻", color = Color.White, fontSize = 23.sp)
                 }
@@ -249,6 +244,24 @@ internal fun WordDistanceScreen(onBack: () -> Unit) {
                     modifier = Modifier.fillMaxSize(),
                     factory = { context ->
                         WebView(context).apply {
+                        isFocusable = true
+                        isFocusableInTouchMode = true
+                        // Unityの隠し入力欄へ移動する自動スクロールで、ゲームの表示とタッチ座標をずらさない。
+                        setOnScrollChangeListener { view, scrollX, scrollY, _, _ ->
+                            if (url?.let { Uri.parse(it).host?.endsWith(UNITYROOM_PLAYER_HOST_SUFFIX) } == true && (scrollX != 0 || scrollY != 0)) {
+                                view.scrollTo(0, 0)
+                            }
+                        }
+                        setOnTouchListener { view, event ->
+                            if (event.actionMasked == android.view.MotionEvent.ACTION_DOWN) {
+                                view.requestFocus()
+                                view.parent?.requestDisallowInterceptTouchEvent(true)
+                            }
+                            if (event.actionMasked == android.view.MotionEvent.ACTION_UP || event.actionMasked == android.view.MotionEvent.ACTION_CANCEL) {
+                                view.parent?.requestDisallowInterceptTouchEvent(false)
+                            }
+                            false
+                        }
                         webViewRef = this
                         setLayerType(View.LAYER_TYPE_HARDWARE, null)
                         // 前面のWebGLは優先し、画面外では描画器を休止可能にしてメモリを返しやすくする。
@@ -543,20 +556,25 @@ return originalConnect.apply(this,arguments)
 }
 })()"""
 private const val FIT_UNITY_PLAYER_SCRIPT = """(function(){
+var viewport=document.querySelector('meta[name="viewport"]');
+if(!viewport){viewport=document.createElement('meta');viewport.name='viewport';document.head.appendChild(viewport)}
+viewport.content='width=device-width,initial-scale=1,minimum-scale=1,maximum-scale=1,user-scalable=no';
+var inputStyle=document.getElementById('essential-input-style');
+if(!inputStyle){inputStyle=document.createElement('style');inputStyle.id='essential-input-style';inputStyle.textContent='input,textarea{font-size:16px!important}';document.head.appendChild(inputStyle)}
 var fit=function(){
 var html=document.documentElement;
 var body=document.body;
 var canvas=document.querySelector('#unity-canvas,canvas');
 var root=document.querySelector('#unity-container')||body;
 if(!html||!body)return;
-var width=Math.max(1,html.clientWidth||innerWidth);
-var height=Math.max(1,html.clientHeight||innerHeight);
+var width=Math.max(1,innerWidth);
+var height=Math.max(1,innerHeight);
 var set=function(node,name,value){if(node)node.style.setProperty(name,value,'important')};
 [html,body].forEach(function(node){set(node,'width',width+'px');set(node,'height',height+'px');set(node,'margin','0');set(node,'padding','0');set(node,'overflow','hidden')});
 set(root,'position','fixed');set(root,'left','0');set(root,'top','0');set(root,'transform','none');set(root,'width',width+'px');set(root,'height',height+'px');set(root,'margin','0');set(root,'padding','0');set(root,'overflow','hidden');set(root,'display','block');
 if(canvas){var parent=canvas.parentElement;if(parent&&parent!==root){set(parent,'position','absolute');set(parent,'left','0');set(parent,'top','0');set(parent,'width','100%');set(parent,'height','100%');set(parent,'margin','0');set(parent,'padding','0');set(parent,'overflow','hidden')};set(canvas,'position','absolute');set(canvas,'left','0');set(canvas,'top','0');set(canvas,'width','100%');set(canvas,'height','100%');set(canvas,'max-width','none');set(canvas,'max-height','none');set(canvas,'margin','0');set(canvas,'display','block');var fitScale=Math.min(1,(width*0.96)/Math.max(1,canvas.offsetWidth),(height*0.92)/Math.max(1,canvas.offsetHeight));set(canvas,'transform-origin','center center');set(canvas,'transform','scale('+fitScale+')')}
 var loading=document.querySelector('#unity-loading-bar');if(loading){set(loading,'position','absolute');set(loading,'left','50%');set(loading,'top','50%');set(loading,'transform','translate(-50%,-50%)')}
 };
-if(!window.__essentialUnityFit){window.__essentialUnityFit=true;window.addEventListener('resize',fit,{passive:true});var observer=new MutationObserver(function(){requestAnimationFrame(fit)});var bindObserver=function(){var canvas=document.querySelector('#unity-canvas,canvas');if(canvas)observer.observe(canvas,{attributes:true,attributeFilter:['width','height']});else setTimeout(bindObserver,250)};bindObserver();[0,250,750,1500,3000].forEach(function(delay){setTimeout(function(){fit();window.dispatchEvent(new Event('resize'));fit()},delay)})}
+if(!window.__essentialUnityFit){window.__essentialUnityFit=true;window.addEventListener('resize',fit,{passive:true});document.addEventListener('focusin',function(){requestAnimationFrame(function(){window.scrollTo(0,0);fit()})},true);window.addEventListener('scroll',function(){if(window.scrollX||window.scrollY)window.scrollTo(0,0)},{passive:true});var observer=new MutationObserver(function(){requestAnimationFrame(fit)});var bindObserver=function(){var canvas=document.querySelector('#unity-canvas,canvas');if(canvas)observer.observe(canvas,{attributes:true,attributeFilter:['width','height']});else setTimeout(bindObserver,250)};bindObserver();[0,250,750,1500,3000].forEach(function(delay){setTimeout(function(){fit();window.dispatchEvent(new Event('resize'));fit()},delay)})}
 fit()
 })()"""

@@ -6,6 +6,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class InstagramRequestPolicyTest {
+    @Test fun stripsShareParametersWithoutChangingPostId() {
+        assertEquals("https://www.instagram.com/reel/DeDnoKlhZ8u/",
+            InstagramRequestPolicy.canonicalUrl("https://www.instagram.com/reel/DeDnoKlhZ8u/?stkn=MWtoZmJpYmE5MHdy"))
+        assertEquals("https://example.com/?stkn=a", InstagramRequestPolicy.canonicalUrl("https://example.com/?stkn=a"))
+    }
     @Test fun Instagramの公式ホストだけを判定する() {
         assertTrue(InstagramRequestPolicy.isInstagramUrl("https://www.instagram.com/reel/ABC123/"))
         assertTrue(InstagramRequestPolicy.isInstagramUrl("https://instagram.com/p/ABC123/"))
@@ -23,6 +28,7 @@ class InstagramRequestPolicyTest {
     }
 
     @Test fun extractor仕様変更らしいエラーは更新再試行する() {
+        assertTrue(InstagramRequestPolicy.isRecoverableExtractorFailure("Instagram sent an empty media response"))
         assertTrue(InstagramRequestPolicy.isRecoverableExtractorFailure("Unable to extract video data"))
         assertEquals(
             "Instagramの動画情報を取得できませんでした。yt-dlpを更新してから、もう一度試してください",
