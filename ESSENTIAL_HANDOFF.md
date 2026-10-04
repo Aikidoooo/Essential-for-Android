@@ -15,7 +15,7 @@
 - プロジェクト: `D:\#AI開発\Android\Essential`
 - Git remote: `https://github.com/Aikidoooo/Essential-for-Android.git`
 - 現在のブランチ: `main`
-- 現在の公開バージョン: `v0.6.5`（versionCode 26）。コミット`8e6fee0`、公開CI `36887262866`成功。公開結果とAPK検証は`Work history.txt`の末尾で確認する。
+- 現在の公開バージョン: `v0.6.6`（versionCode 27）。コミット`29e7cc7`、公開CI `37191090211`成功。専用カレンダー、固定ガラスヘッダー、ゲーム入力、通知ログ・OCRの改善を含む。公開7 APKのハッシュ・既存版と同じ署名・16KiBアライメント・CPU構成を確認。詳細は`Work history.txt`の末尾で確認する。
 - 0.6.5はまんなか、通知ログ、統合スキャナー、ホーム／機能一覧／プロフィールの横スワイプ、更新APK回収、64bitの未使用FFmpeg除去、低メモリ端末の描画負荷削減を含む。単体62件・エミュレーター33件成功。HyperOS実機は未確認、タブのフレーム計測には7.17%の期限超過が残る。
 - 配布はCPU別7 APK＋ハッシュ＋容量レポートの9アセット。universalは容量条件のため配布しない。ANDROID初回はarm64、他CPUは対応UPDATE APKで初回導入可能。XIAOMI版とANDROID arm64は同内容・同署名で、HyperOS案内はメーカー判定で表示。`docs/HYPEROS.md`と`docs/UPDATE_STORAGE.md`を参照。
 - 0.6.4から文字スキャン、ホーム並べ替え、複数URL同時ダウンロード、GIFプロフィール背景、専用編集画面、設定開閉motion、テーマ別ガラス戻るボタン、2〜10人のどすこい背景を維持。前版セキュリティ確認範囲は`SECURITY_REVIEW_0.6.4.md`。
@@ -40,8 +40,8 @@
 ## Androidビルド構成
 
 - `applicationId` / namespace: `jp.essential.app`
-- `versionCode = 26`
-- `versionName = "0.6.5"`
+- `versionCode = 27`
+- `versionName = "0.6.6"`
 - `compileSdk = 36`、`targetSdk = 35`、`minSdk = 26`
 - Android Gradle Plugin `8.9.1`
 - Gradle Wrapper `8.11.1`

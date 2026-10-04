@@ -2427,3 +2427,7 @@
 ・公開対象は今回編集したアプリソース・テスト・バージョン・workflow・リリースノート・作業記録のみ。既存未追跡CameraStyleAIと無関係なdocs、生成物・検証画像は公開対象へ含めない。
 ・既存ASCII Junctionがなくなっていたためessential-buildを同じリポジトリへ再作成。GitHub CLIは未導入だったため公式配布をビルド下の検証用フォルダーへ取得。既存Git認証を秘密値を出力せず再利用。GitHub mainはdb186cd、v0.6.6タグ未作成を確認。
 ・公開前の最終検証：単体64件・Lint・R8 Releaseビルド成功（3分47秒）。ローカルReleaseは署名秘密を持たないため検査用であり、配布署名はGitHub Actionsで生成。ステージ32ファイルを確認し、git diff --cached --check成功。
+・公開完了：アプリコミット29e7cc7077cb8cf7ec9ee5e363ca21c08b250100と注釈タグv0.6.6をmain／originへ送信。GitHub Actions 37191090211が成功し、https://github.com/Aikidoooo/Essential-for-Android/releases/tag/v0.6.6 を正式公開（draft=false、prerelease=false）。CPU別7 APK＋SHA256SUMS.txt＋SIZE_REPORT.jsonの9アセットを確認。
+・公開後、全7 APKを独立ダウンロードしSHA256SUMSとの一致、apksigner検証、既存0.6.5と同一署名証明書SHA-256 d9037fa8b1ed3855cd3fad04dd4791e568ffb4123ee8b4f54c5e494a30ab64e8、zipalign -c -P 16 4、package jp.essential.app／versionCode 27／versionName 0.6.6と単一CPU構成を確認。各検査成功。
+・arm64は97,666,778 bytes（SHA-256 4a98a31457d6797f27a076f5bfc62437c4262340603c3278b9b4f801550f5e6b）、armeabi-v7aは109,389,948 bytes、x86は120,026,220 bytes、x86_64は101,106,365 bytes。容量レポートで本体＋64MBデータ枠概算252〜293MB、全配布物400MB条件内。実際の利用者保存データ容量は含まない。
+・最終検証記録はapp/build/visual-qa/release-066-published.json、release-066-verification.txt、release-066-downloaded、release-065-signature.txt、release-066-ci-watch.txt。配布APKの実機インストール・HyperOS省電力・Instagram制限投稿は未確認。既存未追跡資産と保存データを保持。ESSENTIAL_HANDOFFの現行公開版情報を更新。
