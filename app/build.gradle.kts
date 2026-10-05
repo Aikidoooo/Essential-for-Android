@@ -18,8 +18,8 @@ android {
         applicationId = "jp.essential.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 27
-        versionName = "0.6.6"
+        versionCode = 28
+        versionName = "0.6.7"
         buildConfigField("String", "UPDATE_REPOSITORY", "\"$updateRepository\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

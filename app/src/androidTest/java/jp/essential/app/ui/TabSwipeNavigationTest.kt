@@ -7,6 +7,7 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
+import androidx.test.platform.app.InstrumentationRegistry
 import jp.essential.app.MainActivity
 import org.junit.Rule
 import org.junit.Test
@@ -15,6 +16,45 @@ class TabSwipeNavigationTest {
     @get:Rule val compose = createEmptyComposeRule()
     private val context get() = ApplicationProvider.getApplicationContext<Context>()
 
+    @Test fun longPressNavigationFollowsFingerAndCommitsOrCancels() {
+        val scenario = ActivityScenario.launch<MainActivity>(Intent(context, MainActivity::class.java))
+        try {
+            val bar = compose.onNodeWithTag("liquid-glass-navigation")
+            bar.performTouchInput {
+                down(Offset(width / 6f, height / 2f))
+                advanceEventTime(700)
+                moveTo(Offset(width * 5f / 6f, height / 2f), 350)
+            }
+            compose.waitForIdle()
+            // OSの起動画面が退場したあと、指を離す前のガラスの膨らみを撮影する。
+            Thread.sleep(1000)
+            val screenshot = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
+            java.io.File(context.getExternalFilesDir(null), "liquid-navigation-drag.png").outputStream().use {
+                screenshot.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+            }
+            screenshot.recycle()
+            bar.performTouchInput {
+                up()
+            }
+            compose.onNodeWithContentDescription("プロフィール").assertIsSelected()
+            bar.performTouchInput {
+                down(Offset(width * 5f / 6f, height / 2f))
+                advanceEventTime(700)
+                moveTo(Offset(width / 6f, height / 2f), 350)
+                cancel()
+            }
+            compose.onNodeWithContentDescription("プロフィール").assertIsSelected()
+            bar.performTouchInput {
+                down(Offset(width * 5f / 6f, height / 2f))
+                advanceEventTime(700)
+                moveTo(Offset(-30f, height / 2f), 350)
+                up()
+            }
+            compose.onNodeWithContentDescription("ホーム").assertIsSelected()
+            compose.onNodeWithContentDescription("機能一覧").performClick().assertIsSelected()
+        } finally { scenario.close() }
+    }
+
     @Test fun swipesMoveBetweenThreeTabsAndRespectEdges() {
         val scenario = ActivityScenario.launch<MainActivity>(Intent(context, MainActivity::class.java))
         try {
@@ -22,7 +62,7 @@ class TabSwipeNavigationTest {
             compose.onNodeWithTag("main-tabs").performTouchInput { swipeLeft() }
             compose.waitForIdle()
             compose.onNodeWithContentDescription("機能一覧").assertIsSelected()
-            compose.onNodeWithText("機能一覧", substring = false).assertExists()
+            compose.onAllNodesWithText("機能一覧", substring = false).onFirst().assertExists()
             compose.onNodeWithTag("main-tabs").performTouchInput { swipeLeft() }
             compose.waitForIdle()
             compose.onNodeWithContentDescription("プロフィール").assertIsSelected()

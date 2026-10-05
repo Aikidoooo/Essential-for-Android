@@ -32,6 +32,17 @@ internal val LocalProgressiveMotionCycle = compositionLocalOf { 0L }
 internal val LocalProgressiveMotionDirection = compositionLocalOf { 0 }
 internal val LocalProgressiveMotionCompleted = compositionLocalOf { false }
 internal val LocalProgressiveMotionEager = compositionLocalOf { false }
+internal val LocalProgressiveMotionStartedAt = compositionLocalOf { 0L }
+
+/** 画面を開いた時刻を共有し、遅れて構成された項目も同じ入場時刻に合わせる。 */
+@Composable
+internal fun ProgressiveMotionEntry(content: @Composable () -> Unit) {
+    val startedAt = remember { android.os.SystemClock.elapsedRealtime() }
+    var completed by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { delay(1_000); completed = true }
+    CompositionLocalProvider(LocalProgressiveMotionStartedAt provides startedAt,
+        LocalProgressiveMotionCompleted provides completed, content = content)
+}
 
 @Composable
 internal fun StartupGate(content: @Composable () -> Unit) {
@@ -76,6 +87,7 @@ internal fun ProgressiveWidget(index: Int, modifier: Modifier = Modifier, conten
     val horizontalDirection = LocalProgressiveMotionDirection.current
     val motionCompleted = LocalProgressiveMotionCompleted.current
     val eagerMotion = LocalProgressiveMotionEager.current
+    val startedAt = LocalProgressiveMotionStartedAt.current
     // タブ入場時は保存済みの表示完了状態を復元せず、毎回最初から再生する。
     var revealed by if (motionCycle == 0L) {
         rememberSaveable { mutableStateOf(false) }
@@ -85,15 +97,16 @@ internal fun ProgressiveWidget(index: Int, modifier: Modifier = Modifier, conten
     var visibleInViewport by remember { mutableStateOf(false) }
     val progress = remember(motionCycle) { Animatable(if (revealed) 1f else 0f) }
     val rootView = LocalView.current
-    // 全体の表示完了通知で、スクロール後に始まった演出を途中停止しない。
-    LaunchedEffect(if (eagerMotion) true else visibleInViewport, revealed, motionCycle) {
-        if (motionCompleted) {
+    // 入場時刻と完了通知を共有し、後から見えた項目の演出を遅らせない。
+    LaunchedEffect(if (eagerMotion) true else visibleInViewport, revealed, motionCycle, motionCompleted) {
+        val elapsed = if (startedAt == 0L) 0L else android.os.SystemClock.elapsedRealtime() - startedAt
+        if (motionCompleted || elapsed >= 1_000L) {
             progress.snapTo(1f)
             revealed = true
-        } else if ((eagerMotion || visibleInViewport) && !revealed) {
-            // ホームは画面外も含め、それ以外は画面内の項目を上から順に表示する。
+        } else if ((startedAt != 0L || eagerMotion || visibleInViewport) && !revealed) {
+            // 画面外も入場時刻から上から順に進め、既に経過した待機時間を差し引く。
             progress.snapTo(0f)
-            delay(index.coerceIn(0, 7) * 72L)
+            delay((index.coerceIn(0, 7) * 72L - elapsed).coerceAtLeast(0))
             progress.animateTo(1f, tween(440, easing = FastOutSlowInEasing))
             revealed = true
         }

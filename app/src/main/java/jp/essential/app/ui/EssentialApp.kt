@@ -1,5 +1,6 @@
 package jp.essential.app.ui
 
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.material3.OutlinedButton
 import android.content.Context
@@ -96,8 +97,12 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.layout.boundsInRoot
@@ -117,6 +122,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -129,6 +135,10 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
+import androidx.compose.ui.graphics.layer.GraphicsLayer
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -224,6 +234,8 @@ private enum class FeatureRoute(val requestId: String) {
     Routine("routine"),
     Mannaka("mannaka"),
     NotificationLog("notification_log"),
+    Subscriptions("subscriptions"),
+    Tuning("tuning"),
 }
 
 // 旧ショートカットとクイック設定からも、最後に使った統合モードを開く。
@@ -376,15 +388,40 @@ private fun EssentialApp(
         }
     }
 
+    // ホームを切り替えても画像のデコード結果を画面ルートで保持する。
+    val defaultHomeArtworkPainter = painterResource(R.drawable.home_hero_art)
+    val homeBackgroundStore = remember { ProfileStore(context.applicationContext) }
+    var homeBackgroundPath by remember { mutableStateOf(homeBackgroundStore.loadHomeBackgroundPath()) }
+    val homeBitmap by produceState<Bitmap?>(null, homeBackgroundPath) {
+        value = withContext(Dispatchers.IO) {
+            homeBackgroundPath?.let { path -> runCatching { BitmapFactory.decodeFile(path) }.getOrNull() }
+        }
+    }
+    val homeArtworkPainter = homeBitmap?.let { androidx.compose.ui.graphics.painter.BitmapPainter(it.asImageBitmap()) }
+        ?: defaultHomeArtworkPainter
+    val homeScrollState = rememberLazyListState()
+    val navigationBackground = rememberGraphicsLayer()
+    val navigationContent = rememberGraphicsLayer()
+    var navigationContentOrigin by remember { mutableStateOf(Offset.Zero) }
     Box(modifier = Modifier.fillMaxSize()) {
-        if (dosukoiActive) {
-            // DOSUKOIはWebView自身がFluid Gradientを描画するため、背面のCanvasを止めて二重描画を避ける。
-            Box(Modifier.fillMaxSize().background(Color(0xFF0F0F1A)))
-        } else if (activeFeature == FeatureRoute.Mannaka) {
-            // まんなかの背景色をシステムバーの背面まで連続させる。
-            Box(Modifier.fillMaxSize().background(meetingBackgroundColor()))
-        } else {
-            AnimatedBackdrop(AppIconManager.optionForId(appIconId))
+        Box(Modifier.fillMaxSize().drawWithContent {
+            if (activeFeature == null) {
+                navigationBackground.record { this@drawWithContent.drawContent() }
+                drawLayer(navigationBackground)
+            } else drawContent()
+        }) {
+            if (dosukoiActive) {
+                // DOSUKOIはWebView自身がFluid Gradientを描画するため、背面のCanvasを止めて二重描画を避ける。
+                Box(Modifier.fillMaxSize().background(Color(0xFF0F0F1A)))
+            } else if (activeFeature == FeatureRoute.Mannaka) {
+                // まんなかの背景色をシステムバーの背面まで連続させる。
+                Box(Modifier.fillMaxSize().background(meetingBackgroundColor()))
+            } else {
+                AnimatedBackdrop(AppIconManager.optionForId(appIconId))
+                if (activeFeature == null && destination == Destination.Home) {
+                    HomeArtworkBackground(homeArtworkPainter) { homeScrollState.firstVisibleItemScrollOffset.toFloat() }
+                }
+            }
         }
         Scaffold(
             modifier = Modifier.fillMaxSize(),
@@ -400,6 +437,8 @@ private fun EssentialApp(
                         profileIcon = navigationProfileIcon,
                         profileImagePath = navigationProfileImagePath,
                         onSelected = ::selectDestination,
+                        backdrop = navigationContent,
+                        backdropOrigin = navigationContentOrigin,
                     )
                 }
             },
@@ -408,7 +447,20 @@ private fun EssentialApp(
                 modifier = Modifier
                     .fillMaxSize()
                     // 下部バーの背面まで画面コンテンツを描画し、空いた緑色の帯を作らない。
-                    .padding(top = innerPadding.calculateTopPadding()),
+                    .padding(top = if (activeFeature == null && destination == Destination.Home) 0.dp else innerPadding.calculateTopPadding())
+                    .onGloballyPositioned { navigationContentOrigin = it.positionInRoot() }
+                    .drawWithContent {
+                        if (activeFeature == null) {
+                            // 背景と画面内容だけを記録し、タブバー自身が背面へ混ざらないようにする。
+                            navigationContent.record {
+                                translate(-navigationContentOrigin.x, -navigationContentOrigin.y) {
+                                    drawLayer(navigationBackground)
+                                }
+                                this@drawWithContent.drawContent()
+                            }
+                            drawLayer(navigationContent)
+                        } else drawContent()
+                    },
             ) {
                 AnimatedContent(
                     targetState = activeFeature,
@@ -420,6 +472,7 @@ private fun EssentialApp(
                     label = "機能を開く段階的モーション",
                     modifier = Modifier.fillMaxSize(),
                 ) { feature ->
+                ProgressiveMotionEntry {
                 when (feature) {
                     FeatureRoute.Downloader -> DownloaderScreen(
                         initialUrl = sharedUrl,
@@ -440,6 +493,8 @@ private fun EssentialApp(
                         motionFps = motionFps,
                     )
                     FeatureRoute.Routine -> RoutineScreen { activeFeature = null }
+                    FeatureRoute.Subscriptions -> jp.essential.app.feature.subscriptions.SubscriptionScreen { activeFeature = null }
+                    FeatureRoute.Tuning -> jp.essential.app.feature.tuning.TuningScreen { activeFeature = null }
                     null -> AnimatedContent(
                         targetState = destination,
                         modifier = Modifier.fillMaxSize().testTag("main-tabs").tabSwipeNavigation { direction ->
@@ -461,6 +516,7 @@ private fun EssentialApp(
                         label = "画面切り替え",
                     ) { current ->
                         val motionCycle = tabMotionCycles[current] ?: 0L
+                        val motionStartedAt = remember(current, motionCycle) { android.os.SystemClock.elapsedRealtime() }
                         var motionCompleted by remember(current, motionCycle) { mutableStateOf(false) }
                         LaunchedEffect(current, motionCycle) {
                             kotlinx.coroutines.delay(1_000L)
@@ -468,10 +524,11 @@ private fun EssentialApp(
                         }
                         CompositionLocalProvider(
                             LocalProgressiveMotionCycle provides motionCycle,
+                            LocalProgressiveMotionStartedAt provides motionStartedAt,
                             LocalProgressiveMotionDirection provides (tabEntryDirections[current] ?: 0),
                             LocalProgressiveMotionCompleted provides motionCompleted,
-                            // 画面外のカードの描画レイヤーを毎フレーム更新しない。
-                            LocalProgressiveMotionEager provides false,
+                            // 画面を開いた時点から進め、スクロールで入場演出を開始しない。
+                            LocalProgressiveMotionEager provides true,
                         ) {
                         destinationState.SaveableStateProvider(current.name) {
                         when (current) {
@@ -480,6 +537,7 @@ private fun EssentialApp(
                                 onOpenAll = { selectDestination(Destination.Features) },
                                 onComingSoon = onComingSoon,
                                 shortcut = homeShortcut,
+                                listState = homeScrollState,
                                 contentBottomPadding = innerPadding.calculateBottomPadding(),
                             )
                             Destination.Features -> FeaturesScreen(
@@ -501,6 +559,8 @@ private fun EssentialApp(
                                 },
                                 motionFps = motionFps,
                                 onMotionFpsChange = onMotionFpsChange,
+                                homeBackgroundPath = homeBackgroundPath,
+                                onHomeBackgroundChange = { homeBackgroundPath = it },
                                 homeShortcut = homeShortcut,
                                 onHomeShortcutChange = {
                                     homeShortcut = it
@@ -512,6 +572,7 @@ private fun EssentialApp(
                         }
                         }
                     }
+                }
                 }
                 }
             }
@@ -567,19 +628,24 @@ private fun HomeScreen(
     onComingSoon: () -> Unit,
     shortcut: FeatureRoute,
     contentBottomPadding: Dp,
+    listState: androidx.compose.foundation.lazy.LazyListState = rememberLazyListState(),
 ) {
     val preferences = LocalContext.current.getSharedPreferences("appearance", Context.MODE_PRIVATE)
     var widgetOrder by remember {
         mutableStateOf(preferences.getString("home_widget_order", "").orEmpty().split(",").filter { it.isNotBlank() }
             .map { if (it in setOf("qr_scanner", "text_scan")) "scanner" else it }.distinct())
     }
-    val homeListState = rememberLazyListState()
+    val homeListState = listState
+    val homeContext = LocalContext.current
+    val subscriptions = remember { jp.essential.app.feature.subscriptions.SubscriptionStore(homeContext).load() }
+    val subscriptionSummary = if (subscriptions.isEmpty()) "月額と決済日をカレンダーで確認" else
+        "${jp.essential.app.feature.subscriptions.yenText(subscriptions.filter { it.paymentIn(java.time.YearMonth.now()) != null }.sumOf { it.yen })}／月 · ${subscriptions.size}件"
     LazyColumn(
         state = homeListState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(
             start = 20.dp,
-            top = 18.dp,
+            top = 0.dp,
             end = 20.dp,
             bottom = 26.dp + contentBottomPadding + NAVIGATION_CONTENT_CLEARANCE,
         ),
@@ -588,8 +654,7 @@ private fun HomeScreen(
         // 全項目を一緒に構成し、画面外のカードもホーム入場時から演出を進める。
         item(key = "home-content") {
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-                ProgressiveWidget(0) { AppHeader() }
-                ProgressiveWidget(1) { HeroCard(shortcut) { onOpenFeature(shortcut) } }
+                HomeArtwork(shortcut, WindowInsets.safeDrawing.asPaddingValues().calculateTopPadding() + 18.dp) { onOpenFeature(shortcut) }
                 ProgressiveWidget(2) { SectionHeader(title = "使える機能", action = "すべて見る", onAction = onOpenAll) }
 
                 FeatureGrid(
@@ -602,6 +667,8 @@ private fun HomeScreen(
                         FeatureItem("日課", "毎日の目標をポイントに", EssentialSymbol.Routine, Color(0xFF27B99A), FeatureRoute.Routine),
                         FeatureItem("まんなか！", "みんなの駅から集合・遊びを提案", EssentialSymbol.Spark, Color(0xFFFF90B5), FeatureRoute.Mannaka),
                         FeatureItem("通知ログ", "通知を秒単位で記録・keep", EssentialSymbol.Notification, Color(0xFF78D9EF), FeatureRoute.NotificationLog),
+                        FeatureItem("サブスク管理", subscriptionSummary, EssentialSymbol.Calendar, Color(0xFF69C9B0), FeatureRoute.Subscriptions),
+                        FeatureItem("チューニング", "ギター・ウクレレの音程を調整", EssentialSymbol.Media, Color(0xFFB09AF5), FeatureRoute.Tuning),
                     ).sortedBy { widgetOrder.indexOf(it.route?.requestId).takeIf { index -> index >= 0 } ?: Int.MAX_VALUE },
                     onReorder = { reordered ->
                         widgetOrder = reordered.mapNotNull { it.route?.requestId }
@@ -631,118 +698,59 @@ private fun EssentialLogo(
 
 @Composable
 private fun AppHeader() {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         EssentialLogo(
             contentDescription = "Essentialのアイコン",
-            modifier = Modifier
-                .size(50.dp)
-                .clip(RoundedCornerShape(15.dp)),
+            modifier = Modifier.size(50.dp).clip(RoundedCornerShape(15.dp)),
             contentScale = ContentScale.Crop,
         )
         Spacer(Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = "Essential",
-                style = MaterialTheme.typography.titleLarge,
-            )
-            Text(
-                text = "必要なものを、もっと身近に",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodyMedium,
-            )
-        }
-        Surface(
-            shape = CircleShape,
-            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.62f),
-            modifier = Modifier
-                .size(44.dp)
-                .border(1.dp, Color.White.copy(alpha = 0.32f), CircleShape),
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                EssentialSymbol(
-                    symbol = EssentialSymbol.Spark,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(21.dp),
-                    description = "Essentialの状態",
-                )
-                }
-                }
-            }
-        }
+        Text("Essential", color = Color.White, style = MaterialTheme.typography.titleLarge)
+    }
+}
 
+/** 背景画像を入場演出から分離し、一覧と同じスクロール量を描画へ直接反映する。 */
 @Composable
-private fun HeroCard(shortcut: FeatureRoute, onClick: () -> Unit) {
-    val dark = LocalEssentialDark.current
-    val heroLight by animateColorAsState(if (dark) Color(0xFF814AFF) else EssentialYellow, tween(700), label = "カードの紫")
-    val heroShade by animateColorAsState(if (dark) Color(0xFF225AFF) else EssentialOrange, tween(700), label = "カードの青")
-    val heroAccent by animateColorAsState(if (dark) Color(0xFF665EFF) else EssentialLime, tween(700), label = "カードの光彩")
-    PressableGlassCard(
-        onClick = onClick,
-        radius = 36.dp,
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(238.dp),
-    ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            LiquidGlassHeroBackdrop(
-                light = heroLight,
-                shade = heroShade,
-                accent = heroAccent,
-            )
-            LiquidGlassHeroFinish()
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(24.dp),
-                verticalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f), CircleShape)
-                            .padding(horizontal = 12.dp, vertical = 7.dp),
-                    ) {
-                        Text(
-                            text = "はじめよう",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
-                    }
-                    Spacer(Modifier.weight(1f))
-                    EssentialLogo(
-                        contentDescription = null,
-                        modifier = Modifier
-                            .size(66.dp)
-                            .clip(RoundedCornerShape(20.dp)),
-                        contentScale = ContentScale.Crop,
+private fun HomeArtworkBackground(painter: androidx.compose.ui.graphics.painter.Painter, scrollOffset: () -> Float = { 0f }) {
+    val topPadding = WindowInsets.safeDrawing.asPaddingValues().calculateTopPadding() + 18.dp
+    Box(Modifier.fillMaxWidth().height(306.dp + topPadding + 72.dp)
+        .graphicsLayer { translationY = -scrollOffset() }
+        .testTag("home-background-artwork")) {
+        Image(
+            painter = painter,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            alignment = Alignment.BottomCenter,
+            modifier = Modifier.fillMaxSize()
+                .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                .drawWithContent {
+                    drawContent()
+                    drawRect(
+                        Brush.verticalGradient(
+                            0f to Color.Black,
+                            .55f to Color.Black,
+                            .72f to Color.Black.copy(alpha = .85f),
+                            .88f to Color.Black.copy(alpha = .35f),
+                            1f to Color.Transparent,
+                        ),
+                        blendMode = BlendMode.DstIn,
                     )
-                }
-                Column {
-                    Text(
-                        text = "毎日に必要なものを、\nひとつに。",
-                        style = MaterialTheme.typography.headlineLarge,
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = "${shortcut.displayName()}を開く",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        EssentialSymbol(
-                            symbol = EssentialSymbol.Arrow,
-                            tint = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.size(18.dp),
-                            description = null,
-                        )
-                    }
-                }
-            }
-        }
+                },
+        )
+        // 時計と名前を画像の明るさに関わらず読みやすくする。
+        Box(Modifier.fillMaxWidth().height(92.dp + topPadding).background(
+            Brush.verticalGradient(listOf(Color.Black.copy(alpha = .40f), Color.Transparent)),
+        ))
+    }
+}
+
+/** 背景と別に配置した透明な操作領域で、画像のショートカットを維持する。 */
+@Composable
+private fun HomeArtwork(shortcut: FeatureRoute, topPadding: Dp, onClick: () -> Unit) {
+    Box(Modifier.fillMaxWidth().height(306.dp + topPadding)
+        .clickable(onClickLabel = "${shortcut.displayName()}を開く", onClick = onClick)
+        .testTag("home-artwork-shortcut")) {
+        Box(Modifier.padding(top = topPadding)) { ProgressiveWidget(0) { AppHeader() } }
     }
 }
 
@@ -1194,6 +1202,16 @@ private fun FeaturesScreen(
                         onClick = { onOpenFeature(FeatureRoute.NotificationLog) },
                     )
                 }
+                ProgressiveWidget(10) {
+                    CategoryPanel(title = "サブスク管理", description = "月額と決済日をカレンダーで確認",
+                        symbol = EssentialSymbol.Calendar, accent = Color(0xFF69C9B0),
+                        onClick = { onOpenFeature(FeatureRoute.Subscriptions) })
+                }
+                ProgressiveWidget(11) {
+                    CategoryPanel(title = "チューニング", description = "ギター・ウクレレなどの音程を調整",
+                        symbol = EssentialSymbol.Media, accent = Color(0xFFB09AF5),
+                        onClick = { onOpenFeature(FeatureRoute.Tuning) })
+                }
             }
         }
     }
@@ -1268,6 +1286,8 @@ private fun ProfileScreen(
     homeShortcut: FeatureRoute,
     onHomeShortcutChange: (FeatureRoute) -> Unit,
     contentBottomPadding: Dp,
+    homeBackgroundPath: String? = null,
+    onHomeBackgroundChange: (String?) -> Unit = {},
 ) {
     val context = LocalContext.current
     val profileStore = remember { ProfileStore(context.applicationContext) }
@@ -1285,25 +1305,37 @@ private fun ProfileScreen(
         mutableStateOf(if (initialSetupRequired) ProfilePanel.Arrange else ProfilePanel.Main)
     }
     BackHandler(enabled = panel != ProfilePanel.Main) { panel = ProfilePanel.Main }
+    var cropUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    var cropBanner by remember { mutableStateOf(false) }
+    var cropHome by remember { mutableStateOf(false) }
     val profileImagePicker = rememberLauncherForActivityResult(EssentialMediaPickerContract()) { uri ->
-        if (uri != null) {
-            settingsScope.launch {
-                val path = withContext(Dispatchers.IO) { profileStore.saveImage(uri) }
-                if (path != null) {
-                    profileImagePath = path
-                    onProfileImagePathChange(path)
-                } else {
-                    android.widget.Toast.makeText(context, "画像を保存できません。64MB以下の画像を選択してください。", android.widget.Toast.LENGTH_LONG).show()
-                }
-            }
-        }
+        if (uri != null) { cropHome = false; cropBanner = false; cropUri = uri }
     }
     val profileBannerPicker = rememberLauncherForActivityResult(EssentialMediaPickerContract()) { uri ->
-        if (uri != null) settingsScope.launch {
-            val path = withContext(Dispatchers.IO) { profileStore.saveBanner(uri) }
-            if (path != null) profileBannerPath = path
-            else android.widget.Toast.makeText(context, "背景を保存できません。64MB以下の画像を選択してください。", android.widget.Toast.LENGTH_LONG).show()
-        }
+        if (uri != null) { cropHome = false; cropBanner = true; cropUri = uri }
+    }
+    val homeBackgroundPicker = rememberLauncherForActivityResult(EssentialMediaPickerContract()) { uri ->
+        if (uri != null) { cropHome = true; cropBanner = true; cropUri = uri }
+    }
+    val homeCropAspect = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp /
+        (306f + WindowInsets.safeDrawing.asPaddingValues().calculateTopPadding().value + 90f)
+    val bannerCropAspect = (androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp - 40f) / 166f
+    cropUri?.let { uri ->
+        jp.essential.app.profile.ProfileImageEditor(uri, cropBanner, context, onCancel = { cropUri = null }, onSave = { bitmap ->
+            val banner = cropBanner
+            val home = cropHome
+            settingsScope.launch {
+                val path = withContext(Dispatchers.IO) { profileStore.saveCroppedImage(bitmap, banner, home) }
+                if (path != null) {
+                    if (home) onHomeBackgroundChange(path)
+                    else if (banner) profileBannerPath = path
+                    else { profileImagePath = path; onProfileImagePathChange(path) }
+                } else {
+                    android.widget.Toast.makeText(context, "画像を保存できませんでした。もう一度お試しください。", android.widget.Toast.LENGTH_LONG).show()
+                }
+                cropUri = null
+            }
+        }, bannerAspect = if (cropHome) homeCropAspect else bannerCropAspect)
     }
     Box(Modifier.fillMaxSize()) {
     AnimatedContent(
@@ -1468,6 +1500,23 @@ private fun ProfileScreen(
                     }
                 }
                 Text("端末へ希望fpsを要求します。実際のfpsは対応Hz・省電力設定・OSに依存します。アニメーションの所要時間は変わりません。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        item(key = "profile-settings-home-background") {
+            Column(Modifier.fillMaxWidth().glassSurface(28.dp).padding(19.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("ホームの背景", style = MaterialTheme.typography.titleLarge)
+                Text("画像を選んで表示範囲を調整できます。", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (homeBackgroundPath != null) ProfileBanner(homeBackgroundPath, Modifier.fillMaxWidth().height(150.dp).clip(RoundedCornerShape(20.dp)))
+                else Image(painterResource(R.drawable.home_hero_art), null, Modifier.fillMaxWidth().height(150.dp).clip(RoundedCornerShape(20.dp)), contentScale = ContentScale.Crop, alignment = Alignment.BottomCenter)
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Button(onClick = { homeBackgroundPicker.launch(arrayOf("image/*")) }) { Text("背景画像を選ぶ") }
+                    TextButton(enabled = homeBackgroundPath != null, onClick = {
+                        settingsScope.launch {
+                            withContext(Dispatchers.IO) { profileStore.clearHomeBackground() }
+                            onHomeBackgroundChange(profileStore.loadHomeBackgroundPath())
+                        }
+                    }) { Text("初期画像に戻す") }
+                }
             }
         }
         progressiveItem(4, keyPrefix = "profile-settings") {
@@ -2192,106 +2241,139 @@ private fun EssentialNavigationBar(
     profileIcon: String,
     profileImagePath: String?,
     onSelected: (Destination) -> Unit,
+    backdrop: GraphicsLayer,
+    backdropOrigin: Offset,
 ) {
     val haptics = LocalHapticFeedback.current
-    val colors = MaterialTheme.colorScheme
     val dark = LocalEssentialDark.current
-    val glassShape = RoundedCornerShape(32.dp)
-    val selectionPosition by animateFloatAsState(
-        targetValue = selected.ordinal.toFloat(),
-        animationSpec = spring(dampingRatio = 0.76f, stiffness = 420f),
-        label = "ガラスの選択位置",
-    )
+    var barOrigin by remember { mutableStateOf(Offset.Zero) }
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val blur = remember(density) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val radius = with(density) { 3.dp.toPx() }
+            RenderEffect.createBlurEffect(radius, radius, android.graphics.Shader.TileMode.CLAMP).asComposeRenderEffect()
+        } else null
+    }
+    val glassShape = CircleShape
+    var dragPosition by remember { mutableStateOf<Float?>(null) }
+    var touchingNavigation by remember { mutableStateOf(false) }
+    val currentSelected by rememberUpdatedState(selected)
+    val currentOnSelected by rememberUpdatedState(onSelected)
+    val previewIndex by remember { androidx.compose.runtime.derivedStateOf {
+        dragPosition?.let { kotlin.math.round(it).toInt() } ?: currentSelected.ordinal
+    } }
+    val dragging by remember { androidx.compose.runtime.derivedStateOf { dragPosition != null } }
+    val expansionAnimation by animateFloatAsState(if (touchingNavigation || dragging) 1f else 0f,
+        spring(dampingRatio = .76f, stiffness = 420f), label = "ガラスの膨らみ")
+    val expansion = remember { { expansionAnimation.coerceIn(0f, 1f) } }
+    val selectionPosition = remember { androidx.compose.animation.core.Animatable(selected.ordinal.toFloat()) }
+    var releasedPosition by remember { mutableStateOf<Float?>(null) }
+    LaunchedEffect(selected, dragging) {
+        if (!dragging) {
+            // 指を離した地点からだけ整列を始め、ドラッグ中は同期コルーチンを起動しない。
+            releasedPosition?.let { selectionPosition.snapTo(it) }
+            releasedPosition = null
+            selectionPosition.animateTo(selected.ordinal.toFloat(), spring(dampingRatio = .76f, stiffness = 420f))
+        }
+    }
+    val displayedPosition = remember { { dragPosition ?: releasedPosition ?: selectionPosition.value } }
+    val waterMotion by animateFloatAsState(if (touchingNavigation || dragging || selectionPosition.isRunning) 1f else 0f,
+        tween(180), label = "選択枠の水滴屈折")
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .navigationBarsPadding()
             .padding(horizontal = 26.dp, vertical = 8.dp)
-            .height(66.dp)
+            .height(74.dp)
+            .onGloballyPositioned { barOrigin = it.positionInRoot() }
+            .testTag("liquid-glass-navigation")
+            .pointerInput(Unit) {
+                // タップを奪わず、触れた瞬間から水滴を反応させる。
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false,
+                        pass = androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                    touchingNavigation = true
+                    try {
+                        var pointersPressed: Boolean
+                        do {
+                            pointersPressed = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Final)
+                                .changes.any { it.pressed }
+                        } while (pointersPressed)
+                    } finally { touchingNavigation = false }
+                }
+            }
+            .pointerInput(Unit) {
+                var lastIndex = currentSelected.ordinal
+                fun updatePosition(x: Float) {
+                    val position = (x / (size.width / Destination.entries.size.toFloat()) - .5f)
+                        .coerceIn(0f, Destination.entries.lastIndex.toFloat())
+                    dragPosition = position
+                    val index = kotlin.math.round(position).toInt()
+                    if (index != lastIndex) {
+                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        lastIndex = index
+                    }
+                }
+                detectHorizontalDragGestures(
+                    onDragStart = { offset ->
+                        lastIndex = currentSelected.ordinal
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        updatePosition(offset.x)
+                    },
+                    onHorizontalDrag = { change, _ -> change.consume(); updatePosition(change.position.x) },
+                    onDragEnd = {
+                        // 離した位置へ確定し、キャンセルされた操作では画面を移動しない。
+                        releasedPosition = dragPosition
+                        dragPosition?.let { currentOnSelected(Destination.entries[kotlin.math.round(it).toInt()]) }
+                        dragPosition = null
+                    },
+                    onDragCancel = { releasedPosition = dragPosition; dragPosition = null },
+                )
+            }
             .graphicsLayer {
-                shadowElevation = 20.dp.toPx()
+                shadowElevation = 4.dp.toPx()
                 shape = glassShape
                 clip = false
             }
-            .clip(glassShape)
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        if (dark) Color(0xFF17243D).copy(alpha = 0.48f) else Color.White.copy(alpha = 0.48f),
-                        if (dark) Color(0xFF0C172D).copy(alpha = 0.58f) else Color.White.copy(alpha = 0.58f),
-                    ),
-                ),
-            )
             .border(
                 width = 1.dp,
                 brush = Brush.verticalGradient(
                     listOf(
                         Color.White.copy(alpha = 0.48f),
-                        Color(0xFFA9C6E4).copy(alpha = 0.32f),
+                        Color.White.copy(alpha = 0.10f),
                         Color.White.copy(alpha = 0.24f),
                     ),
                 ),
                 shape = glassShape,
             ),
     ) {
+        Canvas(Modifier.matchParentSize().clip(glassShape).graphicsLayer { renderEffect = blur }) {
+            // 同じ座標の背面を再描画し、この小さな表示層だけへぼかしを適用する。
+            translate(backdropOrigin.x - barOrigin.x, backdropOrigin.y - barOrigin.y) { drawLayer(backdrop) }
+        }
+        NavigationWaterLens(backdrop, backdropOrigin - barOrigin, displayedPosition, expansion, { waterMotion },
+            Modifier.matchParentSize())
         Canvas(Modifier.matchParentSize()) {
-            drawRect(
-                brush = Brush.verticalGradient(
-                    colorStops = arrayOf(
-                        0f to Color.Transparent,
-                        0.34f to Color.Transparent,
-                        0.72f to Color.Black.copy(alpha = if (dark) 0.12f else 0f),
-                        1f to Color.Black.copy(alpha = if (dark) 0.24f else 0f),
-                    ),
-                    startY = size.height * 0.12f,
-                    endY = size.height,
-                ),
-                topLeft = Offset.Zero,
-                size = size,
-            )
+            val expansion = expansion()
+            val displayedPosition = displayedPosition()
             val cellWidth = size.width / Destination.entries.size
-            val selectionInset = 4.dp.toPx()
-            val width = cellWidth - selectionInset * 2f
-            val height = 58.dp.toPx()
-            val left = cellWidth * selectionPosition + selectionInset
+            val width = (cellWidth - 8.dp.toPx()) * (1f + .2f * expansion)
+            val height = (size.height - 10.dp.toPx()) * (1f + .2f * expansion)
+            val left = cellWidth * (displayedPosition + .5f) - width / 2f
             val top = (size.height - height) / 2f
             val radius = androidx.compose.ui.geometry.CornerRadius(height / 2f)
-            drawRoundRect(
-                color = Color.Black.copy(alpha = if (dark) 0.16f else 0.08f),
-                topLeft = Offset(left, top + 2.dp.toPx()),
-                size = Size(width, height),
-                cornerRadius = radius,
-            )
-            drawRoundRect(
-                brush = Brush.linearGradient(
-                    colors = listOf(
-                        Color.White.copy(alpha = 0.20f),
-                        if (dark) Color(0xFFB9DFFF).copy(alpha = 0.18f) else Color(0xFFE8E8E8).copy(alpha = 0.24f),
-                        Color.White.copy(alpha = 0.16f),
-                        if (dark) Color(0xFFD8ECFF).copy(alpha = 0.14f) else Color(0xFFF3F3F3).copy(alpha = 0.18f),
-                        Color.White.copy(alpha = 0.20f),
-                    ),
-                    start = Offset(left, top),
-                    end = Offset(left + width, top + height),
-                ),
-                topLeft = Offset(left, top), size = Size(width, height), cornerRadius = radius,
-            )
-            drawRoundRect(
-                brush = Brush.horizontalGradient(
-                    listOf(
-                        if (dark) Color(0xFF6EBBFF).copy(alpha = 0.48f) else Color(0xFFBDBDBD),
-                        Color.White.copy(alpha = 0.34f),
-                        if (dark) Color(0xFFAED8FF).copy(alpha = 0.42f) else Color(0xFFBDBDBD),
-                    ),
-                    startX = left,
-                    endX = left + width,
-                ),
-                topLeft = Offset(left, top),
-                size = Size(width, height),
-                cornerRadius = radius,
-                style = Stroke(width = 1.1.dp.toPx()),
-            )
+            drawRoundRect((if (dark) Color(0xFFC6CBD2) else Color.White).copy(alpha = (.88f - .30f * expansion) * .5f),
+                Offset(left, top), Size(width, height), radius, style = Stroke(1.5.dp.toPx()))
+            // 枠の上側と進行位置に光を集め、水滴の縁に見える細い反射を作る。
+            if (waterMotion > .001f) {
+                val lightX = left + width * (.25f + .5f * displayedPosition / 2f)
+                drawRoundRect(Brush.radialGradient(listOf(Color.White.copy(alpha = .85f * waterMotion),
+                    Color(0xFFBFEAFF).copy(alpha = .35f * waterMotion), Color.Transparent),
+                    Offset(lightX, top), width * .62f), Offset(left, top), Size(width, height), radius,
+                    style = Stroke((1f + waterMotion).dp.toPx()))
+            }
+
         }
         Row(
             modifier = Modifier
@@ -2301,7 +2383,7 @@ private fun EssentialNavigationBar(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Destination.entries.forEach { destination ->
-                val isSelected = destination == selected
+                val isSelected = destination.ordinal == previewIndex
                 val interaction = remember { MutableInteractionSource() }
                 val pressed by interaction.collectIsPressedAsState()
                 val scale by animateFloatAsState(
@@ -2311,7 +2393,8 @@ private fun EssentialNavigationBar(
                 )
                 Column(
                     modifier = Modifier.weight(1f).fillMaxSize().clip(RoundedCornerShape(24.dp))
-                        .selectable(selected = isSelected, role = Role.Tab, interactionSource = interaction, indication = null) {
+                        .semantics { contentDescription = destination.label }
+                        .selectable(selected = destination == selected, role = Role.Tab, interactionSource = interaction, indication = null) {
                         if (!isSelected) {
                             haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             onSelected(destination)
@@ -2320,7 +2403,7 @@ private fun EssentialNavigationBar(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center,
                 ) {
-                    Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
+                    Box(Modifier.size(38.dp), contentAlignment = Alignment.Center) {
                         BadgedBox(
                             badge = {
                                 if (destination == Destination.Features) {
@@ -2331,9 +2414,8 @@ private fun EssentialNavigationBar(
                             if (destination == Destination.Profile) {
                                 Box(
                                     modifier = Modifier
-                                        .size(36.dp)
-                                        .graphicsLayer(scaleX = scale, scaleY = scale)
-                                        .semantics { contentDescription = destination.label },
+                                        .size(30.dp)
+                                        .graphicsLayer(scaleX = scale, scaleY = scale),
                                     contentAlignment = Alignment.Center,
                                 ) {
                                     ProfileAvatar(
@@ -2344,19 +2426,23 @@ private fun EssentialNavigationBar(
                                 }
                             } else {
                                 val iconTint = if (!dark) {
-                                    if (isSelected) Color(0xFF606060) else Color(0xFF8A8A8A)
-                                } else if (isSelected) Color(0xFF9BCBFF) else colors.onSurface.copy(alpha = 0.96f)
+                                    if (isSelected) Color(0xFF303030) else Color(0xFF505050)
+                                } else if (isSelected) Color.White else Color.White.copy(alpha = .82f)
                                 EssentialSymbol(
                                     symbol = destination.symbol,
                                     tint = iconTint,
                                     modifier = Modifier
-                                        .size(if (isSelected) 34.dp else 33.dp)
+                                        .size(30.dp)
                                         .graphicsLayer(scaleX = scale, scaleY = scale),
-                                    description = destination.label,
+                                    description = null,
                                 )
                             }
                         }
                     }
+                    Text(destination.label, style = MaterialTheme.typography.labelSmall, maxLines = 1,
+                        color = if (dark) { if (isSelected) Color.White else Color.White.copy(alpha = .82f) }
+                            else { if (isSelected) Color(0xFF353535) else Color(0xFF505050) },
+                        modifier = Modifier.graphicsLayer(scaleX = scale, scaleY = scale))
                 }
             }
         }
@@ -2646,6 +2732,8 @@ private fun EssentialSymbol(
 }
 
 private fun FeatureRoute.displayName(): String = when (this) {
+    FeatureRoute.Subscriptions -> "サブスク管理"
+    FeatureRoute.Tuning -> "チューニング"
     FeatureRoute.NotificationLog -> "通知ログ"
     FeatureRoute.Mannaka -> "まんなか！"
     FeatureRoute.Downloader -> "ダウンローダー"
@@ -2657,6 +2745,8 @@ private fun FeatureRoute.displayName(): String = when (this) {
 }
 
 private fun FeatureRoute.symbol(): EssentialSymbol = when (this) {
+    FeatureRoute.Subscriptions -> EssentialSymbol.Calendar
+    FeatureRoute.Tuning -> EssentialSymbol.Media
     FeatureRoute.NotificationLog -> EssentialSymbol.Notification
     FeatureRoute.Mannaka -> EssentialSymbol.Spark
     FeatureRoute.Downloader -> EssentialSymbol.Download
@@ -2673,11 +2763,14 @@ private fun EssentialHomePreview() {
     EssentialTheme(darkTheme = false) {
         Box(modifier = Modifier.fillMaxSize()) {
             AnimatedBackdrop()
+            val previewScrollState = rememberLazyListState()
+            HomeArtworkBackground(painterResource(R.drawable.home_hero_art)) { previewScrollState.firstVisibleItemScrollOffset.toFloat() }
             HomeScreen(
                 onOpenFeature = {},
                 onOpenAll = {},
                 onComingSoon = {},
                 shortcut = FeatureRoute.Downloader,
+                listState = previewScrollState,
                 contentBottomPadding = 0.dp,
             )
         }

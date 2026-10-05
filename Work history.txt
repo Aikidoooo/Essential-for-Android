@@ -2431,3 +2431,183 @@
 ・公開後、全7 APKを独立ダウンロードしSHA256SUMSとの一致、apksigner検証、既存0.6.5と同一署名証明書SHA-256 d9037fa8b1ed3855cd3fad04dd4791e568ffb4123ee8b4f54c5e494a30ab64e8、zipalign -c -P 16 4、package jp.essential.app／versionCode 27／versionName 0.6.6と単一CPU構成を確認。各検査成功。
 ・arm64は97,666,778 bytes（SHA-256 4a98a31457d6797f27a076f5bfc62437c4262340603c3278b9b4f801550f5e6b）、armeabi-v7aは109,389,948 bytes、x86は120,026,220 bytes、x86_64は101,106,365 bytes。容量レポートで本体＋64MBデータ枠概算252〜293MB、全配布物400MB条件内。実際の利用者保存データ容量は含まない。
 ・最終検証記録はapp/build/visual-qa/release-066-published.json、release-066-verification.txt、release-066-downloaded、release-065-signature.txt、release-066-ci-watch.txt。配布APKの実機インストール・HyperOS省電力・Instagram制限投稿は未確認。既存未追跡資産と保存データを保持。ESSENTIAL_HANDOFFの現行公開版情報を更新。
+
+【2026-10-04 スクロール時Progressive Motion修正・サブスク管理・チューニング追加】
+・作業前にWork historyとESSENTIAL_HANDOFF、Git差分、ホーム・機能一覧・共通motion・カレンダー・日課の実装を確認。既存未追跡CameraStyleAI資産と無関係なdocsを保持。バージョン0.6.6のまま、コミット・push・タグ・Release公開なし。
+・原因：共通ProgressiveWidgetは画面内への移動を開始条件にし、画面外カードはスクロール後にindex×72msの待機と440msの演出を開始していた。タブの表示完了通知もLaunchedEffectのキーに含まれていなかった。
+・修正：画面ごとに単調時計の入場時刻と1秒の完了状態を共有。ホーム・機能一覧・プロフィールは画面外を含めて入場時から進める。各タブ再入場時の時刻を更新し、段階表示とタブの横方向演出を維持。遅れて構成された機能画面のLazy項目も経過した待機を差し引き、1秒経過／完了後は即表示。完了状態をeffectキーへ追加して画面外の未表示レイヤーを残さない。
+・ホームの既存ガラスカード／並べ替え／ショートカット設定と機能一覧に「サブスク管理」「チューニング」の導線を追加。登録済みサブスクがある場合、ホームに今月合計と件数を表示。両画面は共通の固定ガラスヘッダーと半透明・白縁カードを使用。カレンダー選択色と音程メーターへアニメーションを付与。
+・サブスク管理：サービス名・円単位月額・毎月決済日1〜31・開始日を追加／編集。名前80文字、金額0〜999999999円、日付形式と日数を検証。端末内SharedPreferencesへJSON保存し、書込みはIO、失敗時は画面にエラーを表示。削除は確認とキャンセルを用意し、契約の解約処理ではないことを明示。編集ダイアログは小画面／キーボード時もスクロール可能。
+・月別七列カレンダー、前月／翌月、当月決済額、決済件数のマーク、選択日のサービス・金額一覧を実装。31日決済は存在しない月で末日へ補正し、開始日前の予定は除外。毎月契約を対象とし、年払い・通知・外部アカウント同期は今回追加していない。
+・チューニング：AudioRecordのPCM16bit・22050Hz・4096サンプルをIOで非ブロッキング取得し、YIN正規化差分と放物線補間で35〜1400Hzを推定。無音・周期性が低い入力を除き、直近3件の中央値で表示を安定化。Hz・音名・セント差・滑らかな針・締める／緩める表示、±5セントの合致表示を実装。メーターは端末密度に依存しない比率とdp線幅で描画し、低い／0／高い目盛りを表示。
+・プリセットは標準ギターE2 A2 D3 G3 B3 E4、Drop D、半音下げ、ウクレレHigh GとLow G、4弦ベース、バイオリンの7種類。弦の自動／手動選択とA4基準400〜480Hzを用意し、プリセットと基準値を保存。マイク権限は開始時に要求し、拒否と録音エラーを画面へ表示。画面終了／背景移動でコルーチンを中止し、finallyでstop／release。音声ファイル保存・音声送信なし。Android公式AudioRecord資料で非ブロッキング取得の仕様を確認。
+・検証：新規単体6件を含む計70件成功・失敗0。月末／うるう年／開始日前除外、41.203〜880Hzの合成正弦波、倍音が基本波より強いギター低音、無音／乱数雑音、音名・基準音・セント差を検証。初回全体ビルド2分16秒、メーター調整後の最終Lint・Debug・AndroidTestビルド1分43秒で成功。
+・エミュレーターのDebugをデータ保持で上書き。サブスク追加・保存・再起動後読込み・編集・削除キャンセル／確定、ウクレレプリセット・手動弦・442Hz基準変更のUIテスト2件成功（9.298秒）。画面外カードが演出完了後のスクロール直後に完全表示される回帰テスト1件成功（2.052秒）。初回UIテストはLazy未構成項目への直接ScrollToで失敗したため一覧のScrollToNodeへ修正。回帰テストの時計固定と同期ScrollToが待機したため、テスト用スクロール状態を非同期変更して1フレームだけ進める方式へ修正。待機した検証プロセスだけを停止し、アプリデータは消去していない。
+・マイク実経路：検証中だけDebugのRECORD_AUDIOを許可し、開始後の画面「停止」とAndroid audio状態で22050Hz・MIC録音開始を確認。Androidホームへ移動するとrec stopが記録され、アクティブ録音から消えることを確認。検証終了時にマイク権限を元の拒否へ復元。実楽器入力／物理端末の音程精度・応答速度・騒音耐性は未検証。
+・画面を目視：サブスクの固定ガラス題名・月額・七列カレンダー、チューニングの弦選択と基準欄、ホーム末尾の新規2カードを確認。証跡はapp/build/visual-qa/subscriptions-screen.png、tuning-screen.png、home-new-widgets.png、subscriptions-tuning-*-build.txt、new-features-ui-final.txt、progressive-scroll-test.txt、tuning-active-audio.txt、tuning-background-audio.txt。引き継ぎへ未公開実装の仕様を追記。
+・最終APK上のまとめ実行では演出回帰テストのidle判定だけでは遅延コルーチンの待機が終わらず1件失敗したため、テスト時計を明示的に1200ms進めて入場完了後のスクロールを判定するよう修正。テストAPK再ビルド22秒で成功し、最終3件のまとめ実行成功（10.35秒）。証跡：subscriptions-tuning-final-tests.txt。マイク権限が元のgranted=falseであることを再確認。git diff --checkで空白エラーなし。
+
+【2026-10-04 サブスク追加・編集フォームのEssential Liquid Glass化】
+・作業前と再開時にWork historyを確認。既存EssentialCalendarとGlassBackButtonの半透明・白縁・背面ぼかし・押下演出を参照。既存のサブスク登録内容と別作業差分を保持。
+・追加／編集の標準AlertDialogを専用Dialogへ置換。角丸32dpの半透明Surface、白い細縁、縦方向の光沢グラデーション、共通GlassFeatureTitleを使用。Android 12以降で背面だけ18dp相当のRenderEffectぼかしを付与し、閉じる際に解除。旧Androidは半透明と薄い暗幕で表示する。
+・4入力欄を角丸20dpの半透明ガラスと白縁へ統一し、標準下線を除去。保存／キャンセルを角丸ガラスボタンへ変更し、押下時の縮小と有効／無効の明度差を追加。開く際は240msの拡大・移動・透明度アニメーション。タイトルと操作を残し、入力部分だけスクロール可能。safeDrawingPadding／imePaddingでキーボードとシステム領域を避ける。
+・入力検証・保存・編集・キャンセルを維持。保存中は入力と操作を無効化し、戻る／画面外タップでも閉じない。削除確認と管理画面全体は今回変更していない。
+・中断前にDebug／AndroidTest APK生成まで完了。再開時の最初のインストールはエミュレーター起動途中で拒否されたため、sys.boot_completed=1を確認して再実行。データ保持の上書き更新に成功。Lint再実行36秒で成功。追加・保存・再起動後読込み・編集・削除キャンセル／確定の既存UIテスト成功（8.826秒）。
+・エミュレーターで追加フォームの透過・背面ぼかし・丸い入力欄・ボタン・文字の視認性を目視確認。証跡：app/build/visual-qa/subscription-glass-editor.png、subscription-glass-editor.xml、subscription-glass-editor-build.txt、subscription-glass-editor-lint.txt、subscription-glass-editor-test-final.txt。実機と旧Androidの目視は未確認。コミット・公開なし。
+
+【2026-10-05 チューニングの参照UI・楽器即時切替・選択音の発光】
+・作業前にWork historyと現行チューニング実装、ユーザー添付画像を確認。image-to-codeとdesign-qaの比較手順を既存Android Compose画面へ適用。Webヘッダー・ログイン・下部説明・ブラウザーUIは追加せず、中央から上のチューナー部分を参照。既存アプリのガラスUI・固定ヘッダー・録音処理を維持。
+・TuningPanelへ表示を分離。大きな中央音名と隣接半音、浅い弧の±40／±20／0目盛り、140msで滑らかに動く針、中央の円形マイクボタンと状態説明を配置。初回比較で弧が深かったため浅い曲線へ修正し、参照と実画面を同じ比較画像に並べて再確認。
+・上部にウクレレHigh G「g C E A」と6弦ギター「E A D G B E」の即時切替を追加。低い弦から一列で並ぶペグ形ボタンから任意の弦を選択。ギターの二つのEはMIDI40／64で区別し、弦番号とアクセシビリティ名を付与。ウクレレの高いGはボタンで小文字gと表示。
+・選択した音との差が±5セント以内で、録音中・有効な音程がある場合だけ、選択弦・中央音名・針を緑へ変更。180msの色変化、弦の周囲の光彩と影を追加。別オクターブ・別の弦・無音・停止時は合致発光しない。自動選択も保持。
+・既存7プリセットとA4基準400〜480Hzは下部「詳細設定・その他のプリセット」へ折り畳み。音声検出・許可要求・録音停止／解放・端末内設定保存は保持。マイク音声の保存／送信なし。
+・検証：初回Compile成功39秒、Debug／AndroidTest／Lint成功1分45秒、浅い弧への修正後の最終Debug／AndroidTest／Lint成功1分12秒。最終画面テスト2件成功（6.628秒）。ウクレレ／ギター切替、低いEと高いEの選択区別、442Hz変更、合成入力で選択弦だけの発光、別オクターブ／音程ずれ／無音／選択変更での解除を検証。
+・合成392Hzの発光画面を追加撮影。初回はOSのスプラッシュを撮影したため、テスト内だけ1秒待ってOS起動画面の退場後に撮影する手順へ修正。テストAPK再ビルド17秒、発光テスト成功。実画面ではなく合成入力の専用表示テストであり、実楽器・実機マイクの精度を証明しない。
+・証跡：app/build/visual-qa/tuning-reference-final.png、tuning-reference-screen.png、tuning-reference-final-comparison.png、tuning-glow.png、tuning-reference-final-build.txt、tuning-reference-final-ui-tests.txt、tuning-glow-final-test.txt。既存design-qa.mdへ今回の比較を追記しfinal result: passed。既存別作業差分・保存データを保持。コミット・push・公開なし。
+
+【2026-10-05 各弦の音程差とペグの回転案内】
+・作業前にWork historyとチューニング実装を確認。各ペグの下へ符号付きセント差と「高い／低い／一致／未測定」を追加。選択中の弦は現在の測定値、ほかの弦は今回の測定セッション内の前回値を「前回」と明示。楽器／基準音変更と録音停止で前回値を消去し、複数弦を同時に測定した表示にしない。
+・下部のガラスカードに「ペグを回す方向」を追加。低い音は締めて上げる、高い音は緩めて下げる、±5セント内は回さず維持する案内。時計回りか反時計回りかは機種・巻き方・見る方向で異なるため、任意の固定方向を決めつけず、弦ごとに「つまみ側から見て音が上がる方向」を設定する2択を用意。プリセットとMIDI音別に端末内保存し、設定に応じて↻／↺と日本語の回転方向を表示。未設定時は締める／緩めると音の上下だけを案内。
+・Fender公式の調弦説明で弦の締め／緩めによる音程調整を確認。マイク検出、弦選択、発光、自動選択、詳細設定、保存済みサブスクと他機能は保持。
+・検証：Debug／AndroidTest／Lint成功（1分23秒）。変更したUIテストを含むテストAPK再ビルド成功（18秒）。画面テスト2件成功（7.14秒）。楽器切替・弦選択・基準音変更・発光に加え、高い音／低い音それぞれで方向設定を反転した場合の回転案内を合成入力で検証。エミュレーター実画面で各弦の下の差と回転案内カードを目視確認。実楽器のペグ操作・実機の精度は未検証。
+・証跡：app/build/visual-qa/tuning-directions.png、tuning-pitch-directions-build.txt、tuning-pitch-directions-test-build.txt、tuning-pitch-directions-tests.txt。コミット・push・公開なし。
+
+
+【2026-10-05 回転矢印・スキャナー共通の楽器切替・Liquid Glassタブバー】
+・作業前にWork historyと現行TuningPanel、ScannerCameraControls／ScannerScreen、EssentialNavigationBar、画面スワイプの既存テストを確認。既存の別作業差分と保存データを保持。ユーザー添付GIF（Essential--gif-46e5b4e7-1335-480a-be16-f76a2472a689.gif、186フレーム）から開始・中間・終了の5フレームを確認。
+・マイク左に反時計回り、右に時計回りの曲線矢印を常設。通常は薄灰色、録音中に有効な音程差があり一致範囲外で回転方向が設定されている場合は、必要な側だけ緑へ180msで変化し放射状の光彩を表示。一致・無音・停止・方向未設定時は両方灰色。アクセシビリティへ回転方向と点灯状態を付与。既存の各弦のセント差、ペグ発光、弦ごとの方向設定・端末内保存を保持。
+・GlassModeSelectorを追加し、スキャナーのQR／文字切替とウクレレ／ギター即時切替で同じ部品を使用。52dpの黒い半透明カプセル、白／水色の選択ガラスと細い縁、黄色の選択文字、選択量に応じた4%の文字拡大、触覚フィードバックを共有。楽器選択もスキャナーと同じspring（dampingRatio=0.76、stiffness=420）で横移動。7プリセット・基準音・撮影中のスキャナー操作無効化・各テストタグを保持。
+・ホーム下部の既存3タブをGIFの灰色半透明カプセル、濃い選択カプセル、白／灰色のアイコンと下部ラベルへ変更。背景コンテンツの透過、反射グラデーション、細い縁、影、ばね移動と押下縮小を使用。プロフィールの保存済みアバターと機能一覧のバッジを保持。
+・タブバー長押しで選択ガラスが膨らみ明るくなり、横方向の指位置に連続追従。タブ境界通過で触覚フィードバック。指を離した位置のタブへ確定し、バーの外まで移動しても端のタブへ制限。キャンセル時は現在のタブへ復帰。ドラッグ中はプレビューだけを変更して画面移動を繰り返さない。通常タップとコンテンツの横スワイプ、縦スクロール、ウィジェット長押し並べ替えを保持。
+・検証：Debug／AndroidTest／Lintの最終ビルド成功（1分21秒）。追加した表示撮影と既存テスト調整後のAndroidTestビルド成功（18秒）。最初の操作テスト7件成功（20.52秒）、最終10件成功（26.229秒）。回転矢印の左右点灯・無音と一致時の消灯、楽器切替、弦選択と基準音、タブ長押し確定／キャンセル／範囲外、通常タップ、既存横スワイプ・ウィジェット並べ替え、スキャナーの4件を確認。実楽器・物理端末での入力精度と触覚は未検証。
+・目視：通常画面liquid-tuning.pngでマイク左右の灰色矢印と切替カプセルを確認。liquid-home.pngとliquid-navigation-drag.pngでラベル、選択背景、長押しの膨らみ、カード背面の透過を確認。tuning-direction-glow.pngは合成周波数395.9Hzを与えた専用テスト表示で、反時計側だけの緑の光彩を確認（通常画面のヘッダー／インセットやSurfaceを持たないため通常画面の文字色・配置確認には使用しない）。
+・証跡：app/build/visual-qa/tabbar-reference-frames.png、liquid-navigation-comparison.png、liquid-home.png、liquid-navigation-drag.png、liquid-tuning.png、tuning-direction-glow.png、liquid-navigation-final-build.txt、liquid-navigation-test-build.txt、liquid-navigation-final-tests.txt。design-qaへ参照比較と検証範囲を追記。コミット・push・公開なし。
+
+
+【2026-10-05 ホームタブバーの無着色化と実際の背面ぼかし】
+・作業前にWork historyとEssentialNavigationBar／背景・画面描画を確認。ユーザー指定に合わせ、外側の灰色塗り、選択位置の黒い面、面の反射グラデーション、下側を暗くする塗りを除去。アイコン・文字・輪郭を残し、影を20dpから4dpへ減らした。保存済みプロフィールアバター、バッジ、タップ・長押し横スライド・選択のばね移動は保持。
+・rememberGraphicsLayerで背景と画面内容を再利用可能な描画層に記録。タブバー自身を記録対象から除外し、画面内容とタブバーのルート座標差で同じ位置の背面を描画。円形カプセルでクリップした背面専用層だけに14dpのRenderEffectぼかしを適用し、前面のアイコン・文字・枠をぼかさない。画面全体へぼかしをかけず、スクロール・タブ移動に追従。機能画面を開いた際はタブバー用の記録を停止し、通常描画へ戻す。毎フレームのスクリーンショット／Bitmap読戻しは使用していない。
+・実際のRenderEffectぼかしはAndroid 12（API31）以降。Android 11以前は色面を加えず、透過と輪郭による表示へフォールバック。旧OSでの実表示は未確認。
+・未選択アイコン・文字の灰色も調整し、暗色テーマでは白82%、明色テーマでは濃灰色で背景上の可読性を確保。両テーマを静的実装し、今回の目視は暗色テーマのみ。
+・検証：初回Debug／Lint成功（1分42秒）、アイコン明度調整後の最終Debug／Lint成功（1分34秒）。既存タブ操作テスト4件を初回11.733秒、最終10.736秒で確認。長押し確定／キャンセル／範囲外、通常タップ、画面スワイプ、縦スクロール、ウィジェット並べ替え、機能画面でタブスワイプが無効であることを確認。git diff --check成功。
+・エミュレーターで通常位置とスクロール後を目視し、タブバー内の背面文字・カードだけがぼけて前面アイコンと枠が鮮明であること、背面の内容がスクロールに追従することを確認。起動直後の初回UI dumpはnull rootだったため、表示後に再取得した。実機・旧Android・長時間の描画負荷は未測定。
+・証跡：app/build/visual-qa/navigation-backdrop-blur-final.png、navigation-backdrop-blur-scroll.png、navigation-backdrop-blur-final-build.txt、navigation-backdrop-blur-final-tests.txt。コミット・push・公開なし。
+
+
+【2026-10-05 選択枠の水滴屈折と大元タブバーのぼかし半減】
+・作業前にWork historyと現行の背面描画／タブバー／既存ガラスシェーダーを確認。外側タブバーのぼかし半径を14dpから7dpへ半減。NavigationWaterLensを追加し、選択カプセルの内側は14dpのまま独立して描画。色面は追加せず、アイコンと文字は屈折・ぼかし対象から除外。タブのサイズ・選択位置・長押し横スライド・キャンセル復帰・プロフィールアバター・バッジを保持。
+・Android 13（API33）以降ではRuntimeShaderでカプセルの中心軸からの距離と縁の法線を算出し、縁に近い背面画素を水滴のレンズのように曲げる。微小な赤／青のサンプリング差で光の色分離を付与。14dpの背面ぼかしを入力とするRenderEffectを再利用し、選択形状で最終クリップする。
+・長押し中または選択位置のばね移動中に屈折量を180msで増やし、停止後は180msで消す。上側の縁には白と淡い水色の細い反射を重ね、選択枠の位置に合わせて光の中心を移動。Android 12は選択枠14dp／大元7dpのぼかしと縁の光、Android 11以前は透過と縁の光へフォールバック。古いOSは未実機確認。
+・初回ビルドは不要なmatchParentSizeの直接importで失敗。importを除去し、最終Debug／Lint成功（1分34秒）。既存タブ操作テスト4件成功（10.779秒）。長押し確定／キャンセル／範囲外、通常タップ、画面スワイプ、縦スクロール、ウィジェット並べ替え、機能画面の操作範囲を確認。今回のエミュレーターSDKを再確認しAPI37。インストール済みbase.apkと生成Debug APKのSHA256が同じことを確認。git diff --check成功。
+・通常状態navigation-water-lens.pngで大元のぼかしが弱まり選択枠内が引き続きぼけること、長押し中navigation-water-lens-drag.pngで上側の細い光が強まり背面が水滴風に曲がる表示を目視。物理端末・古いOS・長時間GPU負荷は未検証。
+・証跡：app/build/visual-qa/navigation-water-lens.png、navigation-water-lens-drag.png、navigation-water-lens-build.txt（初回失敗）、navigation-water-lens-final-build.txt、navigation-water-lens-tests.txt。コミット・push・公開なし。
+
+
+【2026-10-05 バックアップ1を保存して透明水滴の試作】
+・作業前にWork historyと現在の2つのタブバーソースを確認。変更前にC:\Users\waki1\Desktop\Essential-バックアップ1を新規作成。source/EssentialApp.ktとsource/NavigationWaterLens.kt、変更前のWork history、変更前のx86_64 Debug APKを保存。2ソースが元ファイルとSHA256一致することを確認し、SHA256SUMS.txtを生成。作業後もソースとAPKの全ハッシュを再照合して一致を確認。
+・バックアップ1にREADME.mdと復元.ps1を用意。復元は今回変更した2ファイルのみを対象に、まず復元前の試作を日時付きフォルダーへ退避してから原本を戻す。Work historyやほかのファイルは戻さない。Windows PowerShellでも日本語パスが壊れないよう復元.ps1をUTF-8 BOMで保存。PowerShell Parserで構文確認成功。試作を保持するため復元スクリプトそのものは実行していない。ソース復元後は再ビルドが必要。バックアップAPKはエミュレーター用で公開APKではない。
+・大元のぼかしを7dpから3dpへ変更。つかんでいる間は選択カプセルの縦横をそれぞれ1.2倍へばねアニメーションで拡大。拡大係数を0〜1へ制限し、ばねのオーバーシュートでぼかし半径が負になることと1.2倍を超える表示を防止。大元のバー寸法・タップ領域・アイコン寸法は維持。
+・選択枠は通常14dpのぼかしを保持し、つかんだ状態では0.6dpまで下げてほぼ透明な水滴へ変化。面の着色は追加していない。屈折のサンプリング方向を反転し、背面の像をカプセルの中心軸へ寄せる内向きのレンズに変更。つかみ中の屈折量を強化し、微小な色分離と縁を走る反射を保持。
+・水滴の描画領域だけを周囲20dp広げ、外側バーのクリップを外して拡大した枠が端で切れないようにした。大元3dpのぼかしだけは元のカプセルでクリップ。選択枠の輪郭はダークモードで黒、ライトモードで白。透明な面と前面のアイコン・文字を維持。離す／キャンセル時は元の寸法とぼかしへ戻す。
+・検証：初回Debug／Lint成功（1分12秒）。拡大係数の制限後、最終Debug／Lint成功（1分13秒）。既存タブ操作4件成功（11.25秒）：長押し確定／キャンセル／範囲外、タップ、画面スワイプ、縦スクロール、ウィジェット並べ替え、機能画面の操作境界を確認。ライトモードでも長押し操作1件成功（5.631秒）、合計5件。ユーザー設定を通常UIから一時的にライトへ切替えて撮影し、終了後に元のダークへ戻した。SharedPreferencesのdark_theme=trueを再確認。
+・目視：navigation-backup1-experiment-dark.pngとlight.pngで黒／白の選択輪郭、grip.pngとlight-grip.pngで1.2倍の枠と鮮明な背面・内向きの水滴屈折を確認。古いOS・物理端末・長時間の負荷は未検証。屈折はAndroid13以降、Android12はぼかしと縁の光、Android11以前は透過と縁の光の既存フォールバックを維持。
+・証跡：app/build/visual-qa/navigation-backup1-experiment-final-build.txt、navigation-backup1-experiment-tests.txt、navigation-backup1-experiment-light-test.txt、navigation-backup1-experiment-dark.png、navigation-backup1-experiment-light.png、navigation-backup1-experiment-grip.png、navigation-backup1-experiment-light-grip.png。コミット・push・公開なし。
+
+
+【2026-10-05 試作のダークモード選択枠を薄灰色へ修正】
+・直前のWork historyを確認し、追加指示に従ってダークモードの選択輪郭だけを黒から薄灰色#C6CBD2へ変更。ライトモードの白、通常／つかみ時の透明度変化、大元3dp、縦横1.2倍、内向き水滴屈折を維持。バックアップ1は変更前のまま保持。
+・Debugビルド成功（46秒）。データを保持してエミュレーターへ更新し、ダークモードの薄灰色輪郭を実画面で目視確認。起動直後のnull root後にUI dumpを再取得。色のみの修正のため、直前に成功した操作テスト5件は再実行していない。実機は未確認。
+・証跡：app/build/visual-qa/navigation-experiment-gray-frame-build.txt、navigation-experiment-gray-frame.png、navigation-experiment-gray-frame-crop.png。コミット・公開なし。
+
+
+【2026-10-05 選択枠の薄灰色・白を約5割薄くする】
+・作業前にWork historyを確認。ダークの薄灰色#C6CBD2とライトの白の色味を維持し、選択輪郭のアルファを共通で0.5倍へ変更。通常0.88→0.44、つかみ中0.58→0.29。大元の枠・3dpぼかし・1.2倍・透明水滴・反射光・バックアップ1を保持。
+・Kotlinコンパイル成功（32秒）、Debug APK生成成功（13秒）。エミュレーターへデータ保持で更新し、薄くなったダークモードの選択輪郭を目視確認。単純な透明度変更のため操作テストは再実行していない。ライトの実表示は今回再確認していないが共通のアルファ式を変更。実機は未確認。
+・証跡：app/build/visual-qa/navigation-frame-half-opacity-build.txt、navigation-frame-half-opacity-apk.txt、navigation-frame-half-opacity.png。コミット・公開なし。
+
+
+【2026-10-05 タブバーの横スライド追従処理を軽量化】
+・作業前にWork historyと現在のタブバー・水滴レンズ・画面スワイプ処理を確認。指位置の変更をLaunchedEffectのキーにして毎回Animatableへ同期し、描画値をCompositionへ読み込んでいた処理を修正。指位置を関数で描画／graphicsLayerへ直接渡し、指が動く各ピクセルでの再構成を避ける。タブ境界のプレビュー選択と長押し状態はderivedStateOfで集約。
+・ドラッグ中のAnimatable同期コルーチンを削除。指を離した／キャンセルした地点を一時保持し、その地点へsnapToしてから確定タブへの整列だけをanimateToする。指位置をばねや遅延付き補間へ通さず、直接描画する。指を離した瞬間に古い位置へ戻る1フレームの跳びも防止。
+・水滴レンズのRenderEffectを拡大率ごとに毎フレーム生成する処理を廃止。14dp〜0.6dpの21段階を密度・シェーダーが変わったときだけ事前生成して再利用。描画時に拡大率に合う効果を選択し、座標と屈折量はシェーダーuniformだけを更新。3dpの大元、1.2倍、透明水滴、半分に薄くした灰色／白の輪郭、触覚、バックアップ1を保持。
+・検証：Debug／Lint成功（1分20秒）。エミュレーターにデータ保持で更新し、既存タブ操作4件成功（10.535秒）。長押し確定／キャンセル／範囲外、通常タップ、画面スワイプ、縦スクロール、ウィジェット並べ替え、機能画面の操作境界を確認。navigation-direct-drag.pngで指移動後の枠と水滴の描画位置を確認。テスト時間は入力遅延やFPSの測定値ではない。物理端末での体感・入力から表示までの遅延・GPU負荷は未測定。
+・証跡：app/build/visual-qa/navigation-direct-drag-build.txt、navigation-direct-drag-tests.txt、navigation-direct-drag.png。git diff --check成功。バックアップ1の書換え・コミット・公開なし。
+
+
+【2026-10-05 長押し待ちをなくして即時横ドラッグに変更】
+・作業前にWork historyと現在のポインター処理を確認。タブバーのdetectDragGesturesAfterLongPressをdetectHorizontalDragGesturesへ変更し、長押しタイムアウトを待たず、横移動が通常の誤操作防止しきい値を超えた時点で指位置へ直接追従するようにした。長押ししたまま移動する操作も引き続き使用可能。
+・タップを消費しないInitial／Finalパスのポインター観察を追加。触れた瞬間から水滴の拡大・屈折の演出を開始し、全ての指が離れた場合やキャンセル・画面終了時に解除する。通常タップと選択の確定／キャンセル復帰、縦操作、アイコン、3dp・1.2倍・半分の濃さの輪郭・透明水滴・バックアップ1を保持。
+・ImmediateNavigationDragTestを追加し、長押し時間を待たない100msの横ドラッグでプロフィールへ確定できること、100msの逆方向ドラッグのキャンセルで選択が維持されること、通常のホームタップを確認。既存4件も再実行。
+・検証：Debug／AndroidTest APK／Lint成功（1分49秒）、エミュレーターへデータ保持で更新。新規1件＋既存4件、合計5件成功（14.413秒）。実機の体感、入力から表示までの実測遅延とFPSは未測定。100msはテスト操作の継続時間で、実測の表示遅延ではない。
+・証跡：app/build/visual-qa/navigation-no-hold-build.txt、navigation-no-hold-tests.txt。git diff --check成功。バックアップ1の書換え・コミット・公開なし。
+
+
+【2026-10-05 プロフィール画像の表示範囲編集】
+・作業前にWork historyと既存のプロフィール画像選択・保存・表示処理を確認。メイン画面とプロフィール編集フォームで共通の画像ピッカーから、選択後にProfileImageEditorを開くよう変更。
+・背景は横長、アイコンは正方形の固定枠。背景の縦横比は画面幅から実際のプロフィール背景（左右20dp、高さ166dp）へ合わせる。枠に白い輪郭・三分割グリッド、枠の外側に暗いマスクを表示。ドラッグ移動、ピンチ拡大、100〜500%のスライダー、位置と倍率のリセット、保存／キャンセルを追加。暗い編集画面に半透明のヘッダー・角丸の操作パネルを配置。
+・元画像は変更せず、長辺2048px以下にサンプリングしてIOスレッドで読み込む。EXIFの回転／反転を反映。拡大・移動は枠内に空白が入らない範囲へ制限。保存するまで既存プロフィールを保持し、PNGの一時ファイルを確定・設定保存した後に以前の画像を置き換える。保存失敗は通知し、以前の画像を維持。画像の読み込み失敗は編集画面に表示。
+・切り抜いた結果は静止PNGになるため、GIFを編集しても静止画像として保存されることを画面に明示。既存のGIF保存・表示APIや現在設定中のGIFは削除せず保持。今回、回転ボタンとGIFのアニメーション切り抜きは実装していない。
+・ProfileImageEditorTestを追加。横長の保存比率、2倍ズームしたアイコンが300×300で保存されること、キャンセル時に保存されないこと、オフセットの境界制限を確認。テストは専用のキャッシュ画像を利用し、ユーザーのプロフィール設定を書き換えない。
+・検証：Debug／AndroidTest APK／Lint成功（最終アプリビルド1分28秒）。画面取得でルートが2つ存在するテスト側の失敗を修正。Composeのルート撮影は空の基底画面を取得したため、UiAutomationの画面取得へ変更。最終操作テスト3件成功（4.539秒）。エミュレーターへデータ保持で更新済み。検証画像はテスト用グラデーションであり、実際の写真ピッカーを含む全経路、物理端末、GIFアニメーション編集は未検証。
+・証跡：app/build/visual-qa/profile-crop-final-build.txt、profile-crop-verified-tests.txt、profile-crop-editor.png。バックアップ1・既存のタブバー試作・ほかの機能を維持。コミット・push・公開なし。
+
+
+【2026-10-05 ホーム上部を添付画像へ変更】
+・作業前にWork historyとホーム・ヘッダー・HeroCardの実装を確認。添付画像をdrawable-nodpi/home_hero_art.pngとして元データのまま追加。画像の下端を合わせたContentScale.Cropで表示し、入りきらない上側を切り取る。
+・ヘッダー50dp＋間隔18dp＋従来カード238dpの合計306dpを維持し、画像とヘッダーを同じ領域にまとめたHomeArtworkへ置換。横幅を左右20dpずつ広げて画面端まで表示。使える機能以降の位置とカード・タブバーは保持。
+・画像の下側45%を複数段階のアルファマスク（DstIn／Offscreen）で透過し、実際の既存背景へなじませる。固定の背景色を重ねないため、テーマ・アイコン背景の変更にも追従。ヘッダー背面の上側のみ薄い暗幕を加え、Essential名を白で読みやすく表示。
+・はじめよう／毎日に必要なものを、ひとつに。／ショートカット説明文を撤去。ヘッダーの副題と右側の状態マークも撤去し、Essentialアイコンと名前のみを残した。画像のクリックは従来の設定済みshortcutへのonOpenFeatureを維持し、操作ラベルと画像のアクセシビリティ説明に開く機能名を設定。
+・既存のProgressiveWidgetの入場演出、クリックのフィードバックを維持。画像表示中に画像加工やBitmap再生成を行わず、GPUの透過描画を利用。無関係なコード・バックアップ1は変更せず保持。
+・検証：重複したCompositingStrategyのimportによる初回コンパイル失敗を修正し、Debugビルド成功（39秒）。データ保持でエミュレーターへ更新。home-artwork.pngで下端揃えの切り取り、背景へのフェード、Essentialのみのヘッダー、機能一覧配置を目視確認。実際に画像をタップして設定済みダウンローダーを開き、UI dumpでダウンローダー／公開URLを確認してホームへ戻した。実機とライトモードは今回未確認。見た目の変更のため新規テスト・Lintの再実行は行っていない。git diff --check成功。
+・証跡：app/build/visual-qa/home-artwork-build.txt、home-artwork.png、home-artwork.xml、home-artwork-shortcut.xml。コミット・push・公開なし。
+
+
+【2026-10-05 ホーム画像をステータスバーと機能見出しまで拡張】
+・Work historyを確認して作業。ホーム表示時だけScaffoldの上側コンテンツ余白を外し、画像を時計・電池の背面を含む画面上端まで描画。ほかのタブ・機能画面の安全領域は従来どおり。ロゴにはsafeDrawingの上側余白＋18dpを内側に入れ、以前の配置を維持。
+・背景画像の描画領域だけを下側へ72dp延長し、報告するレイアウト高さを変えず、機能一覧の位置を維持。下端フェードを使える機能／すべて見るの背面へ重ねて、その下で背景につなげる。下端揃えの切り取り、ショートカットとタブバーを保持。
+・検証：Debugビルド成功（43秒）。データ保持でエミュレーターへ更新。home-artwork-edge.pngで上端までの画像と白い時計・電池、見出しに重なるフェード、ロゴとカード位置を目視確認。画像タップからダウンローダーが開くことをUI dumpで再確認し、ホームへ戻した。git diff --check成功。実機・ライトテーマは未検証。単純な描画・余白変更のためテスト追加とLint再実行なし。
+・証跡：app/build/visual-qa/home-artwork-edge-build.txt、home-artwork-edge.png、home-edge-shortcut.xml。バックアップ1・ほかの作業は保持。コミット・公開なし。
+
+
+【2026-10-05 ホーム画像を固定背景へ分離して表示待ちを軽減】
+・Work historyとホームの構成を確認。画像がLazyColumn内のProgressiveWidgetと画面切替アニメーションに含まれていたため、スクロールと入場フェードの対象から外した。画面ルートのAnimatedBackdropと同じ背面レイヤーにHomeArtworkBackgroundを配置。ホーム表示中だけ描画し、機能一覧が動いても背景の座標・画像の下端とフェードを固定する。
+・画像のPainterをEssentialAppの画面ルートで取得・保持し、ホームへ戻るたびの画面内のデコードを避ける。初回のリソース読込み自体は必要。背景にはProgressiveWidgetもAnimatedContentも適用せず、ロゴ・カードの既存アニメーションを維持。初回表示時間・実機FPSの測定や遅延ゼロの保証は行っていない。
+・スクロール領域に透明な従来寸法の操作領域を残し、画像のショートカットとロゴ・使える機能の初期位置を維持。背景は以前と同じ高さ（306dp＋上側安全領域＋18dp＋72dp）、下端揃え・アルファフェード・時計背面の暗幕を保持。ナビゲーションのガラス背面記録にも固定画像を含める。Android Studioのホームプレビューにも同じ背景を追加。
+・検証：Debugビルド成功（最終42秒）。エミュレーターにデータ保持で更新。スクロール前後のスクリーンショットで、一覧が動いて背景が固定されたことを確認。前面UIと重ならない左端の領域（2,190〜30,600）の画像ピクセルが完全一致。上へ戻して画像タップからダウンローダーが開くことをUI dumpで確認し、ホームへ戻した。git diff --check成功。実機の起動遅延・FPS・ライトモードは未検証。
+・証跡：app/build/visual-qa/home-fixed-background-final-build.txt、home-fixed-before.png、home-fixed-after.png、home-fixed-pixel-check.txt、home-fixed-shortcut.xml。バックアップ1は保持。コミット・push・公開なし。
+
+
+【2026-10-05 背景画像を一覧のスクロールに同期】
+・追加指示を受け、作業前に直前のWork historyを確認。背景レイヤーとしての一体化と画面ルートでの画像保持を残し、完全な画面固定から一覧と同じ量だけ上へ移動する動作に変更。
+・ホームのLazyListStateを画面ルートで保持し、HomeScreenと背景で共有。graphicsLayerのtranslationYへfirstVisibleItemScrollOffsetの負値を直接反映。スクロール用のばね・補間・同期コルーチンは追加せず、描画レイヤーで状態を読み取ることでピクセルごとの画面再構成を避ける。現状のホーム一覧は単一項目のColumn構成。プレビューにも同じ共有状態を適用。
+・画像の入場アニメーション除外、デコード結果の保持、上端からの表示、下端揃え、使える機能に重なるフェード、画像タップのショートカット、透明な前面操作領域を保持。
+・検証：Debugビルド成功（35秒）、データ保持でエミュレーターへ更新。スクロール前後の実画面を撮影し、画像と使える機能の見出しが一緒に上へ移動し、フェードの位置関係が保たれることを目視確認。確認後に上へ戻した。git diff --check成功。実機の表示遅延・FPSは未測定。
+・証跡：app/build/visual-qa/home-background-scroll-build.txt、home-scroll-before.png、home-scroll-after.png。前項の完全固定は今回の指示で変更。バックアップ1、その他の機能は保持。コミット・公開なし。
+
+
+【2026-10-05 バックアップ1の削除とサブスク削除専用ガラスUI】
+・作業前にWork historyとSubscriptionScreenの既存追加／削除UIを確認。ユーザーの明示許可に基づきC:\Users\waki1\Desktop\Essential-バックアップ1を削除。Resolve-Pathで絶対パスの一致を確認し、フォルダーと配下に再解析ポイントがないことを確認して、PowerShellのRemove-Item -LiteralPath -Recurse -Forceで当該フォルダーのみ削除。Test-Path=Falseを再確認。ソース・ビルド成果物・Work historyは削除していない。
+・標準AlertDialogを専用SubscriptionDeleteDialogへ置換。半透明の32dp角丸ガラス面、白い輪郭・縦方向の反射、12dpの影、240msのフェード／拡大、背面18dpぼかしを追加。Android12以前への境界は既存追加UIと同じAPI31判定で維持。背面ぼかしの準備／復元をSubscriptionDialogBackdropへ共通化し、閉じると元の表示へ戻す。
+・対象サービス名、月額、毎月の決済日を内側のガラスカードへ表示。契約の解約ではなく記録削除である旨を維持。キャンセルと赤系の記録を削除ボタンを並べ、押下の縮小フィードバックを共通利用。処理中は削除中…と表示し、両ボタン・外側タップ・戻るでの終了を無効にする。保存失敗時のエラーを専用画面にも表示。
+・既存ガラスボタンにdestructive指定を追加。保存ボタンのラムダ引数を明示し、初回コンパイルエラーを修正。SubscriptionDeleteDialogTestで対象表示、キャンセルと確定の分離、処理中の無効化を確認。既存SubscriptionUiTestを新しい記録を削除ラベルへ更新し、追加／再起動／編集／削除キャンセル／確定の保存経路を再確認。既存テストのfinallyで元のサブスク設定を復元する動作を保持。
+・検証：Debug／AndroidTest APK／Lint成功（1分23秒）、テストAPK追加確認17秒。エミュレーターへデータ保持で更新。専用UIテスト1件成功（2.685秒）、保存経路テスト1件成功（7.006秒）、合計2件。subscription-delete-app.pngで実アプリのダークモード、背面ぼかし・対象カード・赤系の削除ボタンを目視確認。実機と古いOSの表示は未検証。git diff --check成功。
+・証跡：app/build/visual-qa/subscription-delete-glass-final-build.txt、subscription-delete-glass-tests.txt、subscription-delete-integration-tests.txt、subscription-delete-glass.png、subscription-delete-app.png。コミット・push・公開なし。
+
+
+【2026-10-05 プロフィール設定からホーム背景を変更】
+・Work historyを確認。プロフィールの設定画面にホームの背景カードを追加。現在の画像プレビュー、背景画像を選ぶ、初期画像に戻すを配置し、既存のガラス面・角丸で設定カードを統一。
+・既存のメディアピッカーから選択後、ProfileImageEditorで表示範囲を調整。ホーム背景の実際の縦横比（画面幅／306dp＋安全領域＋18dp＋72dp）を指定。編集画面は縦長の枠にも対応し、ドラッグ・ピンチ・倍率スライダー・保存・キャンセルを利用。GIFを編集した結果は既存編集画面の説明どおり静止PNG。
+・ProfileStoreに独立したhome_background_pathを追加し、既存の一時PNG→確定→設定commitの保存経路を再利用。プロフィールのアイコン／背景を変更しない。初期画像に戻す場合は設定commitが成功してからカスタム画像を削除。失敗した場合は以前の設定を保持。
+・画面ルートで保存先を復元し、カスタム画像をIOスレッドで一度読み込んで保持。ファイルなし／デコード失敗は初期イラストへフォールバック。背景のスクロール同期、ステータスバー背面までの描画、下端フェード、ショートカットと既存入場演出の除外を維持。
+・HomeBackgroundStoreTestを追加。独立したテスト用Context・保存ディレクトリ・設定名を使って保存後にStoreを作り直して読み込めること、初期画像復帰、プロフィールのアイコン／背景が残ることを確認。ユーザーの画像・設定には書き込まない。既存画像編集3件も再実行。
+・検証：Debug／Lint成功（1分54秒）、AndroidTest APK成功（31秒）。保存テスト1件＋画像編集3件、計4件成功（4.587秒）。エミュレーターへデータ保持で更新。実際のプロフィール→設定を開き、ホームの背景カード、初期画像プレビューと操作を確認。背景画像を選ぶボタンでピッカーが起動することを確認し、選択せずキャンセル。実ユーザーのホーム背景は変更していない。実際のピッカーで選択→編集→保存の一連の操作と物理端末は未検証。
+・証跡：app/build/visual-qa/home-background-settings-build.txt、home-background-settings-tests.txt、home-bg-settings.png、home-background-settings.xml、home-bg-picker.xml。git diff --check成功。コミット・公開なし。
+
+
+【2026-10-05 Essential 0.6.7公開準備】
+・GitHubへの0.6.7公開指示を受け、Work history、既存release.yml、直前の公開・配布検証の記録を確認。originはAikidoooo/Essential-for-Android、mainはローカルと同じf503aae。リモートにv0.6.7のタグ・Releaseがないことを確認。
+・versionCodeを27→28、versionNameを0.6.6→0.6.7へ更新。今回のサブスク管理、チューニング、画像編集、ホーム背景設定、タブバー、Progressive Motionの変更と確認限界を.github/release-notes/v0.6.7.mdに記載。
+・GitHub CLIは既存の作業用公式実行ファイルを利用。CLIの永続ログインはなく、既存Git認証をメモリー内だけで取得し、子プロセスのGH_TOKENへ渡す。秘密値は出力・ファイル保存しない。サンドボックスのネットワーク制限があるためGitHub通信は許可された昇格実行で行う。
+・ローカル単体テスト70件（失敗0）、Lint、R8 Releaseビルド、Debug／AndroidTest APK生成成功（3分15秒）。既存のKotlinメタデータに関するR8警告はあるがビルド成功。サブスク、チューニング、画像編集・保存、タブ操作、Progressive Motion、スキャナーの操作テスト18件成功（36.682秒）。ユーザー設定は各テストの復元処理を維持。
+・公開対象は今回のアプリ変更・関連テスト・画像資産・バージョン・リリースノート・Work history／引継ぎ／デザイン検証記録に限定。未追跡のCameraStyleAI_Codex_Starter、CameraStyleAI_REAL_DATA_Collection_Kitと別件docsはステージしない。
+・既存のタグ駆動CIでRust JNIの4 ABI、署名付きAndroid CPU別／Xiaomi APKを生成予定。公開後の全7APK独立検証はこれから実施する。ローカルの未署名Release APKは配布しない。

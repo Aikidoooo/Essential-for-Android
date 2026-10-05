@@ -178,6 +178,35 @@ class ProfileStore(context: Context) {
         }
     }
 
+    /** 編集を確定した画像だけを保存し、成功後に以前の画像を置き換える。 */
+    fun saveCroppedImage(bitmap: android.graphics.Bitmap, banner: Boolean, homeBackground: Boolean = false): String? {
+        val directory = File(appContext.filesDir, PROFILE_DIRECTORY).apply { mkdirs() }
+        val destination = File(directory, "profile_${java.util.UUID.randomUUID()}.png")
+        val temporary = File(directory, "${destination.name}.part")
+        return runCatching {
+            temporary.outputStream().use { output ->
+                check(bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, output))
+            }
+            check(temporary.renameTo(destination))
+            val previous = if (homeBackground) loadHomeBackgroundPath() else if (banner) loadBannerPath() else loadImagePath()
+            val key = if (homeBackground) KEY_HOME_BACKGROUND else if (banner) KEY_BANNER_PATH else KEY_IMAGE_PATH
+            check(preferences.edit().putString(key, destination.absolutePath).commit())
+            previous?.let { File(it).delete() }
+            destination.absolutePath
+        }.getOrElse {
+            temporary.delete()
+            destination.delete()
+            null
+        }
+    }
+
+    fun loadHomeBackgroundPath(): String? = preferences.getString(KEY_HOME_BACKGROUND, null)?.takeIf { File(it).isFile }
+
+    fun clearHomeBackground() {
+        val previous = loadHomeBackgroundPath()
+        if (preferences.edit().remove(KEY_HOME_BACKGROUND).commit()) previous?.let { File(it).delete() }
+    }
+
     fun clearImage() {
         loadImagePath()?.let { File(it).delete() }
         preferences.edit().remove(KEY_IMAGE_PATH).apply()
@@ -228,6 +257,7 @@ class ProfileStore(context: Context) {
         const val KEY_NAME = "profile_name"
         const val KEY_ICON = "profile_icon"
         const val KEY_IMAGE_PATH = "profile_image_path"
+        const val KEY_HOME_BACKGROUND = "home_background_path"
         const val KEY_BANNER_PATH = "profile_banner_path"
         const val PROFILE_DIRECTORY = "profile"
         const val MAX_NAME_LENGTH = 15

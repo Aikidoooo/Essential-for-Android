@@ -80,43 +80,9 @@ internal fun ScannerCameraControls(
                 shape = CircleShape, modifier = Modifier.size(44.dp).semantics { contentDescription = "写真を選ぶ" }) {
                 Box(contentAlignment = Alignment.Center) { GalleryIcon() }
             }
-            Box(Modifier.weight(1f).height(52.dp).clip(CircleShape)
-                .background(Color.Black.copy(alpha = 0.48f))) {
-                Canvas(Modifier.matchParentSize()) {
-                    val inset = 3.dp.toPx()
-                    val width = size.width / 2f - inset * 2f
-                    val height = size.height - inset * 2f
-                    val left = size.width / 2f * modePosition + inset
-                    val radius = CornerRadius(height / 2f)
-                    drawRoundRect(Brush.linearGradient(listOf(Color.White.copy(alpha = 0.20f),
-                        Color(0xFFB9DFFF).copy(alpha = 0.18f), Color.White.copy(alpha = 0.16f)),
-                        Offset(left, inset), Offset(left + width, inset + height)),
-                        Offset(left, inset), Size(width, height), radius)
-                    drawRoundRect(Color.White.copy(alpha = 0.34f), Offset(left, inset),
-                        Size(width, height), radius, style = Stroke(1.1.dp.toPx()))
-                }
-                Row(Modifier.fillMaxSize().padding(3.dp), horizontalArrangement = Arrangement.Center) {
-                listOf(false to "QRスキャナー", true to "文字スキャン").forEach { (isText, label) ->
-                    Surface(onClick = { if (textMode != isText) {
-                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        onModeChange()
-                    } }, enabled = !busy,
-                        color = Color.Transparent,
-                        contentColor = if (textMode == isText) Color(0xFFFFEB86) else Color.White,
-                        shape = CircleShape, modifier = Modifier.weight(1f).testTag(if (isText) "scanner-text-mode" else "scanner-qr-mode")
-                            .semantics { selected = textMode == isText; role = Role.Tab }) {
-                        Box(Modifier.height(46.dp), contentAlignment = Alignment.Center) {
-                            Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 1,
-                                modifier = Modifier.graphicsLayer {
-                                    val selection = (if (isText) modePosition else 1f - modePosition).coerceIn(0f, 1f)
-                                    scaleX = 1f + selection * 0.04f
-                                    scaleY = scaleX
-                                })
-                        }
-                    }
-                }
-            }
-            }
+            jp.essential.app.ui.GlassModeSelector(
+                listOf("QRスキャナー", "文字スキャン"), listOf("scanner-qr-mode", "scanner-text-mode"),
+                if (textMode) 1 else 0, modePosition, { onModeChange() }, Modifier.weight(1f), enabled = !busy)
             Surface(onClick = { onAutoChange(!auto) }, enabled = !textMode && !busy, color = Color.Black.copy(alpha = 0.48f),
                 contentColor = if (textMode) Color.White.copy(alpha = 0.38f) else if (auto) Color(0xFFFFEB86) else Color.White, shape = CircleShape,
                 modifier = Modifier.width(54.dp).height(46.dp).testTag("scanner-auto")
