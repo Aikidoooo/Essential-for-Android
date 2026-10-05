@@ -2611,3 +2611,13 @@
 ・ローカル単体テスト70件（失敗0）、Lint、R8 Releaseビルド、Debug／AndroidTest APK生成成功（3分15秒）。既存のKotlinメタデータに関するR8警告はあるがビルド成功。サブスク、チューニング、画像編集・保存、タブ操作、Progressive Motion、スキャナーの操作テスト18件成功（36.682秒）。ユーザー設定は各テストの復元処理を維持。
 ・公開対象は今回のアプリ変更・関連テスト・画像資産・バージョン・リリースノート・Work history／引継ぎ／デザイン検証記録に限定。未追跡のCameraStyleAI_Codex_Starter、CameraStyleAI_REAL_DATA_Collection_Kitと別件docsはステージしない。
 ・既存のタグ駆動CIでRust JNIの4 ABI、署名付きAndroid CPU別／Xiaomi APKを生成予定。公開後の全7APK独立検証はこれから実施する。ローカルの未署名Release APKは配布しない。
+
+
+【2026-10-05 Essential 0.6.7 GitHub公開完了】
+・検証済みの30ファイルをコミットac9f7ff（Essential v0.6.7: サブスク管理・チューニングと画像設定、Liquid Glass操作を追加）にまとめ、mainと注釈付きv0.6.7をatomic push。無関係なCameraStyleAI資産・別件docsは未追跡のまま保持。
+・GitHub ActionsのAndroid Release実行37299561388が成功。Rust JNIの4 ABI再ビルド、CI単体テスト／Lint、標準・HyperOSの署名APK作成、容量検査、全ファイル添付後の正式公開を完了。URL：https://github.com/Aikidoooo/Essential-for-Android/releases/tag/v0.6.7。draft=false、prerelease=false、添付9ファイル（7APK＋SHA256SUMS.txt＋SIZE_REPORT.json）を確認。
+・全公開ファイルをapp/build/visual-qa/release-067-downloadedへ独立ダウンロード。初回Android/Xiaomi、Android更新4 ABI、Xiaomi更新arm64の全7APKでSHA256SUMSとの一致、apksigner verify --print-certs、zipalign -c -P 16 4、aaptのpackage/versionCode/versionName/native-codeを確認。すべてjp.essential.app、versionCode 28、versionName 0.6.7、所定の単一ABIで合格。
+・署名証明書SHA-256はd9037fa8b1ed3855cd3fad04dd4791e568ffb4123ee8b4f54c5e494a30ab64e8。以前にダウンロード済みの0.6.6署名APKを再検証して一致を確認。初回用と更新arm64用はAndroid/Xiaomiそれぞれ同一ハッシュ。容量レポートのファイルサイズと実サイズ、全件の上限合格も確認。本体＋64MBデータ枠の概算は253929979〜294578776 bytesで400000000 bytes以内。実際の端末での展開・ユーザー保存容量の測定値ではない。
+・検証スクリプトでSIZE_REPORT.jsonの既定cp932読み込みに失敗し、UTF-8指定へ修正。aaptの日本語パスでのエラーはASCII Junctionのessential-buildから再実行して解決。配布APKそのものの不具合ではなく検証経路の問題。最終全件成功。
+・ローカル単体70件＋操作18件、ローカル／CIのLint・Releaseビルドを確認済み。実機の音程精度・FPS・入力遅延、実ユーザーのホーム背景選択→保存全経路、既存Releaseの実端末更新は未検証。エミュレーターの既存Releaseアプリjp.essential.app（0.5.5）は変更していない。Debugアプリのみ0.6.7-debugへデータ保持で更新。
+・証跡：release-067-local-build.txt、release-067-ui-tests.txt、release-067-ci-watch.txt、release-067-ci-result.json、release-067-published.json、release-067-verification.txt、release-067-downloaded。公開結果は追加の記録コミットとしてmainへ反映する。タグと配布APKのコミットはac9f7ffのまま。

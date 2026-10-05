@@ -37,7 +37,7 @@
 - ダウンローダーは本人が保存権限を持つ公開コンテンツのみ。ログイン、Cookie、DRM、地域制限、暗号化、アクセス制御の回避や任意コマンド実行は実装しない。
 - AIを使う機能では、可視テキストの重複除去と送信量の上限を設け、token使用量を可能な限り少なくする。
 
-## 2026-10-05 0.6.7公開準備
+## 2026-10-05 0.6.7公開済み
 
 - Progressive Motionは画面入場時刻を共有し、ホーム／機能一覧の画面外カードも入場時から進める。遅れて構成される機能画面の項目も1秒経過後は即表示する。
 - ホームと機能一覧へ「サブスク管理」「チューニング」を追加。既存ホーム並べ替えとショートカット設定に対応。
@@ -553,3 +553,10 @@ requiredXP(L) = round(raw / 15)
 - タブバーは大元3dpぼかし、選択枠は通常14dp・つかみ時0.6dp・1.2倍。ダークの薄灰色／ライトの白は半分の濃さ。長押し待ちなしの横ドラッグ。バックアップ1はユーザーの許可で削除済み。
 - ローカルの単体テスト70件、操作テスト18件、Lint、Release/Debug/AndroidTest APK生成成功。実機の音程精度・入力遅延・FPSは未検証。
 - GitHub公開後、7つの配布APKをダウンロードしてハッシュ・署名・バージョン・ABI・16KiB zipalign・容量を独立検証する。
+
+
+### 0.6.7の公開・配布検証結果
+
+- Release：https://github.com/Aikidoooo/Essential-for-Android/releases/tag/v0.6.7（正式公開済み）。実装コミットac9f7ff、Actions実行37299561388成功。
+- 全7APK＋SHA256SUMS.txt＋SIZE_REPORT.jsonを独立ダウンロード。ハッシュ・署名（0.6.6と一致）・jp.essential.app／28／0.6.7・ABI・16KiB zipalign・容量チェックが全件合格。
+- 根拠：app/build/visual-qa/release-067-verification.txt、release-067-published.json。タグは実装コミット、公開結果の作業記録は後続コミット。
