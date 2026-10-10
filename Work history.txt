@@ -2964,3 +2964,11 @@
 ・既存Git認証ヘルパーとプロジェクト内GitHub CLIを使用。認証情報は表示せず、GitHub上にv0.6.8が未作成、mainがローカル基点0de1072と一致することを確認。全生成物はプロジェクト内。公開と配布APK検証は引き続き実施する。
 
 ・公開前の主要Android回帰41件を実行。初回40件成功、通知送信権限未許可により実通知記録1件がタイムアウト。POST_NOTIFICATIONSのgranted=falseを確認し検証AVDへ付与後、通知ログ全4件が成功（9.724秒）。対象41件を最終的に確認。末尾空行2ファイルを修正しstaged diff --check成功。
+
+【2026-10-11 v0.6.8 GitHub公開完了・配布APK検証】
+・実装コミット6b5bb07と注釈タグv0.6.8をmainへatomic push。対象63ファイルのみ公開し、CameraStyleAI_*と別件docsは未追跡のまま保管。
+・GitHub Actions 38069949043成功。タグ／版一致、Rust JNI 4 ABI再ビルド、CI単体テスト／Lint、通常版とXiaomi版の署名付きAPK生成、容量・署名・16KiB検査、全ファイル添付後の正式公開が完了。Release：https://github.com/Aikidoooo/Essential-for-Android/releases/tag/v0.6.8。draft=false、prerelease=false、9アセット（7 APK、SHA256SUMS.txt、SIZE_REPORT.json）。
+・公開後に全9ファイルをapp/build/visual-qa/release-068-downloadedへ独立ダウンロード。7 APKすべてSHA256、署名、jp.essential.app／versionCode29／versionName0.6.8、CPU別ABI、zipalign -c -P 16 4、容量報告の一致・400MB条件、ONNXモデル非同梱を確認。初回用／同モデルarm64更新用の内容一致も検証。
+・前版0.6.7の保存済み公開APKをapksignerで再確認し証明書を比較。全7件同じ署名（SHA256 d9037fa8b1ed3855cd3fad04dd4791e568ffb4123ee8b4f54c5e494a30ab64e8）。Windows SDK検査の日本語パス対策はQ:の一時ドライブ別名をこのプロジェクトへ割り当て、外部フォルダーを生成せず実施。検証後に別名だけを解除。
+・公開x86_64 APKの上書きインストールを試したが、AVDに残る0.5.5（versionCode16）は別署名でINSTALL_FAILED_UPDATE_INCOMPATIBLE。既存アプリ／データは削除せず保管。0.6.7との署名互換性は独立検査済みだが、公開ReleaseのAVD上書き後の起動確認は未実施。直前のDebug0.6.8では主要UI41件を確認済み。
+・証跡：app/build/visual-qa/release-068-local-build.txt、release-068-unit-tests.txt、release-068-ui-tests.txt、release-068-notification-retest.txt、release-068-ci-watch.txt、release-068-metadata.json、release-068-verification.txt。実機・FPS・発熱・入力遅延・実音楽の品質等の制約はリリース説明へ記載。
