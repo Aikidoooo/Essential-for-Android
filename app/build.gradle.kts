@@ -18,8 +18,9 @@ android {
         applicationId = "jp.essential.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 28
-        versionName = "0.6.7"
+        versionCode = 29
+        versionName = "0.6.8"
+        buildConfigField("boolean", "IS_XIAOMI_PACKAGE", hyperOsPackage.toString())
         buildConfigField("String", "UPDATE_REPOSITORY", "\"$updateRepository\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -77,6 +78,11 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+
+    androidResources {
+        // 旧モデルのソースは保管し、APKへの同梱だけを除外する。
+        ignoreAssetsPattern = "!.svn:!.git:!.ds_store:!*.scc:.*:CVS:thumbs.db:picasa.ini:*~:*.onnx"
     }
 
     packaging {

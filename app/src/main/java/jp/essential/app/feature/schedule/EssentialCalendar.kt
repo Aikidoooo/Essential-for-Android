@@ -1,5 +1,8 @@
 package jp.essential.app.feature.schedule
 
+import jp.essential.app.ui.liquidGlass
+import jp.essential.app.ui.LiquidGlassStyle
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.rememberScrollState
@@ -40,7 +43,7 @@ internal fun EssentialCalendar(startDate: String, endDate: String, onDismiss: ()
                 .filterIsInstance<android.app.Activity>().firstOrNull()
             // ダイアログの前面は鮮明に保ち、背面の文字だけをぼかして色の透過を残す。
             if (android.os.Build.VERSION.SDK_INT >= 31) {
-                val radius = 18f * view.resources.displayMetrics.density
+                val radius = LiquidGlassStyle.blurRadius.value * view.resources.displayMetrics.density
                 activity?.window?.decorView?.setRenderEffect(android.graphics.RenderEffect.createBlurEffect(radius, radius, android.graphics.Shader.TileMode.CLAMP))
             }
             window?.setDimAmount(0.14f)
@@ -51,8 +54,8 @@ internal fun EssentialCalendar(startDate: String, endDate: String, onDismiss: ()
         }
         val glassShape = RoundedCornerShape(32.dp)
         Surface(modifier = Modifier.widthIn(max = 420.dp).fillMaxWidth().padding(18.dp)
-            .border(1.dp, Color.White.copy(alpha = 0.42f), glassShape),
-            shape = glassShape, color = Color.White.copy(alpha = 0.22f),
+            .liquidGlass(glassShape),
+            shape = glassShape, color = Color.Transparent,
             contentColor = MaterialTheme.colorScheme.onSurface,
             tonalElevation = 0.dp, shadowElevation = 12.dp) {
             Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {

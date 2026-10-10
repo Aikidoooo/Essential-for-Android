@@ -69,10 +69,34 @@ class NotificationLogTest {
             } }
             compose.waitUntil(10000) { compose.onAllNodesWithTag("notification-entry-$id").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithTag("notification-entry-$id").performScrollTo()
+            compose.onNodeWithTag("notification-expand-$id").performClick()
             val expected = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss").format(Instant.ofEpochMilli(now).atZone(ZoneId.systemDefault()))
+            compose.waitUntil(5000) { compose.onAllNodesWithText(expected).fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText(expected).assertExists()
-            compose.onNodeWithContentDescription("keepする").performClick()
-            compose.waitUntil(10000) { compose.onAllNodesWithContentDescription("keep中").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText("削除", substring = false).assertDoesNotExist()
+            compose.onNodeWithTag("notification-segments").assertExists()
+            compose.onNodeWithTag("notification-entry-$id").performTouchInput {
+                swipe(center, center.copy(x = center.x - width * 0.08f), 600)
+            }
+            compose.waitForIdle()
+            assertFalse(store.list(false, 100).single().kept)
+            compose.onNodeWithTag("notification-entry-$id").performTouchInput {
+                down(center)
+                moveTo(center.copy(x = center.x - width * .4f), 180)
+                moveTo(center, 180)
+                up()
+            }
+            compose.waitForIdle()
+            assertFalse(store.list(false, 100).single().kept)
+            compose.onNodeWithText("このログを削除しますか？").assertDoesNotExist()
+            compose.onNodeWithTag("notification-entry-$id").performTouchInput {
+                swipe(center, center.copy(y = center.y - height * .3f), 500)
+            }
+            compose.waitForIdle()
+            assertFalse(store.list(false, 100).single().kept)
+            compose.onNodeWithTag("notification-entry-$id").performScrollTo().performTouchInput { swipeLeft() }
+            compose.waitUntil(10000) { store.list(true, 100).any { it.id == id } }
+            compose.onNodeWithTag("notification-entry-$id").assert(SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "保存済み"))
             val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
             compose.mainClock.advanceTimeBy(600)
             compose.waitForIdle()
@@ -84,10 +108,14 @@ class NotificationLogTest {
             }
             compose.onNodeWithText("keep", substring = false).performScrollTo().performClick()
             compose.onNodeWithTag("notification-entry-$id").performScrollTo()
-            compose.onNodeWithText("削除", substring = false).performClick()
+            if (compose.onAllNodesWithText(expected).fetchSemanticsNodes().isEmpty()) compose.onNodeWithTag("notification-expand-$id").performClick()
+            compose.onNodeWithTag("notification-entry-$id").performTouchInput { swipeRight() }
             compose.onNodeWithText("キャンセル").performClick()
             compose.onNodeWithText("通知ログのテスト本文").assertExists()
-            compose.onNodeWithText("削除", substring = false).performClick()
+            compose.onNodeWithTag("notification-entry-$id").performTouchInput { swipeLeft() }
+            compose.waitForIdle()
+            assertTrue(store.list(true, 100).any { it.id == id })
+            compose.onNodeWithTag("notification-entry-$id").performTouchInput { swipeRight() }
             compose.onNodeWithText("削除する").performClick()
             compose.waitUntil(10000) { compose.onAllNodesWithText("keepしたログはありません").fetchSemanticsNodes().isNotEmpty() }
         } finally { scenario.close(); store.close(); SQLiteFiles.delete(file) }

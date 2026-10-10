@@ -16,6 +16,27 @@ class TabSwipeNavigationTest {
     @get:Rule val compose = createEmptyComposeRule()
     private val context get() = ApplicationProvider.getApplicationContext<Context>()
 
+    /** 遷移途中でも表示領域を固定し、安全域の付け替えによる斜め移動を防ぐ。 */
+    @Test fun tabTransitionKeepsViewportTopAndHeightFixed() {
+        val scenario = ActivityScenario.launch<MainActivity>(Intent(context, MainActivity::class.java))
+        try {
+            compose.waitForIdle()
+            val initial = compose.onNodeWithTag("main-tabs").fetchSemanticsNode().boundsInRoot
+            compose.mainClock.autoAdvance = false
+            listOf("機能一覧", "ホーム", "プロフィール", "機能一覧").forEach { destination ->
+                compose.onNodeWithContentDescription(destination).performClick()
+                compose.mainClock.advanceTimeBy(96)
+                val during = compose.onNodeWithTag("main-tabs").fetchSemanticsNode().boundsInRoot
+                org.junit.Assert.assertEquals("遷移中も上端が固定", initial.top, during.top, 0.5f)
+                org.junit.Assert.assertEquals("遷移中も高さが固定", initial.height, during.height, 0.5f)
+                compose.mainClock.advanceTimeBy(1200)
+            }
+        } finally {
+            compose.mainClock.autoAdvance = true
+            scenario.close()
+        }
+    }
+
     @Test fun longPressNavigationFollowsFingerAndCommitsOrCancels() {
         val scenario = ActivityScenario.launch<MainActivity>(Intent(context, MainActivity::class.java))
         try {

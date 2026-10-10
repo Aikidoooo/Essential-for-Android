@@ -24,6 +24,7 @@ import jp.essential.app.ui.theme.LocalEssentialDark
 fun LazyListScope.fixedHeader(content: @Composable () -> Unit) {
     stickyHeader(key = "fixed-feature-header") {
         Box(Modifier.fillMaxWidth()
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top))
             .padding(vertical = 6.dp).testTag("fixed-feature-header")) { content() }
     }
 }
@@ -33,8 +34,7 @@ fun LazyListScope.fixedHeader(content: @Composable () -> Unit) {
 fun GlassFeatureTitle(title: String, modifier: Modifier = Modifier) {
     val shape = RoundedCornerShape(28.dp)
     Box(modifier.heightIn(min = 46.dp)
-        .background(Color.White.copy(alpha = if (LocalEssentialDark.current) 0.17f else 0.58f), shape)
-        .border(1.dp, Color.White.copy(alpha = 0.48f), shape)
+        .liquidGlass(shape)
         .padding(horizontal = 18.dp, vertical = 10.dp), contentAlignment = Alignment.CenterStart) {
         Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
             maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -46,7 +46,7 @@ fun GlassFeatureTitle(title: String, modifier: Modifier = Modifier) {
 fun FeatureHeader(title: String, onBack: () -> Unit, modifier: Modifier = Modifier,
     backDescription: String = "戻る",
     actions: @Composable RowScope.() -> Unit = {}) {
-    Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+    Row(modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top)), verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         GlassBackButton(onClick = onBack, modifier = Modifier.semantics { contentDescription = backDescription })
         GlassFeatureTitle(title, Modifier.weight(1f, fill = false))

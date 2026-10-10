@@ -23,7 +23,7 @@ import androidx.compose.ui.unit.dp
 internal fun GlassModeSelector(labels: List<String>, tags: List<String>, selectedIndex: Int,
     position: Float, onSelected: (Int) -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
     val haptics = LocalHapticFeedback.current
-    Box(modifier.height(52.dp).clip(CircleShape).background(Color.Black.copy(alpha = .48f))) {
+    Box(modifier.height(52.dp).liquidGlass(CircleShape)) {
         Canvas(Modifier.matchParentSize()) {
             val inset = 3.dp.toPx()
             val width = size.width / labels.size - inset * 2

@@ -1,6 +1,8 @@
 package jp.essential.app.feature.textscan
 
+import androidx.compose.ui.platform.testTag
 import jp.essential.app.ui.fixedHeader
+import jp.essential.app.feature.scanner.scannerSafeArea
 import jp.essential.app.ui.FeatureHeader
 import jp.essential.app.ui.GlassFeatureTitle
 
@@ -268,9 +270,9 @@ fun TextScanScreen(modePosition: Float = 1f, transitionFrame: android.graphics.B
             ))))
         }
         Box(Modifier.fillMaxSize()) {
-            Column(Modifier.fillMaxSize().padding(start = 18.dp, top = 18.dp, end = 18.dp, bottom = 24.dp),
+            Column(Modifier.fillMaxSize().scannerSafeArea().padding(start = 18.dp, top = 18.dp, end = 18.dp, bottom = 24.dp),
                 verticalArrangement = Arrangement.SpaceBetween) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth().testTag("scanner-top-controls"), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     GlassBackButton(onClick = onBack, size = 48.dp)
                     Box(Modifier.weight(1f).padding(horizontal = 10.dp)) {
                         GlassFeatureTitle("スキャナー")
@@ -336,7 +338,7 @@ fun TextScanScreen(modePosition: Float = 1f, transitionFrame: android.graphics.B
         AnimatedVisibility(visible = result != null, enter = fadeIn() + slideInVertically { it / 3 }) {
             BackHandler { result = null }
             Surface(Modifier.fillMaxSize(), color = Color(0xFF131D30), contentColor = Color.White) {
-                Column(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF20394B), Color(0xFF221D36)))).padding(18.dp),
+                Column(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF20394B), Color(0xFF221D36)))).scannerSafeArea().padding(18.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                         GlassBackButton(onClick = { result = null })

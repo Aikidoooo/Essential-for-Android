@@ -76,7 +76,7 @@ internal class GitHubUpdateRepository(private val context: Context) {
         } finally { connection.disconnect() }
         if (json.optBoolean("draft") || json.optBoolean("prerelease")) return@withContext null
         val version = json.getString("tag_name").removePrefix("v")
-        if (!UpdatePolicy.isNewer(version, BuildConfig.VERSION_NAME)) return@withContext null
+        if (!UpdatePolicy.isNewer(version, BuildConfig.VERSION_NAME.removeSuffix("-debug"))) return@withContext null
         val assets = json.getJSONArray("assets")
         val entries = (0 until assets.length()).map { assets.getJSONObject(it) }
         val selected = UpdatePolicy.chooseAsset(
@@ -94,6 +94,17 @@ internal class GitHubUpdateRepository(private val context: Context) {
         val digest = asset.optString("digest").takeIf { it.isNotBlank() && it != "null" }
         require(digest == null || digest.matches(Regex("sha256:[a-fA-F0-9]{64}"))) { "ハッシュ形式が不正です" }
         AppRelease(version, json.optString("body").take(40_000), url, size, digest?.substringAfter(':'))
+    }
+
+    /** 使用中のバージョンに対応する公開Releaseの詳細を取得する。 */
+    suspend fun installedReleaseNotes(): String = withContext(Dispatchers.IO) {
+        val version = BuildConfig.VERSION_NAME.removeSuffix("-debug")
+        val connection = connection("https://api.github.com/repos/${BuildConfig.UPDATE_REPOSITORY}/releases/tags/v$version")
+        try {
+            require(connection.responseCode == 200) { "使用中バージョンの更新詳細を取得できませんでした（HTTP ${connection.responseCode}）" }
+            val bytes = connection.inputStream.use { it.readBytesLimited(2 * 1024 * 1024) }
+            JSONObject(String(bytes, Charsets.UTF_8)).optString("body").take(40_000)
+        } finally { connection.disconnect() }
     }
 
     suspend fun download(release: AppRelease, progress: (Float) -> Unit): File = withContext(Dispatchers.IO) {

@@ -31,11 +31,6 @@ import jp.essential.app.ui.theme.LocalEssentialDark
 @Composable
 fun GlassBackButton(onClick: () -> Unit, modifier: Modifier = Modifier, size: Dp = 46.dp) {
     val dark = LocalEssentialDark.current
-    val glassColors = if (dark) {
-        listOf(Color(0xFFBFC3CA).copy(alpha = 0.54f), Color(0xFF9198A3).copy(alpha = 0.40f))
-    } else {
-        listOf(Color.White.copy(alpha = 0.80f), Color.White.copy(alpha = 0.64f))
-    }
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
@@ -47,13 +42,7 @@ fun GlassBackButton(onClick: () -> Unit, modifier: Modifier = Modifier, size: Dp
         modifier = modifier
             .size(size)
             .graphicsLayer(scaleX = scale, scaleY = scale)
-            .clip(CircleShape)
-            .background(
-                Brush.verticalGradient(
-                    glassColors,
-                ),
-            )
-            .border(1.dp, Color.White.copy(alpha = 0.38f), CircleShape)
+            .liquidGlass(CircleShape)
             .clickable(interactionSource = interactionSource, indication = null, role = Role.Button,
                 onClickLabel = "戻る", onClick = onClick),
         contentAlignment = Alignment.Center,

@@ -2621,3 +2621,346 @@
 ・検証スクリプトでSIZE_REPORT.jsonの既定cp932読み込みに失敗し、UTF-8指定へ修正。aaptの日本語パスでのエラーはASCII Junctionのessential-buildから再実行して解決。配布APKそのものの不具合ではなく検証経路の問題。最終全件成功。
 ・ローカル単体70件＋操作18件、ローカル／CIのLint・Releaseビルドを確認済み。実機の音程精度・FPS・入力遅延、実ユーザーのホーム背景選択→保存全経路、既存Releaseの実端末更新は未検証。エミュレーターの既存Releaseアプリjp.essential.app（0.5.5）は変更していない。Debugアプリのみ0.6.7-debugへデータ保持で更新。
 ・証跡：release-067-local-build.txt、release-067-ui-tests.txt、release-067-ci-watch.txt、release-067-ci-result.json、release-067-published.json、release-067-verification.txt、release-067-downloaded。公開結果は追加の記録コミットとしてmainへ反映する。タグと配布APKのコミットはac9f7ffのまま。
+
+【2026-10-09 設定UIの整理・バックアップ10/9】
+・作業前に履歴と現在の設定実装を確認。Git管理230ファイルをDesktopのEssential-バックアップ10月9日-185240へコピーし、全ファイルのSHA256一致を確認。ビルド出力・.git・ローカル設定・未追跡研究資産はコピー対象外で元の場所に保持。
+・設定にすべて／外観／操作／更新／管理のカテゴリーを追加。既存設定の保存処理を維持し、ショートカットは現在値を表示して必要時のみ展開。機能数は列挙値から算出。
+・設定開閉を減衰0.9・剛性380のSpringへ変更。プロフィール操作の押下スケールを0.98へ調整。検証はこれから実施。
+・検証完了：JBR21でDebug APK生成／Lint成功（1分7秒）。SettingsCategoriesTestを追加しPixel_10aエミュレーターで1件成功（ビルドを含む35秒）。設定を変更せず、操作カテゴリーでfpsとショートカット、外観でテーマ、管理でキャッシュ、すべてへの復帰を確認。
+・初回Python実行経路とGradleデーモン通信、重複宣言とhorizontalScrollのimportを修正して再検証。git diff --check成功。検証ログはapp/build/visual-qa/settings-ui-build.txt、settings-ui-tests.txt。
+・ユーザーの明示依頼でメモリー追記用notesにバックアップ10/9の保存先・対象・除外範囲を記録。実機、ライトテーマの目視、60／90／120HzのFPSとGPU負荷、ドラッグ戻り・モーション軽減の追加対応は今回未検証／未実装。既存のガラス面・入場演出を再利用。コミット・push・公開なし。
+
+【2026-10-09 Icon-to-Window Expansionと設定アイコン】
+・作業前にWork historyと現在のEssentialAppの機能遷移・プロフィール・共通カードを確認。バックアップ10/9は保持し、上書きしない。
+・IconWindowExpansion.ktを追加。タップ元のboundsInWindowをクリック時に記録し、画面を開く際に固定。全画面レイアウトのGPUレイヤーで位置・幅・高さ・角丸を同一Animatableから補間。閉じる場合は同じ起点へ逆方向に縮小し、完了後に画面を破棄。再操作でLaunchedEffectを中断して現在値・速度を引き継ぐSpringを使用。初期値は減衰0.9、剛性380、角丸24dp。起点のない外部起動は中央56dp領域を代替起点にする。
+・適用：ホームの機能カード／背景ショートカット、機能一覧の全10機能、プロフィール設定、プロフィール編集。プロフィール編集を全画面の編集領域へ変更。タブ切替・画面横スワイプの既存コードは維持。設定・編集で起点記録を共有し、アクセシビリティクリックでも位置を記録する。背面の画面は保持して戻り位置を維持し、表示中は背面のSemanticsを隠す。
+・添付を参考に設定シンボルを輪郭のつながった六歯の歯車と中央リングへ変更。設定ボタンは濃灰色#3D3D3D、アイコンとラベルは白。既存Canvasで描画し画像生成／Bitmapは使わない。
+・検証：Debug APK成功。Lint成功。Pixel_10aエミュレーターで設定カテゴリー1件・タブ移動4件・新規IconWindowExpansionTest1件、合計6件成功（最終ビルドを含む44秒）。開く途中で閉じる／再度開く際のサイズ連続性、全画面への拡大、閉じた後の起点復帰を確認。追加テストのtestTag import不足を修正して再検証。git diff --check成功。
+・証跡：app/build/visual-qa/icon-window-build.txt、icon-window-final.txt、icon-window-verified.txt、icon-window-verified-tests.txt。実機での体感、60／90／120HzのFPS・GPU負荷、ライトテーマの目視は未確認。各機能内部の独立したダイアログやAndroid標準ピッカーの遷移は既存仕様。コミット・push・公開なし。
+
+【2026-10-09 拡大・縮小モーション中の機能アイコン表示】
+・作業前にWork historyと共通のIconWindowContent、機能／設定／編集の呼出しを確認。
+・IconWindowContentへ任意のicon描画コールバックを追加。全10機能は各route.symbol、設定は歯車、プロフィール編集は編集アイコンを中央に表示。拡大と縮小で同じ進行度を使い、45〜95%区間のsmoothstepでアイコンと画面内容を交差。アイコンは32〜64dp相当で変化し、ウィンドウの縦横スケールを逆補正して歪みを防止。描画レイヤー内で進行度を読み、フレームごとの再レイアウトは追加しない。装飾アイコンはSemanticsから除外。既存タブ移動・保存処理・バックアップ10/9を保持。
+・検証：Debug APK／Lint成功。設定カテゴリーと開閉反転の操作テスト2件成功（ビルドを含む1分4秒）。既存反転テストをアイコン付きへ拡張し、赤い円の画素から拡大中・縮小中の表示と縦横寸法差3px以内を検証。追加検証1件成功（ビルドを含む26秒）。実際の全10アイコンの目視、実機の体感・FPSは未検証。git diff --check成功。
+・証跡：app/build/visual-qa/icon-window-icons.txt、icon-window-icon-pixels.txt。変更：IconWindowExpansion.kt、EssentialApp.kt、IconWindowExpansionTest.kt、Work history.txt。コミット・push・公開なし。
+
+【2026-10-09 Liquid Glass遷移・ステータスバーまでの描画・軽量化】
+・作業前にWork history、IconWindowExpansion、ScaffoldのInsets、MainActivityのedge-to-edge設定を確認。変更前の遷移は不透明面で上側の安全余白より下に配置されていた。バックアップ10/9は保持。
+・遷移中のウィンドウへ背面ぼかし12dp、半透明の背景面、白い反射グラデーションを追加。親の拡大／移動を逆補正した背面レイヤーで、ウィンドウ位置に対応する背面を表示。全画面への進行に伴い画面内容へ収束し、縮小時は同じ進行度でガラス面とアイコンへ戻る。Android31以上はRenderEffect、以前は半透明面と反射のフォールバック。
+・ぼかし効果とSpringをrememberで再利用。背面は開いた際にGPUのGraphicsLayerへ一度記録し、閉じ終わるまで同じ記録を共有。ウィンドウが閉じている通常表示では新規記録を行わない。代替起点のRectもrememberし毎フレームの生成を避ける。反射BrushはdrawWithCacheで保持し、位置／倍率／アルファは描画レイヤーで読み、再レイアウトを追加しない。Springは過渡的な跳ねを抑える減衰1.0・剛性380に調整。
+・Scaffold内のウィンドウホストにあった上側余白を撤去し、背景／遷移面をステータスバー背面まで拡張。機能の操作内容にはcontentTopInsetを確保。プロフィールのリストと編集にも安全余白を内側に確保。機能一覧タブの従来の安全余白、ホームの上端描画、タブ切替の既存動作を維持。
+・検証：最終Debug APK／Lint成功、Pixel_10aのUIテスト6件成功（ビルドを含む1分3秒）。既存のアイコン画素／開閉反転テストにガラス面が画面上端まで届くことと内容の安全余白を追加し確認。設定カテゴリー1件、タブ移動4件も成功。最終Debugアプリのダウンローダーを起動し、スクリーンショットで時刻・電池の背面へ連続する背景とヘッダーの安全配置を目視確認。ダウンロードは実行していない。
+・証跡：app/build/visual-qa/icon-window-glass-edge.txt、icon-window-glass-final.txt、icon-window-edge.png。変更ファイル：IconWindowExpansion.kt、EssentialApp.kt、IconWindowExpansionTest.kt、Work history.txt。git diff --check成功。実機のFPS／入力遅延／GPU負荷、ライトテーマの目視、Android30以前のぼかし代替は未検証。コミット・push・公開なし。
+
+【2026-10-09 固定ヘッダーだけをカメラ下に保護】
+・作業前にWork historyと全機能のfixedHeader、共通FeatureHeader、QR／文字スキャナーの独自ヘッダーを確認。
+・画面全体に掛かっていた機能ウィンドウのcontentTopInset指定を外し、通常コンテンツのスクロール領域を画面上端まで拡張。fixedHeaderと直接使用するFeatureHeaderへwindowInsetsPadding(safeDrawingのTop)を適用。Insets消費を共通APIに任せて二重余白を避ける。固定ヘッダーの透明な安全余白には通常の項目が背面を通り、戻るボタン・機能名・お気に入り・履歴はカメラ下で停止する。
+・プロフィール設定のリストは全体の上側安全余白を外し、設定の固定ヘッダーだけに確保。プロフィールメイン／編集の既存安全配置は維持。QR／文字スキャナーの戻る・ライトと文字読取り結果の独自ヘッダーにも安全余白を追加し、カメラプレビューの全画面描画を維持。全10機能・設定の主要固定ヘッダーに共通適用。
+・FixedHeaderInsetsTestを追加。edge-to-edgeの実際の上側Insetsを取得し、スクロール後も固定ラベルがInsetsより下、通常の行はInsetsより上へ描画されることを確認。
+・検証：最終Debug APK／Lint成功、Pixel_10aで7件成功（ビルドを含む1分10秒）。専用配置1件・設定1件・タブ4件・拡大縮小／アイコン1件。実アプリのまんなかを開いてスクロールし、時計・電池の背面へカードが届き、戻る・機能名・お気に入り・履歴がその下に留まることをスクリーンショットで目視確認。入力・参加者・保存設定は変更せず、周辺検索は実行していない。
+・変更ファイル：FeatureHeader.kt、EssentialApp.kt、QrScannerScreen.kt、TextScanScreen.kt、FixedHeaderInsetsTest.kt、Work history.txt。証跡：app/build/visual-qa/header-safe-edge.txt、header-safe-edge-final.txt、header-safe-scroll.png、mannaka-header-safe-scroll.png。git diff --check成功。全機能の個別目視・実機・横向き／特殊カットアウトは未検証。バックアップ10/9とLiquid Glass遷移・アイコン・タブ切替を保持。コミット・push・公開なし。
+
+【2026-10-09 設定画面の配布版名・バージョンと項目配置】
+・作業前にWork historyと設定構成、HYPEROS_PACKAGEのビルド判定を確認。添付のHyperOS情報画面を参考に、大きな名称と下側のバージョン表示を実装。
+・BuildConfig.IS_XIAOMI_PACKAGEを既存hyperOsPackageから生成。標準パッケージはEssential Universal、Xiaomi向けパッケージはEssential Xiaomiと表示。端末メーカーではなく実際の配布版を判定する。実際のBuildConfig.VERSION_NAMEを下に表示し、Debug接尾辞も維持。
+・SettingsIdentityHeaderを追加。最小248dpの余白領域、中央揃え、テーマのprimary／tertiaryの横グラデーション、画面幅に応じた29／34spの文字、16dpの版名／バージョン間隔で既存Liquid Glassと統一。
+・下部はテーマ→アプリアイコン→ホーム背景→モーションfps→ショートカット→更新→キャッシュ→アプリ情報の順に整理。カテゴリー絞り込みと各設定の保存処理を維持。アプリ情報の技術名を配布版表示へ置き換え、最後のブランド表示を利用者向けの文に変更。固定ヘッダーの安全配置、拡大縮小／アイコン／ガラス遷移、バックアップ10/9を保持。
+・検証：heightInのimport不足を修正。最終Debug APK／Lint成功、設定操作と固定ヘッダーのテスト2件成功（最終ビルドを含む1分3秒）。設定テストへ表示名・実バージョンの検証を追加。Xiaomi向けgenerateDebugBuildConfigでIS_XIAOMI_PACKAGE=true、標準の最終ビルドでfalseを確認。Xiaomi版全APKのビルド・インストールは今回行っていない。
+・エミュレーターの実アプリでプロフィール→設定を開き、Essential Universalと0.6.7-debug、大きな余白、グラデーション名、カテゴリーとテーマ・アイコンカードが画面幅に収まることを目視確認。設定値・画像・データは変更していない。実機・ライトテーマの目視は未検証。
+・変更：app/build.gradle.kts、EssentialApp.kt、SettingsCategoriesTest.kt、Work history.txt。証跡：app/build/visual-qa/settings-identity-verified.txt、settings-xiaomi-config.txt、settings-identity.png、settings-identity-ui.xml。git diff --check成功。コミット・push・公開なし。
+
+【2026-10-09 設定背景の動くグラデーション】
+・作業前にWork historyと設定のウィンドウ内レイヤーを確認。SettingsGradientBackground.ktを追加し、設定表示時だけリストの背面へ配置。設定を閉じた後は構成から外れる。既存Liquid Glass・版名／バージョン・固定ヘッダー・設定保存・バックアップ10/9を維持。
+・青#284BDBと紫#9953D6の放射グラデーションを24秒の連続したsin／cos軌道で移動。ダークは0.42／0.34、ライトは0.14／0.12のアルファ。背景のベース色はテーマへ追従。BrushはdrawWithCacheで保持し、進行度を描画内だけで読む。毎フレームの再レイアウト・Bitmap生成・ぼかし効果生成は追加しない。LifecycleがRESUMED以外ではアニメーションを構成せず、静止背景を表示。
+・検証：Debug APK／Lint成功、SettingsCategoriesTest1件成功（ビルドを含む1分4秒）。エミュレーターの実アプリで設定を開き、青紫の背景と名前・バージョン・ガラスカードの可読性を目視確認。時間を空けた2枚の画面から、文字に重ならない4座標すべての背景RGB変化を確認。設定値は変更せず、実機FPS・消費電力・ライトテーマの目視は未検証。
+・変更：SettingsGradientBackground.kt、EssentialApp.kt、Work history.txt。証跡：app/build/visual-qa/settings-gradient.txt、settings-gradient-a.png、settings-gradient-b.png、settings-gradient-pixels.txt。git diff --check成功。コミット・push・公開なし。
+
+【2026-10-09 プロフィール選択時はメイン画面へ確定】
+・作業前にWork historyとタブ選択・SaveableStateProvider・プロフィールのパネル状態を確認。選択済みタブのタップが無視され、別タブから戻る際にも設定パネルの保存状態が復元されていた。
+・プロフィールのパネル状態を画面ルート側のrememberSaveableへ移し、selectDestination(Profile)で必ずMainへ確定。プロフィールタブは選択中でもクリックを受け付ける。別タブからの復帰、横スワイプ・バーの確定も同じ選択経路を利用。初回案内は初期化時のArrangeを維持し、ユーザーがプロフィールを選び直す場合はMainへ戻す。プロフィール画像・名前・設定値・背景の保存は変更しない。
+・SettingsCategoriesTestへ設定→プロフィールの押し直し、設定→ホーム→プロフィールの復帰を追加。世代キーだけの初期修正では保存パネルが復元される経路の失敗を検出し、状態をタブ側へ集約して修正。
+・検証：最終Debug APK／Lint成功、Pixel_10aで設定の復帰と既存タブ操作の合計5件成功（ビルドを含む1分10秒）。git diff --check成功。実機は未検証。既存Liquid Glass・設定背景・バックアップ10/9を保持。
+・変更：EssentialApp.kt、SettingsCategoriesTest.kt、Work history.txt。証跡：app/build/visual-qa/profile-tab-reset-verified.txt。コミット・push・公開なし。
+
+【2026-10-09 スキャナーの安全域を復元】
+・作業前にWork historyとQR／文字スキャン画面の構成を確認。全画面化後、操作Columnと読取枠に安全域が確保されていなかったため、カメラ映像と操作UIの余白を分離。
+・ScannerSafeArea.ktに共通scannerSafeAreaを追加。safeDrawingの上下左右の値を通常paddingとして適用し、子へInsets消費を伝達。上端はAndroidのstatus_bar_heightと32dpの最低値を併用し、親でInsetsが消費された場合や高さゼロでも安全余白を残す。調整箇所は同ファイルの32dp最低値。
+・QrScannerScreen.kt／TextScanScreen.ktの操作Column、QR読取枠、文字結果画面、カメラ許可画面へ適用。カメラAndroidViewのfillMaxSizeは維持。既存Liquid Glass、開閉モーション、モード保存、ズーム操作、バックアップ10/9は保持。
+・ScannerUiTest.ktへ上部操作の安全域と下部モードのナビゲーション回避の検証を追加。QR／文字の双方で検査。Debugビルド／Lint成功、最終APKでScannerUiTest4件＋ScannerZoomControlTest1件が成功（36秒）。
+・初期検証はテスト成功でも画像に重なりが残った。出力APKが古い状態だったため、app/build/outputs/apk/debugをapp/build/visual-qa/apk-before-safe-areaへ非破壊保存し、同じチェックアウトのASCII Junction C:\Users\waki1\Desktop\essential-buildからAPKを再生成。20:48生成のAPKをエミュレーターへ上書きインストールし、最終テストを再実施。
+・最終QR／文字スクリーンショットで、時計・電池の下に上部操作が配置され、下部操作がナビゲーション領域を避けていることを目視確認。証跡：scanner-safe-area-final-apk.txt、scanner-safe-area-ascii-final.txt、scanner-apk-repack.txt、scanner-safe-qr.png、scanner-safe-text.png（app/build/visual-qa）。実機・横画面・FPSは未検証。
+・変更：ScannerSafeArea.kt、QrScannerScreen.kt、TextScanScreen.kt、ScannerUiTest.kt、Work history.txt。コミット・push・公開なし。
+
+【2026-10-10 設定の操作整理と更新専用画面】
+・作業前にWork history、設定のカテゴリ／テーマ／アプリアイコン、アプリ本体とyt-dlpの既存更新処理を確認。対象は既存チェックアウトD:\#AI開発\Android\Essential。既存のプロフィール復帰、安全域、Liquid Glass、動く設定背景を維持。
+・EssentialApp.kt：『使い心地を整える』『外観や操作、アップデートをまとめて管理』を削除。すべて／外観／操作／更新／管理を一つのガラストラックのSegmented Controlへ変更。選択背景はspring（減衰1.0／剛性520）で連続移動し、各項目はRole.Tabと選択状態を持つ。48dp高さ、4dp内部余白。テーマスイッチはMaterial3 Switchへ変更し、月／太陽のサム、テーマに追従する色、チェック状態と読み上げを追加。アプリアイコン選択の初期expandedをfalseへ変更。
+・Essential Universal／Essential Xiaomiのヘッダー全体を更新専用画面への入口に変更。更新カテゴリにも同じ入口を設置し、古い更新カードを設定一覧から移した。ProfilePanel.Updatesを追加。共通IconWindowContentでヘッダーの位置から開閉し、左上の戻るボタン／Android戻るで設定へ戻る。プロフィールタブを選び直す場合は既存どおりMainへ確定。
+・AppUpdatesScreen.ktを追加。上にアプリ名・バージョン、下にRelease本文の更新詳細を表示。変更／新機能／改善などの節を先に配置し、その他の公開説明も残す。見出しと段落に余白を付け、箇条書きの記号を整える。更新がある場合は最新Releaseの版と本文を表示し、下部に『更新する』、取得後は『インストールへ進む』を表示。左上操作はsafeDrawingの上安全域、固定更新ボタンは下部タブとナビゲーション領域を避ける。
+・GitHubUpdateRepository.kt：使用中バージョンのRelease本文をtags/v{version}から取得。Debugの-version末尾を更新比較時に除き、安定版比較に失敗する既存動作を修正。取得サイズ上限、ダウンロードのSHA256／パッケージ／署名検証は維持。
+・AppUpdateUi.kt：本文をバージョン別に保存し、使用中版の詳細を取得済みならオフラインでも表示。ダウンロード成功時も対象版の本文を保存。画面内の確認では既存更新ダイアログを重ねず、画面を閉じた後の確認完了でもダイアログを出さない。起動時確認の既存設定とダウンロード進捗・再取得・インストーラー処理を共有。
+・yt-dlpの既存安定版更新カードを専用画面へ配置。現在のyt-dlpバージョンと既存の更新操作を維持。FFmpeg／画像処理・認識などの同梱ライブラリは本体アップデートで更新されることを同画面に説明し、個別の未対応アップデーターは追加していない。
+・SettingsCategoriesTest.ktを拡張：説明文なし、Segmented Control、アイコン初期折り畳み、専用更新画面と戻る、カテゴリ切替とショートカット展開、プロフィール復帰を確認。テーマのチェック状態を往復切替し、元の値へ戻す。アイコン一覧の展開と折り畳みも確認。展開ボタンが下部タブの背面にある場合は通常のスワイプで見える位置へ移してクリックする。
+・検証：Debug APK／Lint成功。設定UI2件成功。UpdatePolicyTest11件／UpdateStoragePolicyTest5件成功。最終表示調整後もDebug／Lint／設定UI2件が成功（1分9秒）。エミュレーターでダーク／ライト双方の設定、アプリアイコン折り畳み、更新画面の左上戻る、取得済み0.6.7の変更本文を目視確認。アプリ内app_update.xmlのnotes_0.6.7へ公開Release本文が保存されたことを確認。実際のAPK／yt-dlp更新は実行せず、実機・横画面・FPSは未検証。
+・単体テストはWindowsの日本語パスでWorker／テストクラスのClassNotFoundExceptionが発生。検証用GradleキャッシュをC:\Users\waki1\Desktop\essential-gradle-safe-20261010へコピー（約2GB、元のキャッシュは維持）し、非ASCIIの実行クラスパスをC:\Users\waki1\Desktop\essential-test-classpath-20261010へコピーする一時init scriptで解消。検証用コピーは保持。ソースの移動／削除はなし。
+・証跡：app/build/visual-qa/settings-refine-verified-all.txt（単体16件／UI2件）、settings-refine-release-notes-final.txt（最終Debug／Lint／UI2件）、settings-refined.png、settings-theme-alternate.png、settings-updates.png。git diff --check成功。変更はEssentialApp.kt、AppUpdatesScreen.kt、AppUpdateUi.kt、GitHubUpdateRepository.kt、SettingsCategoriesTest.kt、Work history.txt。コミット・push・公開なし。
+・バックアップについて：既存記録の『バックアップ10/9』の保存先C:\Users\waki1\Desktop\Essential-バックアップ10月9日-185240は、今回の存在確認では見つからなかった。Desktop／DownloadsのEssential名のフォルダー・ファイル、およびworkspaceのbackupsでも該当物は未確認。今回の作業でバックアップの削除・変更・再命名は行っていないため、以前のバックアップの保持を確認済みとは報告しない。
+
+【2026-10-10 ホームのタブ入場を水平に修正】
+・作業前にWork historyとStartupMotion.kt、タブ方向を渡すEssentialApp.kt、既存TabSwipeNavigationTestを確認。ProgressiveWidgetのgraphicsLayerが、起動時の縦移動とタブ入場時の横移動を分岐内で片方だけ設定し、再利用されたレイヤーに前の軸の移動が残り得る実装だった。
+・StartupMotion.ktでtranslationX／translationYを毎フレーム両方確定。左右入場時はtranslationYを0f、方向なしの起動時はtranslationXを0fへ戻す。タブ入場が斜め上に進まず、左または右から水平に入る。共通ProgressiveWidgetを使う項目へ同じ修正を適用。横38dp／起動時縦34dp、フェード、段階的な入場タイミング、タブ移動の方向判定は維持。
+・検証：Debug APK／Lint成功。Pixel_10aのTabSwipeNavigationTest4件（左右タブ移動・端の制限、バーのドラッグ／中断、縦スクロールとカード並べ替えの競合回避、機能画面での誤タブ移動防止）が成功。ビルドを含む1分29秒。git diff --check成功。実機FPS・フレーム単位の軌跡測定は未実施。
+・変更：StartupMotion.kt、Work history.txt。証跡：app/build/visual-qa/home-horizontal-motion.txt。コミット・push・公開なし。
+
+【2026-10-10 タブ入場の斜め移動を再修正】
+・前回のレイヤーの上下移動リセットだけでは、ホームが左下、機能一覧が左上／右上から入る現象が残るとの報告を受けて再調査。作業前にWork historyを確認。
+・EssentialApp.ktのAnimatedContent全体に、機能一覧選択時だけ上部安全域paddingを付けていた。そのため遷移中の表示領域の上端と高さが変化し、水平移動に上下移動が重なる構造だった。
+・安全域paddingを機能一覧の内部Boxへ移動。遷移ホストは常にfillMaxSizeとし、contentAlignmentをTopStart、SizeTransformを無効化して表示領域を固定。機能一覧の安全域と既存の左右入場・段階的モーションを維持。
+・TabSwipeNavigationTestに、機能一覧／ホーム／プロフィールへ切替後96ms時点でもホストの上端と高さが初期値と一致する回帰テストを追加。既存の横スワイプ、端、ナビゲーションドラッグ／キャンセル、縦スクロール／並替え、機能画面の操作テストを維持。
+・検証：最新Debug APKビルド／Lint成功、Pixel_10a Android17エミュレーターで5件成功（1分29秒）。証跡：app/build/visual-qa/tab-horizontal-viewport.txt。git diff --check成功。実機での見え方、要素別の全フレーム軌跡、FPSは未確認。
+・変更：EssentialApp.kt、TabSwipeNavigationTest.kt、Work history.txt。既存のStartupMotion.ktの軸リセットも保持。コミット・push・公開なし。
+
+【2026-10-10 通知ログ・プロフィールのガラスUIと設定整理】
+・作業前にWork history、通知ログの保存／keep／削除処理、プロフィールの操作ボタン、背景クロップ、MainActivityの手動fps制御を確認。既存背景・保存データ・更新専用画面へのアプリ名入口を維持。
+・NotificationLogScreen.kt：参照の通知カードに合わせ、30dp角丸・透明な白いグラデーション・明るい細い縁のガラスカードへ変更。左に48dpアプリアイコン、右側にタイトルとHH:mm、本文を2行で表示。アイコンはIOで96px取得し、未インストール時は頭文字を表示。展開で全文・アプリ名・秒単位の日時・パッケージ・keepと削除を表示。DB／保持期限／削除確認は変更しない。背景は既存Essentialのまま。
+・EssentialApp.kt：プロフィール編集／設定ボタンを共通glassSurfaceへ変更し、押下0.98倍Springと開閉起点を保持。背景カードの説明文と画像選択／初期化のテキストボタンを削除。プレビューに薄い『タップで変更』を重ね、タップで既存のドラッグ／ズーム対応クロップへ進む。右上に二つの循環矢印の初期化ボタンを追加（初期画像時は無効）。背景カード下部にホームのショートカット設定ボタンと選択リストを移し、説明文を削除。操作／外観の双方から同じ背景・ショートカットカードを使える。『アップデートを開く』ボタンを削除し、アプリ名の更新画面入口は維持。
+・MainActivity.kt：手動fps保存とモードID固定を廃止。通常要求は120fpsと対応モードの最大値の小さい方、省電力時は60fps以下。省電力変更Broadcastと画面復帰で再適用。WindowのpreferredDisplayModeIdとpreferredRefreshRateを0へ戻し、端末のHz設定やOSの動的制限を妨げない。Compose／WebViewの既存Viewフレームレート要求へ値を供給。設定画面のfps欄と変更コールバックを削除し、以前のmotion_fpsキーも移行時に除去。実描画速度はOS制御に従い、120fpsの達成を保証するものではない。
+・調整箇所：MainActivityの通常120／省電力60、通知カードの角丸30dp／透明度0.30→0.10／アイコン48dp、プロフィールの既存押下Spring（減衰0.72／剛性520）と共通glassSurface。背景画像の選択・保存・位置調整機構は既存を再利用。
+・検証：設定UI2件と通知ログの展開／秒日時／keepフィルタ／キャンセル／確定削除1件、計3件成功。初期実行は古いテストAPKで行番号が一致せず失敗。ASCII Junction C:\Users\waki1\Desktop\essential-ui-check経由の--rerun-tasksで本体とテストAPKを強制生成し、明示的に再インストールして最終3件成功（14.891秒）。本体／テストAPK生成とLint成功（1分46秒）。git diff --check成功。
+・目視：最終APKの背景カードの循環矢印・薄い変更案内・ショートカット配置、プロフィールの二つのガラスボタン、通知の展開レイアウトと既存Essential背景を確認。証跡：app/build/visual-qa/profile-notification-ascii-rebuild.txt、profile-notification-final-ui.txt、settings-home-background-refined.png、profile-glass-final.png、notification-glass-final.png、notification-essential-final.png。通知の検証データはテスト専用DBを使用し終了時に回収。
+・制約：実機の120／60／30fps・省電力切替・FPS／消費電力測定、新規画像選択から保存までの実機操作は未確認。変更ファイルはMainActivity.kt、EssentialApp.kt、NotificationLogScreen.kt、SettingsCategoriesTest.kt、NotificationLogTest.kt、Work history.txt。コミット・push・公開なし。
+
+【2026-10-10 Liquid Glassの20%ぼかし統一・更新セグメント削除・背景リセット回転】
+・作業前にWork historyを確認。ホームタブは背景GraphicsLayerだけへ3dpのRenderEffectを適用していた一方、他のガラスは白い半透明グラデーションのみだったため、文字をぼかさず背景だけを共有する共通方式へ統一。
+・LiquidGlassStyle.ktを追加。blurStrength=0.20、基準15dp×20%=3dpの軽い背景ぼかし、白い色味0.12→0.04、縁0.48→0.10を共通管理。各ガラスは背景GraphicsLayerを自身の座標でサンプリングし、小さい独立GraphicsLayerだけへRenderEffectを適用。RenderEffect／GraphicsLayerはrememberで再利用し、文字・アイコンを含む子の描画にはぼかしを適用しない。Android12以上は実ぼかし、Android11以下は同じ透明な色味と縁にフォールバック。
+・ルート背景を機能表示時にも共有。設定と更新専用画面はGlassBackdropScopeで動く背景グラデーションだけを共有する。ホーム／設定／プロフィールの共通glassSurface、戻るボタン、機能名、モードセレクター、通知カード、まんなかカード、サブスクのカード／入力／ボタン／ダイアログ、カレンダーダイアログ、ことばの距離のガラス操作へ共通スタイルを適用。ホームタブと選択レンズも3dpを基準に揃え、屈折とタッチ追従は維持。IconWindowExpansionの開閉中も3dpと薄い反射へ変更し、開いた面の背面は共有背景を使って旧画面の文字の混入を避ける。
+・EssentialApp.kt：設定セグメントから更新を削除し、4項目へ変更。保存状態が『更新』の場合はすべてへ移行。アプリ名タップから更新専用画面へ進む入口は維持。背景リセットはAnimatableの現在の目標角度へ360度を加え、spring（減衰1.0／剛性240）で一回転。連打時も現在角度・速度から次の360度へ連続する。初期背景でもクリックと回転を受け付ける。初期化処理は別コルーチンでIOへ送り、回転完了まで待たせない。
+・検証：Debug本体／テストAPK生成とLint成功。初回GradleはWindowsキャッシュの一時ディレクトリ移動で失敗し、削除せずmax-workers=1で再実行して成功（2分38秒）。最新版APKを明示再インストールし、設定2件・タブ5件・通知1件・サブスク1件・スキャナー4件の計13件が成功。
+・LiquidGlassRenderingTest.ktを追加。白黒の縞を背景に描き、ガラス越しの輪郭のコントラスト低下と前景の赤いマーカーが鮮明なことを実描画の画素で確認。初回は縞の中央を測り軽いぼかしの輪郭変化を捉えず失敗。測定点を輪郭から約1dpへ移して正しい測定対象にし、1件成功（1.93秒）。最終テストAPKのビルド／Lintも成功（34秒）。最終検証は合計14件成功。
+・目視：透明度を下げた設定カード／ガラスボタン／4項目セグメントを確認。初期背景のAVD（home_background_pathなし）でリセットをクリックし、開始／途中／終了の画像を取得。アイコン領域の白い画素マスクは開始→途中614画素が変化、開始→終了0画素差で元の向きへ戻ったことを確認。初期背景なのでカスタム画像の削除は発生していない。
+・性能診断：AVDのgfxinfoを記録（3416フレーム、OS現行判定のJanky17=0.50%、p50 21ms／p90 25ms／p99 34ms、legacy判定85.16%）。複数の操作とテストを含む累積値で変更前の比較ではないため、実機60／90／120fps達成や性能改善の証明とはしない。実機FPS・消費電力・古いAndroid・ライブカメラ／外部WebViewの画素のぼかしは未検証。別Surfaceの映像は共有背景サンプルへ含まれない。
+・変更ファイル：LiquidGlassStyle.kt、EssentialApp.kt、GlassBackButton.kt、FeatureHeader.kt、GlassModeSelector.kt、NavigationWaterLens.kt、IconWindowExpansion.kt、NotificationLogScreen.kt、MannakaControls.kt、SubscriptionScreen.kt、EssentialCalendar.kt、WordDistanceScreen.kt、AppUpdatesScreen.kt、SettingsCategoriesTest.kt、LiquidGlassRenderingTest.kt、Work history.txt。
+・証跡（app/build/visual-qa）：liquid-glass-unified-build.txt、liquid-glass-unified-ui.txt（13成功／旧測定1失敗）、liquid-glass-rendering-test-build.txt、liquid-glass-rendering-ui.txt（修正後1成功）、liquid-glass-rendering.png、liquid-glass-settings.png、liquid-glass-settings-top.png、liquid-reset-before.png、liquid-reset-moving.png、liquid-reset-after.png、liquid-reset-frames.png、liquid-reset-pixel-check.txt、liquid-glass-emulator-framestats.txt。git diff --check成功。コミット・push・公開なし。
+・最終調整：スキャナーはSurfaceViewのカメラ映像を別描画層として表示するため、共通背景を不透明にサンプリングすると映像を覆ってしまう。ScannerScreenの内部だけLocalGlassBackdrop=nullとし、映像を透かす共通の薄いガラス色と縁を使う。カメラ映像自体への背景ぼかしは未対応であり、全UIで映像の実ぼかしを確認したとは報告しない。最終Debug／Lint成功（1分19秒）、最新版を再インストールしたScannerUiTest4件も成功（13.239秒）。証跡：liquid-glass-camera-fallback-build.txt、liquid-glass-camera-fallback-ui.txt。共有のガラス描画14件に加え、最後のスキャナー調整後の4件を再確認。
+
+【2026-10-10 通知ログの左右スワイプとSegmented Control】
+・作業前にWork historyを見返し、NotificationLogScreenと既存のDB／保存期限／確認ダイアログ、通知UIテストを調査。
+・NotificationLogScreen.kt：通知カード内のkeepトグルと削除テキストボタンを削除。アプリアイコン・タイトル・時刻・本文・展開操作を維持し、詳細表示ではアプリ名／秒単位の日時／パッケージを表示。左スワイプはkeep=trueへ保存し、保存済みでも解除しない。右スワイプは既存の削除確認へ進み、キャンセルで保持、確定後にDBから削除。通常ログの3日間保持は維持。
+・SwipeNotificationCard.ktを追加：横ドラッグに遅延なく追従し、画面上の物理的な右方向を削除、左方向を保存として扱う。操作中だけ背面にゴミ箱／ブックマークの線画を表示。文字ボタンは表示せず、読み上げ用に保存／削除のカスタム操作と保存状態を提供。中断時と操作後は現在位置からSpringで復元し、新しい操作で復元アニメーションを中断できる。
+・調整パラメータ：距離閾値はカード幅30%、高速操作は12%以上かつ1000px/秒以上で方向が一致する場合。移動の上限は幅65%。復元Springは減衰1.0／剛性420。短いスワイプ・縦スクロール・方向反転で誤保存／誤削除を抑制。
+・すべて／keepを設定と同じガラスのSegmented Controlへ変更。48dpのタップ領域、選択面のSpring（減衰1.0／剛性520）、Tabの選択セマンティクスを適用。既存20%相当の背景ぼかしを共通liquidGlass経由で維持。
+・NotificationLogTest.kt：文字削除ボタンがないこと、Segmented Control、短いスワイプ・方向反転・縦操作で保存しないこと、左スワイプで保存、再保存で解除しないこと、右スワイプのキャンセルと確定削除を実ジェスチャーで検証。テスト専用DBを使い、終了時に回収。
+・検証：最終Debug／AndroidTest APK生成とLint成功。最新版をemulator-5554へ明示的に再インストールし、UI操作と保持期限／DB再読込の2件成功（4.283秒）。スクリーンショットで通知カードから文字操作が消え、二つのフィルタが一体の選択面になっていることを目視確認。git diff --check成功。実機のFPS／負荷／連打性能は未測定。
+・証跡：app/build/visual-qa/notification-swipe-final-build.txt、notification-swipe-ui.txt、notification-swipe-final.png。変更ファイル：NotificationLogScreen.kt、SwipeNotificationCard.kt、NotificationLogTest.kt、Work history.txt。コミット・push・公開なし。
+
+【2026-10-10 設定起動時のSiri風Edge Glow】
+・Work historyと設定画面／全画面ルート／既存RuntimeShader利用箇所を作業前に確認。添付のSiriの光を対象に、既存のEssential画面を保ったまま描画する。image-to-code／design-qaの参照比較手順を利用し、ユーザー指定の既存Kotlin Composeと実時間描画を優先。
+・SiriEdgeGlow.ktを追加。Android13以上はRuntimeShader（AGSL）＋CanvasのPaintでGPU描画。角丸矩形までの符号付き距離を計算し、細い明るい芯／ガウス分布のにじみ／広い淡い光の3層を合成。青・紫・ピンク・橙・黄の6色を滑らかに接続し、位置と異なる周波数の波で色境界・明るさ・幅を変形。中央では透明になり、縁から離れた画素は計算を早期終了する。
+・EssentialApp.ktのルートにSiriEdgeGlowを重ね、機能が開いていないプロフィールのSettingsパネルで起動。更新画面／プロフィール／ホームへ移ると終了。ステータスバーとナビゲーションバーの背面を含む全画面を対象とし、操作領域や安全域は変更しない。光にpointerInput／clickableを付けず、既存のタッチ処理を通す。
+・起動650ms／終了450msのフェードと広がり。途中の開閉はAnimatableの現在値から移行。withInfiniteAnimationFrameNanosで端末のフレームクロックに追従し、非表示になった後はフレーム更新と光の描画を停止。ライフサイクルSTARTED以外は継続更新を停止。OSのアニメーション無効設定変更を監視し、その場合は静止した光へ切り替える。
+・端末のRoundedCorner半径を参照。取得不可では28dp、画面最小辺の1/4を上限にする。Shader／Paint／背景パス／色配列は再利用。OS非対応またはShader生成失敗時はCanvas版へ代替。
+・Canvas版は初回の分割パスで点状の継ぎ目が見え、端の形状変更後も色境界が残ったため修正。最終は回転行列を使わない位置別の波による連続SweepGradientと18層ストロークでガウス近似。19回の輪郭描画へ削減。SweepGradientに色変更APIがないため、動くフレームだけ勾配を一つ更新する。静止時は同じ勾配を再利用。AGSL版より淡い芯と軽い層状表現を許容する。
+・EdgeGlowStyleの調整項目：速度0.7、明るさ1.15、芯幅2.1dp、ぼかし幅13dp、透明度0.88、起動650ms、終了450ms、6色の組み合わせ。固定値はここへ集約。
+・Android Studio向けEdgeGlowPreviewを追加。インタラクティブプレビューで『光を停止／光を起動』を切り替えられる。製品の設定欄にはテスト用ボタンを増やさない。
+・SiriEdgeGlowTest.ktを追加：AGSLの直接コンパイル、AGSLと強制Canvasの実描画の縁の明るさ／中央の非着色／時間による色変化／停止後の消灯、オーバーレイ下の起動停止ボタンの操作を確認。最終修正前に3件＋設定回帰2件の5件成功（15.859秒）、最終修正後に描画3件再成功（4.358秒）。最新版APKを明示的に再インストールして検証。最終Debug／AndroidTest／Lint成功（1分28秒）。
+・目視：参照／AGSL／最終Canvas／設定画面を同時比較し、四辺と四隅の光、明るい芯と柔らかな内側へのにじみ、中央の内容の読みやすさ、システムバーまでの連続性を確認。通常起動の設定画面も異なる時刻でキャプチャ。design-qa.mdへ初期問題／修正／最終比較を追記。
+・制約：実機・古いAndroid本体・横画面・非対称な角丸形状・継続負荷・60／90／120HzのFPS／消費電力は未確認。Appleの静止参照から時間方向の完全一致は判定できず、動作原則を独自実装。新しい機能の公開／コミット／pushなし。
+・変更ファイル：SiriEdgeGlow.kt、EssentialApp.kt、SiriEdgeGlowTest.kt、design-qa.md、Work history.txt。証跡：app/build/visual-qa/edge-glow-smooth-build.txt、edge-glow-final-ui.txt、edge-glow-smooth-ui.txt、edge-glow-shader.png、edge-glow-canvas-smooth.png、edge-glow-settings.png、edge-glow-live-a.png、edge-glow-live-b.png、edge-glow-final-comparison.png。
+・描画統計の追加確認：最初の計測では復元されたDownloader画面が対象になっていたためedge-glow-gfxinfo.txtを設定の性能根拠から除外。機能を閉じ、UI階層にEssential Universalがあることを確認して再計測。edge-glow-settings-gfxinfo.txtでは約31秒に1867フレーム、jank8（0.43%）、p50=27ms／p90=28ms／p99=36ms。エミュレーターのパイプライン統計であり、実機の60fps達成を示すものではない。背景グラデーションとガラスを含む画面全体で測定し、変更前との比較はない。
+・通常設定画面のedge-settings-live-start.png／edge-settings-live-end.pngを比較。左縁の30×1500画素の平均RGB差は約27.10／18.33／32.45で、実時間の色の変化を確認。最後にエミュレーターは設定画面を表示した状態にしている。
+
+【2026-10-10 アップデートのEdge Glow・ホームウィジェットの透過とアイコン連続性】
+・作業前にWork history、ホーム背景の表示条件、FeatureCard／FeatureTile／PressableGlassCard、IconWindowExpansionと既存のモーションテストを確認。
+・EssentialApp.kt：SiriEdgeGlowの起動対象をSettingsとUpdatesの両パネルへ拡張。設定から更新画面へ移る際は同じ光を継続し、戻る際にも再起動しない。
+・背景の原因：activeFeatureの設定直後にHomeArtworkBackgroundを外していたため、開閉中に透過先のホーム画像が消えていた。Homeの背景画像は機能を開いている間も保持し、開閉前後で同じ位置の画像へつなぐ。まんなかの専用背景／どすこい／カメラの描画は既存の専用処理を維持。
+・IconWindowExpansion.kt：動くウィンドウ全面のliquidGlassによる不透明な背景サンプルを廃止。元の画面の逆スケール＋3dp背景ぼかしと薄い色味／反射は維持し、透過を妨げない。元の画面内容は1-progressで薄くし、全画面まで開いた後にホームのカードが残像として重ならないようにする。
+・アイコンの原因：遷移中は別のprimary色のアイコンをカード中央へ固定表示し、実際にタップしたカード内のアイコン位置／サイズ／色と一致していなかった。WindowExpansionIconSourceとwindowExpansionIconを追加し、元のアイコンのGraphicsLayerとboundsInWindowを保持。FeatureCardの23dp／FeatureTileの28dpの実アイコンを共通方式で登録し、入場時に位置情報をコピーして固定。元の色と描画を再利用し、元の位置・サイズから画面中央の64dpへ補間。親の縦横別スケールと移動を相殺して縦横比を維持。閉じると同じ起点へ逆方向に戻る。元アイコンがない入口には既存の機能アイコンを使う。
+・既存のAPI呼出との互換用にrememberWindowExpansionClick(onClick)のオーバーロードを維持。初回ビルドは新しい省略引数が末尾ラムダと衝突しテストコンパイルで失敗し、必須2引数版＋1引数版へ分けて解消。Spring（減衰1.0／剛性380）・角丸24dp・交差表示0.45～0.95・途中反転を維持。
+・IconWindowExpansionTest.kt：元アイコンが緑の場合に、代替の赤いアイコンへ変わらないことを実画素で確認。開いた透明な画面の中央に背面の青が残ることと、閉じて起点へ戻れることを追加。既存の途中反転・縦横比・安全域も検証。
+・検証：最終Debug本体／AndroidTest／Lint成功（1分32秒）。最新版を明示的に再インストールし、IconWindowExpansion2件・設定2件・EdgeGlow3件・スキャナー4件の計11件成功（33.964秒）。更新画面の光と、ホームのダウンローダーカードから開いた後の背景透過・カード残像のない表示を目視確認。入力／保存設定は変更しない。実機FPS・連打負荷・実機の全機能表示は未測定。
+・ユーザーの保存先指示を受け、以後のGradleホームをD:\#AI開発\Android\Essential\.gradle-user-homeへ切り替えた。ANDROID_USER_HOMEを同フォルダのandroid-user-home、TEMP／TMPを同フォルダの.tmpへ設定。一時スクリプト／APK／画像／ログもプロジェクト内のapp/build以下へ保存。既存のプロジェクト内キャッシュと、同じハッシュのdebug.keystoreを使用。指示後はデスクトップへ新しい作業用ディレクトリを作らない。既存のデスクトップのキャッシュは削除していない。
+・変更ファイル：EssentialApp.kt、IconWindowExpansion.kt、IconWindowExpansionTest.kt、Work history.txt。証跡：app/build/visual-qa/window-refine-final-build.txt、window-refine-ui.txt、window-refine-updates.png、window-home-before.png、window-home-opening.png、window-home-opened.png。最初の実画面キャプチャは開く前の最初のフレームであり、途中のアイコンの形と色は固定フレームのCompose画素テストを根拠にする。git diff --check成功。コミット・push・公開なし。
+
+【2026-10-10 ホーム背景画像を機能画面に適用しない修正】
+・Work historyを作業前に確認。直前の背景透過修正で機能を開いた後もホーム画像が残る状態になったため、ユーザーの追加指示に従って適用範囲をホームに限定。
+・EssentialApp.kt：ホーム画像のalphaをactiveFeature=nullで1、それ以外で0へSpring（減衰1.0／剛性380）で補間。開閉中だけ画像を滑らかにつなぎ、開いた各機能ではホーム画像を表示せず、既存のEssentialグラデーション／機能専用背景を表示。アイコンの起点・色・縦横比・戻るモーションの修正は保持。
+・プロジェクト内の.gradle-user-home／android-user-home／.tmpを使用し、Debug APKビルド成功（36秒）。最新版をエミュレーターへ再インストールし、ホームのカードからダウンローダーを開いて、上端から画像が消え元のグラデーションになったことを目視確認。初回キャプチャは起動画面だったため採用せず、起動完了とカード位置を確認して撮り直した。
+・証跡：app/build/visual-qa/home-only-background-build.txt、home-only-final-feature.png。git diff --check成功。今回は表示範囲の小さな修正のためテストを追加せず、実機FPSは未確認。変更ファイル：EssentialApp.kt、Work history.txt。公開／コミット／pushなし。
+
+【2026-10-10 QRスキャナー上下の影の隙間を修正】
+・作業前にWork historyを確認。QR読み取り枠の影を描くCanvas全体にscannerSafeAreaが適用されており、ステータスバー／ナビゲーションバー付近が影の対象外になっていた。
+・QrScannerScreen.kt：影のCanvasを全画面へ広げた。ScannerSafeArea.ktで既存の安全余白の算出をscannerSafePaddingへ分離し、読み取り枠の位置は同じ安全余白から計算。操作ボタンの安全域と全画面カメラ映像は保持。
+・モード切替中にCanvas全体を縮小していた処理も変更。読み取り枠だけを0.96～1.0倍に補間し、画面端の影が縮小して隙間になることを防止。影の濃さ（黒28%）と角の線は維持。
+・ScannerUiTest.ktに白背景で上端／下端まで影が届くことと中央の読み取り領域を暗くしないことの実画素テストを追加。
+・プロジェクト内のGradleホーム／Androidユーザーホーム／TEMPを使用。Debug本体とAndroidTestのビルド成功（51秒）。最新版APKを明示的に再インストールし、スキャナーUIテスト5件成功（14.608秒）。QR画面キャプチャで上下端まで影が連続し、操作ボタンの安全域が維持されることを目視確認。git diff --check成功。
+・証跡：app/build/visual-qa/qr-shadow-build.txt、qr-shadow-ui.txt、qr-shadow-final.png。変更ファイル：QrScannerScreen.kt、ScannerSafeArea.kt、ScannerUiTest.kt、Work history.txt。実機／横画面は未確認。コミット・push・公開なし。
+
+【2026-10-10 QR／文字切替の影モーション調整】
+・作業前にWork historyを確認。QR側は全画面へ修正済みだったが、文字スキャン側にscannerSafeArea付きの影ラッパーが残り、モード変更の瞬間に影と読み取り枠の座標が変化していた。
+・TextScanScreen.kt：QRと同じ全画面ScannerOverlayへ統一。ボタンの安全域は維持。QrScannerScreen.kt：影の濃さを共通進行度のsmoothstep（p*p*(3-2*p)）で補間し、開始／終了付近の変化を穏やかにした。枠の位置・拡縮は同じ進行度、角の線の透明度は進行度に追従。余分な全画面alpha合成層を削除し、影と線に直接透明度を適用。
+・ScannerScreen.kt：共通Springを減衰1.0／剛性380へ変更。モード切替の過剰な跳ね返りと進行度clampでの急な停止を抑え、途中反転は現在のアニメーション状態から継続。
+・ScannerUiTest.kt：モード変更前後の影の全画面座標一致、96ms後に途中反転しても瞬時に全表示されないことを既存切替テストに追加。既存の端の影／操作安全域／QR・文字の操作状態も確認。
+・Debug／AndroidTestビルド成功（42秒）。最新版本体とテストAPKを再インストールし、ScannerUiTest全5件成功（15.744秒）。証跡：app/build/visual-qa/qr-shadow-motion-build.txt、qr-shadow-motion-ui.txt。git diff --check成功。実機の体感／FPS・横画面は未確認。すべての生成物はプロジェクト内へ保存。コミット・push・公開なし。
+
+【2026-10-10 隠し円形ジェスチャーとラジアルアプリメニュー】
+・作業前にWork historyと既存Composeルート／ゲームのpointerInputを確認。EssentialRootのStartupGate内にRadialMenuHostを追加し、ホーム・プロフィール・設定・更新・各機能の共通メイン画面で監視する。OSの別ウィンドウや外部アプリの画面では監視しない。
+・RadialGesture.kt：1.1秒以内の一筆の閉じた円を左右両回転で認識。最小幅／高さ64dp、縦横比0.65～1.55、開始終了距離が平均半径の55%以下、角度の累積5.2～7.4rad、逆方向の移動と半径の乱れを除外する。12サンプル以上、最大256点まで保持。高速操作の過去サンプルも利用し、判定は指を離した時点。座標／経路長／時間から判定し、画像や動画は使わない。
+・RadialMenu.kt：PointerEventPass.Finalで既存操作の後に観察し、自身はジェスチャーを消費しない。既存UIが消費したイベント、複数指、時間超過を含む操作は無効。スクロール、ホームのウィジェット移動、Snakeのスティック等を優先。根拠としてAndroid公式のComposeジェスチャー資料を参照：https://developer.android.com/develop/ui/compose/touch-input/pointer-input/understand-gestures
+・中央の円形Liquid Glassメニューを追加。既存ガラスと同じ3dp（基準15dpの20%）の背景ぼかし／薄い反射を使用。開いているときだけ背景のGraphicsLayerを記録し、既存コンテンツを同じレイヤーへ再帰的にサンプルしないよう背景側のLocalGlassBackdropを分離。開くSpringは減衰1.0／剛性380、並べ替えは減衰1.0／剛性420。閉じる／Android戻るで終了。初回目視で文字が暗かったためテーマのonBackgroundを明示し、Chromeの表示ラベルを短縮して切れを防止。
+・一番下の＋は並べ替え対象から除外。初期はX、LINE、Discord、YouTube、Instagram、TikTok、Facebook、Google Chromeの8件。未インストールの項目は文字アイコンを表示し、タップで未インストールの案内。インストール済みはPackageManagerの本物のアプリアイコンを利用。TikTokの地域別パッケージにもフォールバックする。
+・＋で端末内の起動可能アプリを検索して追加。上限12件、重複追加を除外。ManifestへMAIN／LAUNCHERのqueriesを追加し、QUERY_ALL_PACKAGESは要求しない。アプリ一覧と96pxアイコンはDispatchers.IOで読み込む。公式のパッケージ可視性資料を参照：https://developer.android.com/training/package-visibility/declaring
+・ショートカットは通常の長押し時間後にドラッグで移動でき、離した地点に最も近い枠へ並べ替える。移動中は同じイベント内のpositionChangeを使い、子の座標移動で指への追従が揺れないようにする。動かさず合計1.5秒押すと編集状態となり、各アイコン右上の−で削除。完了ボタンで通常表示へ戻る。スクリーンリーダー向けの起動／編集アクションも提供。
+・RadialShortcutStore.kt：専用SharedPreferencesにJSONで追加・削除・並び順を永続保存。保存時と読込時の両方で重複と12件上限を処理。空リストは空のまま保持し、削除した初期項目を勝手に復元しない。破損時のみ初期配置へ戻す。
+・RadialGestureTest.kt：両回転／1.1秒境界／時間超過／弧／直線／往復／小さな動きの除外を2テストで検証。GradleのWindows日本語パスでTest ExecutorのGradleWorkerMainが見つからず起動に失敗したため、コンパイル済みクラスを同じJDKのJUnitCoreで直接実行し2件成功。最終ソースで再実行済み（0.016秒）。全既存JVMテスト成功という主張はしない。
+・RadialMenuTest.kt：高速円で起動、遅い円と既存ドラッグで非起動、＋の最下部固定、長押しドラッグと順序保存、1.5秒編集、削除・再表示後の永続性、端末内Clockの追加とショートカットからの起動、12個時の追加制限、重複と空リストを3件で検証。テスト用設定はBefore／Afterで元へ復元。初回はテストのセマンティクス結合でアイコンを取得できなかったためunmerged treeを参照するよう修正。
+・最終Debug／AndroidTest／UnitTestコンパイル／Lint成功（1分19秒）。最新版APKを本体とテストとも再インストールし、RadialMenu3件＋Scanner回帰5件、計8件成功（23.541秒）。Clock起動はActivityTaskManagerのSTART（jp.essential.app.debugからcom.google.android.deskclock、result code=0）でも確認。
+・目視：通常8個／編集の右上−／最大12個の円形配置と最下部＋を確認。初期スクリーンショットはGPU反映前だったため、メインクロック／IdleSync／120ms待機後に撮り直して最終画像を採用。証跡：app/build/visual-qa/radial-final-build.txt、radial-final-ui.txt、radial-unit.txt、radial-launch.txt、radial-default.png、radial-edit.png、radial-twelve.png。
+・制約：実機での感度、全実機アプリの起動、横画面／大きい文字、FPS／電力は未確認。既存の操作領域ではその操作を優先するため円を描いてもメニューは開かない。生成物／Gradle／Androidユーザーホーム／TEMPはすべてD:\#AI開発\Android\Essential内。デスクトップに作業ディレクトリを作っていない。
+・変更ファイル：EssentialApp.kt、AndroidManifest.xml、RadialMenu.kt、RadialGesture.kt、RadialShortcutStore.kt、RadialMenuTest.kt、RadialGestureTest.kt、Work history.txt。コミット・push・公開なし。
+
+【2026-10-10 円ジェスチャーの小型化と全操作領域への反映】
+・作業前にWork historyとRadialMenu／RadialGesture／FeatureGridを確認。ユーザーの追加指示を優先し、前回の『イベントが消費されたら円を無効にする』方針を変更。
+・RadialGesture.kt：固定64dpの最小サイズを廃止。ホスト画面の短辺の1/20を最小直径とし、サンプル誤差5%を許容。1.1秒以内、左右両回転、閉じた円の形状判定は維持。小さな座標ノイズ／直線／弧は引き続き除外。
+・RadialMenu.kt：PointerEventPass.Finalの観察は維持するが、クリック／スクロール／ゲーム／カメラ等で消費済みのタッチも円の判定対象にする。自身はイベントを消費しないので既存操作は通常どおり進み、円を描いて離したときだけメニューが出る。ラジアル表示中は隠し円の監視を停止し、メニュー内の操作で再起動しない。
+・RadialGestureGateとLocalRadialGestureGateを追加。持ち上げ済みのウィジェット操作だけを一筆の終了まで除外し、次のタッチで状態をリセット。EssentialApp.ktのFeatureGridでウィジェットを持ち上げる際にこのゲートを通知する。
+・小さい円では移動量が小さく、描いている途中で長押しタイマーが満了することがUIテストで判明。押してすぐ一定距離動いた操作と静止して長押しした操作を区別するmovedBeforeHoldを追加。開始直後に円を描いている場合はウィジェットの持ち上げを開始せず、静止して持ち上げた場合は円メニューを除外。早期移動のしきい値はタッチスロップと最小直径の15%の小さい方（最低2px）。
+・RadialMenuTest.kt：消費済みドラッグ上での円は起動する期待値へ変更。画面幅1/20の円をクリック面／消費済みドラッグ面／長押しウィジェット面で検証。600ms静止後に320msで円を描くと非起動、その次に押してすぐ720msで円を描くと起動することを確認。既存の追加／起動／編集／並べ替え／削除／上限も維持。
+・RadialGestureTest.kt：画面1080pxの1/20（直径54px）の円と小さなノイズの区別を追加。最終コンパイル済みクラスをJUnitCoreで直接実行し3件成功（0.016秒）。
+・プロジェクト内のGradle／Androidユーザーホーム／TEMPを使用し、本体・AndroidTest・UnitTestコンパイル成功（54秒）。最新版本体とテストAPKを再インストールしUI4件成功（14.510秒）。git diff --check成功。証跡：app/build/visual-qa/radial-small-build.txt、radial-small-ui.txt、radial-small-unit.txt。
+・変更ファイル：RadialGesture.kt、RadialMenu.kt、EssentialApp.kt、RadialGestureTest.kt、RadialMenuTest.kt、Work history.txt。各ゲームや実機の全操作を個別にプレイした検証、実機の指の感度／FPS／横画面は未実施。共通判定とクリック／ドラッグ代理UIで検証。今回Lint再実行なし。コミット・push・公開なし。
+
+【2026-10-10 エミュレーターのマウス円入力の切り分け】
+・作業前にWork historyを確認。ユーザーは左クリック直後から円を描いていると回答。エミュレーター側の障害とは決めつけず、インストール済みパッケージとマウス入力を確認。
+・emulator-5554にはjp.essential.app（versionName=0.5.5、最終更新2026-09-10）とjp.essential.app.debug（0.6.7-debug）が両方存在。旧版には今回の円メニューがない。ユーザーがどちらを開いていたかは未確認であり、旧版誤起動を原因と断定しない。検証後は最新版DebugのMainActivityを明示的に起動して試せる状態にした。旧版は削除していない。
+・RadialMenu.kt：256点を超えると円の認識を中止していた処理を変更。高頻度マウスで多数のサンプルが届く場合に備え、0.5px未満の重複を除き、256点で始点を保持して経路を1/2へ間引く。点数を理由に判定を拒否しない。1.1秒と形状／ウィジェット保持の条件は維持。Debugのみ入力種別・時間・点数・保持状態・認識結果をローカルlogcatへ記録し、座標は記録しない。
+・RadialMenuTest.kt：600回の移動入力を600msで送る高頻度テストを追加。実際のダウンローダー画面へSOURCE_MOUSE／TOOL_TYPE_MOUSE／左ボタンのMotionEventをUiAutomationで注入し、円メニューの起動を確認するテストを追加。初回の同期注入では未表示となったため、送信待ち時間を避けて移動を非同期注入、最後のUpだけ同期する方式へ修正し再検証。初回の非表示理由は断定しない。
+・最終Debug／AndroidTestビルド成功（46秒）、最新版を本体とテストとも再インストール。RadialMenuTest6件成功（17.649秒）。実機能画面のマウス入力はlogcatでMouse／865ms／92点／保持false／円true、高頻度は600ms／217点／円trueを確認。元の小さい円、ウィジェット保持除外、追加／編集／削除／起動／上限も回帰成功。
+・実機能画面のradial-real-mouse.pngを目視し、円メニューが中央に表示され、背景のガラスぼかしと＋の最下部固定を確認。マウス形式の注入で確認した結果であり、ユーザーの物理マウスやエミュレーターのホスト側入力経路は未検証。エミュレーターの故障とは確認していない。
+・変更ファイル：RadialMenu.kt、RadialMenuTest.kt、Work history.txt。証跡：app/build/visual-qa/radial-mouse-build.txt、radial-mouse-ui.txt、radial-mouse-input.txt、radial-real-mouse.png。全生成物はプロジェクト内。git diff --check成功。コミット・push・公開なし。
+
+【2026-10-10 素早い円の認識を調整】
+・Work historyを作業前に確認。実際の入力ログで390ms／218点、444ms／256点が未認識、616ms／132点が認識成功となる例を確認。すべて1.1秒以内であり、単純な時間超過や点数不足と断定せず形状とサンプル処理を見直した。ユーザーの物理的な経路は保存していないため、個々の未認識の原因までは確定できない。
+・RadialMenu.kt：履歴／現行サンプルをuptimeMillisの単調増加で取り込み、古い履歴や同時刻の重複から逆走が生じることを防止。0.5pxの重複除外と256点での間引きは維持。
+・RadialGesture.kt：経路を長さ基準の33点へ等間隔補間し、高頻度の小さな揺れを角度の逆走として数えにくくした。最低入力点数12→6、縦横比0.5～2.0、終点距離は平均半径以下、累積角5.0～7.4rad、角度の総移動は一周方向の1.5倍未満へ調整。直線／弧／往復／小さすぎるノイズの除外、1.1秒、画面1/20、持ち上げ済みウィジェットの除外は維持。
+・RadialGestureTest.kt：80ms／9点の疎な円、180msの揺れと楕円を含む円を追加し、JUnitCoreで計4件成功（0.024秒）。RadialMenuTest.kt：消費済みドラッグ面で96ms／画面1/20の円が起動するテストを追加。
+・本体／AndroidTest／UnitTestコンパイル成功（52秒）、最新版本体とテストAPKを再インストールしUI全7件成功（18.971秒）。さらに実際の機能画面へ注入するマウス入力を高速化（16分割／1ms待機）して単独再検証し成功（5.09秒）。logcatでMouse／278ms／33点／保持false／円trueを確認。最後に最新版DebugのMainActivityを開いた。
+・証跡：app/build/visual-qa/radial-fast-build.txt、radial-fast-ui.txt、radial-fast-unit.txt、radial-fast-mouse-test-build.txt、radial-fast-mouse-ui.txt、radial-fast-input.txt。変更ファイル：RadialMenu.kt、RadialGesture.kt、RadialGestureTest.kt、RadialMenuTest.kt、Work history.txt。物理マウスでのユーザー操作の成功、実機の感度／FPSは未確認。今回Lint再実行なし。全生成物はプロジェクト内。コミット・push・公開なし。
+
+【2026-10-11 ラジアルメニューの枠と中央ボタンを改善】
+・作業前にWork historyを確認。RadialMenu.ktの大きな円形Liquid Glassパネルを削除し、中央のEssential／閉じる／編集文字も削除。背景の薄い暗幕、外側タップと戻る操作による終了は維持。
+・アプリを全周へ等間隔に配置。44dp／角丸14dpの正方形へ統一し、画像を領域いっぱいに表示。AdaptiveIconDrawableは背景と前景を重ねて正方形へ描画し、システムの円形マスクを外す。未インストール時の頭文字表示は維持。
+・52dpの＋を中央へ移動。12件に達すると−を表示し、タップで削除編集モードへ切り替える。編集時も中央−を表示し、再タップで編集終了。各アイコン右上の削除ボタンと長押し移動／永続保存は維持。
+・RadialMenuTest.ktを外側タップでの終了、中央ボタンとアイコンの位置、12件時の−と編集表示に合わせて更新。
+・Debug本体／AndroidTestビルド成功（47秒）。両APKを最新版へ再インストールし、RadialMenuTest全7件成功（17.947秒）。git diff --check成功。今回Lint再実行なし。
+・通常8件／最大12件／実機能画面の画像を目視し、大きな円枠と中央文字の撤去、中央＋／−、角丸正方形、均等配置を確認。撮影時のアプリ画像は頭文字表示であり、インストール済みアプリの実画像について目視確認済みとはしない。
+・証跡：app/build/visual-qa/radial-center-build.txt、radial-center-ui.txt、radial-center-default.png、radial-center-twelve.png、radial-center-real.png。
+・変更ファイル：RadialMenu.kt、RadialMenuTest.kt、Work history.txt。実機／横画面／FPSは未確認。生成物はすべてプロジェクト内。コミット・push・公開なし。
+
+【2026-10-11 ラジアルアイコンの移動と削除編集の時間を変更】
+・作業前にWork historyを確認。ユーザー指定に合わせ、RadialMenu.ktの端末依存長押し待ち／1.5秒編集を廃止。
+・押下から500ms以内にタッチスロップを超えて動かした場合は即座に並べ替えを開始し、指に追従。ドラッグ開始後は600msを超えても削除編集へ切り替えない。移動開始がないまま600ms保持すると各アイコン右上の−を表示。短いタップのアプリ起動と並び順保存は維持。
+・RadialMenuTest.kt：450ms静止後に32msで移動する操作で並び順保存、650ms長押しで削除編集を検証するよう変更。
+・Debug本体／AndroidTestビルド成功（41秒）。最新版の本体とテストAPKを再インストールしRadialMenuTest全7件成功（18.465秒）。git diff --check成功。今回Lint／実機／FPS検証なし。
+・証跡：app/build/visual-qa/radial-hold-build.txt、radial-hold-ui.txt。変更ファイル：RadialMenu.kt、RadialMenuTest.kt、Work history.txt。全生成物はプロジェクト内。コミット・push・公開なし。
+
+【2026-10-11 アイコン追加画面をLiquid Glassへ変更】
+・作業前にWork historyとRadialMenu.kt／LiquidGlassStyle.ktを確認。追加画面の不透明SurfaceをBoxと共通liquidGlassへ変更。背景の共有GraphicsLayerを参照し、文字やアイコンをぼかさず背景だけ20%（15dp基準の3dp）のRenderEffectぼかしを適用。
+・角丸28dpの外枠へ1.5dpの白い強弱と淡いシアン／紫の多段グラデーションを追加し、液体ガラスの光の屈折を視覚表現。物理的な背景座標の屈折シミュレーションではなく、縁の明暗と分光色による表現。
+・戻るボタンを円形ガラス、検索欄を角丸18dpの透明ガラスへ統一。追加リスト内のアプリアイコンを角丸10dpでクリップ。検索／追加／戻る／最大12件の処理は維持。
+・RadialMenuTest.ktに追加画面のスクリーンショット取得を追加。Debug本体／AndroidTestビルド成功（39秒）。最新版APKを両方再インストールしRadialMenuTest全7件成功（19.352秒）。git diff --check成功。追加画面の画像で枠の明暗、透明ガラスの色合い、検索欄／戻る／角丸アイコンを目視確認。
+・証跡：app/build/visual-qa/radial-glass-build.txt、radial-glass-ui.txt、radial-glass-picker.png。テスト背景は単色のため複雑な実背景でのぼかしの見え方、実機／FPSは未確認。API31未満は共通ガラスの既存仕様でぼかしなしの透明色表現。今回Lint再実行なし。
+・変更ファイル：RadialMenu.kt、RadialMenuTest.kt、Work history.txt。全生成物はプロジェクト内。コミット・push・公開なし。
+
+【2026-10-11 ラジアルメニュー内の空白タップで閉じる】
+・作業前にWork historyを確認。RadialMenu.ktの直径サイズの透明コンテナが空白タップを何もせず消費していたため、onCloseを呼ぶよう変更。アイコン／中央＋／−／追加画面の操作は維持。
+・RadialMenuTest.ktに中央ボタンと右側アイコンの間をタップして非表示になること、その後円で再表示できることを追加。既存の追加／編集／削除／並べ替えも同じテストで確認。
+・Debug本体／AndroidTestビルド成功（46秒）。両APKを最新版へ再インストールしRadialMenuTest全7件成功（18.185秒）。git diff --check成功。今回Lint／実機／FPS確認なし。
+・証跡：app/build/visual-qa/radial-gap-build.txt、radial-gap-ui.txt。変更ファイル：RadialMenu.kt、RadialMenuTest.kt、Work history.txt。全生成物はプロジェクト内。コミット・push・公開なし。
+
+【2026-10-11 ラジアルアイコンを50%拡大し個数に応じた配置へ変更】
+・作業前にWork historyとRadialMenu.ktを確認。アプリアイコンを44dp→66dp（1.5倍）、角丸14dp→21dpへ変更。名前を含む操作領域を72×88dpへ拡張。中央＋／−は52dpを維持。
+・個数に応じた等角度配置に加え、9個以上では縦半径を1個あたり18%ずつ拡大。横幅と画面高さの余白を守りながら楕円状に広がる。既存のキー付きanimateOffsetAsState（Spring減衰1／剛性420）で追加・削除・並べ替え時の現在位置から連続的に移動。
+・最初の内外交互配置は12件の目視で名前が近すぎたため採用せず、最終的に単一楕円へ修正。透明コンテナを全画面サイズにし、縦へ広がったアイコンの操作領域も収めた。空白タップ終了は維持。
+・最終Debug本体／AndroidTestビルド成功。最新版の両APKを再インストールしRadialMenuTest全7件成功（17.864秒）。最終12件のスクリーンショットでアイコンと名前の間隔を目視確認。git diff --check成功。今回Lint／実機／横画面／FPS確認なし。
+・調整値：アイコン66dp／角丸21dp、縦半径増分18%、画面上下余白100dp、位置Spring剛性420。証跡：app/build/visual-qa/radial-large-build.txt、radial-large-ui.txt、radial-large-twelve.png。
+・変更ファイル：RadialMenu.kt、Work history.txt。全生成物はプロジェクト内。コミット・push・公開なし。
+
+【2026-10-11 ラジアルアイコン内部のアプリロゴを少し拡大】
+・作業前にWork historyを確認。RadialMenu.ktのアプリ画像へgraphicsLayerの1.15倍拡大を適用。外側の66dp角丸ガラス、名前、配置、タップ／ドラッグ領域は維持し、親の角丸クリップで画像のはみ出しを抑制。
+・Debugビルド成功（34秒）、git diff --check成功。最新版APKをエミュレーターへ再インストール。今回は見た目の倍率だけの変更につきUIテスト／Lint再実行なし。実機とロゴ拡大後のスクリーンショット目視は未実施。
+・調整値：scaleX／scaleY=1.15。変更ファイル：RadialMenu.kt、Work history.txt。証跡：app/build/visual-qa/radial-logo-build.txt。全生成物はプロジェクト内。コミット・push・公開なし。
+
+【2026-10-11 ラジアルショートカット移動を支援するモーションを追加】
+・作業前にWork historyとRadialMenu.ktを確認。ドラッグ中は保存済みリストを直接更新せず、ドラッグ対象と移動先から仮の並び順を計算。周囲のアイコンがSpringで先に場所を空け、ドロップ時だけ並び順を保存。
+・最寄りスロットへ移る際に12dpの判定差を設け、境界付近で仮配置が頻繁に行き来することを抑制。指に追従するアイコン位置は直接反映し、ドラッグに意図的な時間遅延を加えない。
+・位置描画をキーごとのAnimatableへ変更。離した指の最終位置から配置先へ収束（減衰0.9／剛性420）。ドラッグ中はzIndex=2、最大1.08倍の拡大と12dpの影、Spring減衰0.85／剛性500で浮き上がり／復元。キャンセル時はfinallyでドラッグと仮配置を解除。
+・RadialMenuTest.kt：押したまま隣の位置へ移動し、LINEが元位置から20px以上移動して場所を空けることを確認。その後離して順序保存、削除編集／追加／起動の回帰も検証。
+・初回の編集で位置アニメーションの置換が行末差により適用されずコンパイル失敗。対象範囲を置換して修正。最終本体／AndroidTestビルド成功、本体37秒。最新版の両APKを再インストールしRadialMenuTest全7件成功（18.118秒）。git diff --check成功。
+・ドラッグ保持中のスクリーンショットでLINEが場所を空け、Xが拡大表示されることを目視確認。証跡：app/build/visual-qa/radial-reorder-build.txt、radial-reorder-test-build.txt、radial-reorder-ui.txt、radial-reorder-preview.png。
+・変更ファイル：RadialMenu.kt、RadialMenuTest.kt、Work history.txt。調整値は上記の拡大率／影／Spring／判定差。実機／FPS／全端末の操作感は未確認。今回Lint再実行なし。全生成物はプロジェクト内。コミット・push・公開なし。
+
+【2026-10-11 ラジアル移動時の全体回転を抑制】
+・作業前にWork historyを確認。RadialMenu.ktの仮配置と保存時の処理を、挿入に伴う全アイコンの詰め直しから、移動元と移動先の2個だけの交換へ変更。無関係なアイコンのスロットを保持。拡大／影／Spring収束／境界判定は維持。
+・RadialMenuTest.ktをXから離れたFacebookへの移動に変更。ドラッグ中にFacebookが場所を譲ること、途中のLINEは元位置から1px未満で動かないこと、ドロップ時にXがFacebookのスロットへ保存されることを検証。
+・Debug本体／AndroidTestビルド成功（37秒）、両APKを最新版へ再インストール。RadialMenuTest全7件成功（18.79秒）。git diff --check成功。今回Lint／実機／FPS確認なし。
+・変更ファイル：RadialMenu.kt、RadialMenuTest.kt、Work history.txt。証跡：app/build/visual-qa/radial-swap-build.txt、radial-swap-ui.txt。全生成物はプロジェクト内。コミット・push・公開なし。
+
+【2026-10-11 ファイル参照・AI画像編集・波形編集・6ステムミキサー】
+・作業前にWork historyと既存ファイル参照／ガラス／音声処理の構成を確認。RadialMenu.ktのアプリ検索をOutlinedTextFieldから透明TextField＋placeholderへ変更し、外枠と背景ぼかしを同一ガラス領域へ統一。二重枠のずれを解消。
+・FileReferenceScreen.kt：上部に選択ファイルのプレビュー、その下に破線の角丸ガラスとアップロード記号、「ファイルを参照」を配置。ドロップ処理は追加していない。画像・動画は縦横比を保持し、音声は実波形と再生を表示。既存の動画変換／圧縮等は保持。ファイル情報取得はIOへ移動。
+・MediaEditorScreen.ktを追加。画像編集／音声切り取り／楽器ミキサーへ専用画面で移動。共通Liquid Glass（基準15dpの20%=3dp背景ぼかし）と安全域の下の戻るヘッダーを使用。画面離脱・バックグラウンド化で再生停止、リソースと処理のキャンセルを管理。
+・MediaFileEngine.kt：AI背景透過の既存ML KitへModuleInstallClientを接続。取得バイト数が通知される間は割合ゲージ、それ以外は不定進捗を表示。完了／失敗／キャンセルと3分タイムアウト、リスナー解除を処理。背景透過の動作をエミュレーターで確認。未取得端末のML Kit取得率推移そのものは今回のキャッシュ済み環境では未確認。
+・MediaAiModels.kt／ImageUpscaleEngine.ktを追加。高画質化Real-ESRGAN x2（約67MB）、超高画質化x4（約67MB）、高速general-x4v3（約4.9MB）の実ONNXモデルを使用。固定リビジョンURL・SHA256照合、実バイト進捗、部分取得ファイルとキャンセルを管理。入力の長辺2048px超は比率保持で縮小、EXIF向きを反映。64pxタイル＋12px周辺領域で推論しPNG保存。アルファを保持。メモリ不足をエラーとして処理。
+・InstrumentSeparationEngine.ktを追加。HTDemucs 6s（約136MB）でボーカル／キーボード（ピアノ）／ギター／ベース／ドラム／その他へ分離。44.1kHzステレオ、343980サンプル（約7.8秒）と25%重なり、重み付き合成、ファイルへの逐次保存で全曲を一括保持しない。ピアノモデルのため全シンセ音を独立抽出する保証はない。
+・StemPreviewPlayer.kt：AudioTrackの同期6ステム合成、1024フレーム単位で個別音量と楽器全体音量を反映。再生／停止／シーク対応。MediaEditEngine.kt：FFmpegで個別ゲイン、楽器バス、合成とリミッターを適用。音声は単一WAV、動画は映像を保持し調整音声とMP4へ再合成。格納非対応の映像のみ互換形式へ変換。元ファイルは保持。
+・音声切り取りは8kHz PCMから180区間の実ピーク波形を生成し、左右端のドラッグで選択。再生と再生位置調整、選択終了で停止、指定区間をPCM WAVへ保存。従来のパケット境界による切り取りを再エンコードへ変更しサンプル精度を検証。AudioStemSeparationEngine.ktのPCM読み書きを共有し一括バッファ書き込みへ改善。旧2ステムAPIは保持。
+・モデル仕様・配布元・制約をdocs/media-editor-models.mdへ記録。候補のうち音声用ONNXを画像モデルと判断せず除外。PCで3画像モデルと6ステムモデルの入出力形状・有限値を確認後、Android実推論を検証。
+・MediaEditorEngineTest.kt／MediaEditorUiTest.ktを追加。実モデル3種、2050px入力の2048px制限、実波形、200～750ms切り取りの24255フレーム、6音源出力、ミュート合成、動画再合成、AudioTrack再生／シーク／音量変更、4.9MBモデルの実ネットワーク取得進捗、専用画面遷移、両端操作、再生、安全域を検証。既存ファイル4件・ラジアル7件も回帰確認。
+・初期テストのrunBlocking戻り値をUnitへ修正。LazyColumnの未表示項目へのテスト操作をスクロール探索へ修正。参照画面の引数順で既存呼び出しを保持。文字色・プレビューサイズをスクリーンショットから修正。最終目視で編集ヘッダーが時計領域に近づいたため安全域の実値と最低32dpを明示し消費、再ビルドと再テストを実施。
+・最終Debug本体／AndroidTest／Lintビルド成功（1分17秒）。Lint 0 errors／106 warnings。最新版の両APKをエミュレーターへ再インストールし18件成功（52.155秒）。画像・音声編集のスクリーンショットで戻るボタンとタイトルがステータス領域の下に収まることを確認。検索ガラス・ファイル参照・プレビューの画像も目視確認。git diff --check成功。
+・証跡：app/build/visual-qa/media-editor-final-build.txt、media-editor-final-tests.txt、media-model-desktop-check.txt、radial-glass-picker.png、files-glass-reference.png、files-image-editor.png、files-audio-editor.png、files-waveform-handles.png。モデル検証・ツール・Gradleキャッシュ・APK等はすべてプロジェクト内。コミット／push／公開なし。
+・残る制約：実音楽での分離品質、長時間音声、実機の処理時間／発熱／FPS／最大8192px出力時のメモリは未確認。初回はモデル取得が必要。API31未満は共通ガラス仕様の透明色描画へフォールバック。変更ファイルは上記実装7新規ファイル、FileReferenceScreen.kt／MediaFileEngine.kt／AudioStemSeparationEngine.kt／RadialMenu.kt、テスト2新規ファイルとRadialMenuTest.kt、モデル仕様文書、Work history.txt。
+
+【2026-10-11 音声分離・高画質化モデルを別途ダウンロードへ統一】
+・作業前にWork historyとMediaAiModels／取得呼び出し／APKアセット構成を確認。新しい3画像モデルと6音源モデルは初回利用時の別途取得で、進捗表示とダウンロード済みファイル再利用が既に実装済み。
+・旧Spleeter 2音源モデルがアセットに残っていたためapp/build.gradle.ktsのandroidResources.ignoreAssetsPatternでONNXを同梱対象から除外。元のモデルファイルは削除せず保管。
+・AudioStemSeparationEngine.ktの旧2音源APIを、別途取得する6音源モデルの呼び出しへ統一。5楽器をFFmpegで合成して従来の伴奏／ボーカル返却形式を維持。アセットからモデルをコピーする経路を削除。docs/media-editor-models.mdへ取得・再利用・同梱除外の仕様を追記。
+・Debug本体／AndroidTestビルド成功（42秒）。x86_64 APKをZIPとして調査しONNX同梱0件を確認。最新版の両APKを再インストールしMediaEditorEngineTest全4件成功（25.113秒）。3モデル実推論・2048px制限・実バイトダウンロード進捗・6音源分離／合成／再生を回帰確認。旧2音源互換呼び出し自体の追加実行、実機、Lint再実行は今回なし。git diff --check成功。
+・証跡：app/build/visual-qa/media-model-download-build.txt、media-model-download-tests.txt。変更ファイル：app/build.gradle.kts、AudioStemSeparationEngine.kt、docs/media-editor-models.md、Work history.txt。生成物はすべてプロジェクト内。コミット／push／公開なし。
+
+【2026-10-11 チューニングの現在音名の中央位置を調整】
+・作業前にWork historyとTuningPanel.kt／既存チューニングテストを確認。左右と現在音のRowがSpaceEvenlyで文字の実幅に依存し、片側の♯などで中央音の位置が変わる構造だった。
+・TuningPanel.ktの音名3領域を等しいweightのBoxへ変更し、各領域の中央へ音名を配置。現在の音名が目盛り0／針支点／マイクの中心軸へ揃う。音程検出・針・選択弦・モーションには変更なし。
+・Debug本体／AndroidTestビルド成功（31秒）。最新版の両APKをエミュレーターへ再インストールしTuningGlowTest／TuningUiTestの2件成功（9.981秒）。合成周波数のスクリーンショットで中央Gと目盛り0／針／マイクの中心を目視確認。実機マイク／FPS／全フォント倍率は今回未確認。Lint再実行なし。
+・証跡：app/build/visual-qa/tuning-note-alignment-build.txt、tuning-note-alignment-tests.txt、tuning-note-alignment.png。変更ファイル：TuningPanel.kt、Work history.txt。全生成物はプロジェクト内。コミット／push／公開なし。
+
+【2026-10-11 ミニゲームXP・Block Blast描画・マインスイーパー配色】
+・作業前にWork history、既存XP保存・ミニゲーム4種・Block Blast描画を確認。旧メモリのドラッグ専用方針を維持し、現コードを基準に変更。生成物・キャッシュはプロジェクト内。
+・GamePlayXp.ktを追加。SystemClock.elapsedRealtimeとRESUMEDライフサイクルで前面プレイ時間を積算、30秒ごとの報酬をAppProgressStoreへ保存。停止・離脱時に端数を記録し、30秒未満の時間をゲームごとに次回へ持ち越す。1秒ごとに記録し中断時はfinallyで精算。
+・どすこい：旧5分2XPを撤去し30秒90XPへ変更。WebView内gameState.phaseがdosukoi／number／wordの対戦フェーズ時だけ積算、waiting／resultを除外。500msごとに状態確認。ヘビ：Playingのみ30秒16XP、一時停止・待機・終了を除外。従来のエサ数による終了XPをクリア50XPへ変更し、1ゲーム1回に制限。
+・マインスイーパー：最初のマス操作後、進行中のみ30秒18XP。クリア報酬を8×8=35、9×9=42、12×12=50、12×24=100XPへ変更。既存の重複付与防止を維持。AppProgressRulesTest.ktの期待値を更新。一番遠い言葉：プレイヤー移動済みかつ読込完了・エラーなしの前面滞在30秒70XP。外部Unityゲームの内部開始／終了状態は取得できないため、読込済みプレイヤー画面の前面滞在を基準とする。
+・BlockBlastScreen.kt：手札のRowによるセルごとの横幅制約で形状がつぶれる問題を、外接矩形Canvas描画へ変更。利用可能な幅に応じ全セル同一寸法で縮小。ドラッグ中の元手札は非表示。浮遊表示のroot座標から画面原点を引き、描画と当たり判定の座標系を揃える。両方に共通する持ち上げ余白を16dp→48dpへ拡大し指の上へ表示。
+・マインスイーパーのマスをsecondaryContainer 65%、開封マスをsurfaceVariant 45%、境界線をoutlineVariant 35%へ変更。数字はテーマのprimary／tertiary／onSurfaceVariantでライト・ダーク双方に対応。盤面のルール・旗操作は保持。
+・最初のコンパイルでBoxWithConstraintsのimport不足を修正。Gradle testDebugUnitTestは実行プロセスが非ゼロ終了しパイプエラー、テスト結果として扱わない。コンパイル済み対象をJDKのJUnitCoreへ直接渡し、初回不足したR.jarを加えて再実行。AppProgressRulesTest／BlockBlastRulesTest全4件成功（0.013秒）。日本語ログはUTF-8指定。
+・Debug本体／AndroidTestビルド成功（25秒）。最新版の両APKを再インストールしMiniGameImprovementsTest全2件成功（11.208秒）。29秒端数から90XPが1回加算され、inactiveで追加されないことを確認。テスト用XPと端数は終了時に復元。Block Blast待機形状／マインスイーパーマス目のスクリーンショットを目視確認。実機／FPS／指追従の操作感、どすこい実対戦、Unityオンライン動作、各ゲームの30秒実プレイと実クリアは今回未確認。Lint再実行なし。
+・証跡：app/build/visual-qa/minigame-improvements-build.txt、minigame-improvements-apk-build.txt、minigame-improvements-tests.txt、minigame-improvements-rules.txt、block-hand-fixed.png、mine-soft-grid.png。変更ファイル：GamePlayXp.kt、MiniGameScreen.kt、SnakeGameScreen.kt、WordDistanceScreen.kt、BlockBlastScreen.kt、AppProgress.kt、AppProgressRulesTest.kt、MiniGameImprovementsTest.kt、Work history.txt。コミット／push／公開なし。
+
+【2026-10-11 チューニングのキー文字を針へ連動】
+・作業前にWork historyとTuningPanel.ktを確認。音名帯をBoxWithConstraintsとclipToBoundsで囲み、graphicsLayer.translationXへ針と同じ補間値を適用。左右±50セントに対して表示幅の±42%を移動し、中央キー文字が針先の横位置へ揃う。隣の音名も帯として連動し、枠外はクリップ。
+・針と音名の共通補間をtween140msからSpring減衰1／剛性500へ変更。現在位置から方向反転し、過剰なバウンスを抑制。停止時・音未検出時は中央へ収束。音程検出・一致判定・弦選択は保持。
+・初回の文字列置換が行末差で適用されず余分な閉じ括弧でコンパイル失敗、対象範囲を明示置換して修正。最終Debug本体／AndroidTestビルド成功（30秒）。最新版の両APKをエミュレーターへ再インストール、TuningGlowTest／TuningUiTest全2件成功（10.096秒）。+17.2セントの合成入力スクリーンショットでGの中心と針先の横位置が一致することを目視確認。
+・証跡：app/build/visual-qa/tuning-key-motion-build.txt、tuning-key-motion-tests.txt、tuning-key-motion.png。変更ファイル：TuningPanel.kt、Work history.txt。実機マイク・FPS・全端末／フォント倍率は未確認、Lint再実行なし。全生成物はプロジェクト内。コミット／push／公開なし。
+
+【2026-10-11 アプリアップデート報酬1200XP】
+・作業前にWork history、MainActivityの起動処理、GitHub更新のバージョン判定、AppProgressStoreを確認。AppProgress.ktにawardAppUpdateを追加し、更新後の初回起動で1200XPを付与。付与済み最高versionCodeとXPを同じSharedPreferences編集・同期commitで保存し、同一版／再起動／ダウングレードからの戻しで再付与しない。
+・MainActivity.ktでUIがXPを読み込む前に呼び出す。新規インストールは基準版だけを記録。報酬版キーがまだない既存インストールは、PackageInfoの更新時刻が初回インストール時刻より1秒以上後なら初回1200XPを付与して版を記録。以後はversionCode上昇ごとに1回。ダウンロードだけ／更新失敗は付与せず、インストール済み版で判定。対象はEssential本体で、yt-dlp等の依存ツール更新は対象外。
+・AppUpdateXpTest.ktを追加。新規版の初回0、上位版1200、同一版0、旧版0、戻した同一版0、次の上位版1200、既存更新インストールの初回1200と再起動0を検証。テスト後に元のXPと版キーを復元。
+・Debug本体／AndroidTestビルド成功（42秒）。最新版の両APKをエミュレーターへ再インストールしAppUpdateXpTest全1件成功（0.076秒）。git diff --check成功。実配布版の更新インストール一連操作／Lint／実機は今回未確認。
+・変更ファイル：AppProgress.kt、MainActivity.kt、AppUpdateXpTest.kt、Work history.txt。証跡：app/build/visual-qa/app-update-xp-build.txt、app-update-xp-tests.txt。生成物はすべてプロジェクト内。コミット／push／公開なし。
+
+【2026-10-11 v0.6.8公開準備】
+・Work historyと現行タグ駆動release.ymlを確認。versionName=0.6.8、versionCode=29へ変更し、.github/release-notes/v0.6.8.mdに設定・ガラス／モーション・スキャナー・通知ログ・ラジアルメニュー・AIメディア編集・チューニング・ミニゲームXP・更新1200XPと検証制約を記載。
+・公開対象は今回のEssential app変更、モデル仕様書、design-qa、Work history、リリース説明のみ。CameraStyleAIの未追跡データ・別件docs・生成成果物は除外し保管。AIモデルは別途取得、ONNXアセット同梱除外を維持。
+・ローカルRelease／Debug／AndroidTest／Lintビルド成功（3分20秒）、Lint 0 errors／108 warnings。既存R8のKotlin metadata警告あり、処理は成功。コンパイル済み単体テストをJUnitCoreで実行し74件成功（0.258秒）。最新版の両APKへ入れ直し主要回帰テストを実行中。
+・既存Git認証ヘルパーとプロジェクト内GitHub CLIを使用。認証情報は表示せず、GitHub上にv0.6.8が未作成、mainがローカル基点0de1072と一致することを確認。全生成物はプロジェクト内。公開と配布APK検証は引き続き実施する。
+
+・公開前の主要Android回帰41件を実行。初回40件成功、通知送信権限未許可により実通知記録1件がタイムアウト。POST_NOTIFICATIONSのgranted=falseを確認し検証AVDへ付与後、通知ログ全4件が成功（9.724秒）。対象41件を最終的に確認。末尾空行2ファイルを修正しstaged diff --check成功。

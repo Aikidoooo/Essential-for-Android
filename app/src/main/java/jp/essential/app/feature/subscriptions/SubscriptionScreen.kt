@@ -29,6 +29,8 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import jp.essential.app.ui.liquidGlass
+import jp.essential.app.ui.LiquidGlassStyle
 import jp.essential.app.ui.FeatureHeader
 import jp.essential.app.ui.fixedHeader
 import jp.essential.app.ui.GlassFeatureTitle
@@ -46,8 +48,8 @@ internal fun yenText(amount: Long): String = "¥${NumberFormat.getIntegerInstanc
 @Composable
 internal fun SubscriptionGlass(content: @Composable ColumnScope.() -> Unit) {
     val shape = RoundedCornerShape(26.dp)
-    Surface(Modifier.fillMaxWidth().border(1.dp, Color.White.copy(alpha = .4f), shape),
-        shape = shape, color = MaterialTheme.colorScheme.surface.copy(alpha = .65f)) {
+    Surface(Modifier.fillMaxWidth().liquidGlass(shape),
+        shape = shape, color = Color.Transparent) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp), content = content)
     }
 }
@@ -155,7 +157,7 @@ private fun SubscriptionDialogBackdrop() {
                 .filterIsInstance<android.app.Activity>().firstOrNull()
             // Essentialカレンダーと同様、背面だけをぼかしてガラス越しの色を残す。
             if (android.os.Build.VERSION.SDK_INT >= 31) {
-                val radius = 18f * view.resources.displayMetrics.density
+                val radius = LiquidGlassStyle.blurRadius.value * view.resources.displayMetrics.density
                 activity?.window?.decorView?.setRenderEffect(android.graphics.RenderEffect.createBlurEffect(
                     radius, radius, android.graphics.Shader.TileMode.CLAMP))
             }
@@ -179,9 +181,9 @@ internal fun SubscriptionDeleteDialog(entry: Subscription, saving: Boolean, erro
         val shape = RoundedCornerShape(32.dp)
         Surface(Modifier.widthIn(max = 460.dp).fillMaxWidth().safeDrawingPadding().padding(18.dp)
             .graphicsLayer { alpha = entrance.value; scaleX = .96f + .04f * entrance.value; scaleY = scaleX }
-            .border(1.dp, Color.White.copy(alpha = .48f), shape), shape = shape,
-            color = Color.White.copy(alpha = if (dark) .16f else .36f), shadowElevation = 12.dp) {
-            Column(Modifier.background(Brush.verticalGradient(listOf(Color.White.copy(alpha = .16f), Color.White.copy(alpha = .02f))))
+            .liquidGlass(shape), shape = shape,
+            color = Color.Transparent, shadowElevation = 12.dp) {
+            Column(Modifier
                 .verticalScroll(rememberScrollState()).padding(22.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
                 GlassFeatureTitle("サブスクを削除")
                 SubscriptionGlass {
@@ -223,10 +225,10 @@ private fun SubscriptionEditor(entry: Subscription?, saving: Boolean, error: Str
                 scaleX = .96f + .04f * entrance.value
                 scaleY = scaleX
                 translationY = (1f - entrance.value) * 16.dp.toPx()
-            }.border(1.dp, Color.White.copy(alpha = .48f), shape), shape = shape,
-                color = Color.White.copy(alpha = if (dark) .16f else .36f),
+            }.liquidGlass(shape), shape = shape,
+                color = Color.Transparent,
                 contentColor = MaterialTheme.colorScheme.onSurface, shadowElevation = 12.dp) {
-                Column(Modifier.background(Brush.verticalGradient(listOf(Color.White.copy(alpha = .16f), Color.White.copy(alpha = .02f))))
+                Column(Modifier
                     .padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     GlassFeatureTitle(if (entry == null) "サブスクを追加" else "サブスクを編集")
                     Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
@@ -255,13 +257,13 @@ private fun SubscriptionEditor(entry: Subscription?, saving: Boolean, error: Str
 private fun GlassSubscriptionField(value: String, onChange: (String) -> Unit, label: String,
     keyboardType: KeyboardType = KeyboardType.Text, enabled: Boolean = true) {
     val shape = RoundedCornerShape(20.dp)
-    TextField(value, onChange, modifier = Modifier.fillMaxWidth().border(1.dp, Color.White.copy(alpha = .32f), shape),
+    TextField(value, onChange, modifier = Modifier.fillMaxWidth().liquidGlass(shape),
         enabled = enabled, label = { Text(label) }, singleLine = true, shape = shape,
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
         colors = TextFieldDefaults.colors(
-            focusedContainerColor = Color.White.copy(alpha = .22f),
-            unfocusedContainerColor = Color.White.copy(alpha = .10f),
-            disabledContainerColor = Color.White.copy(alpha = .06f),
+            focusedContainerColor = Color.Transparent,
+            unfocusedContainerColor = Color.Transparent,
+            disabledContainerColor = Color.Transparent,
             focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent,
             disabledIndicatorColor = Color.Transparent))
 }
@@ -274,13 +276,13 @@ private fun GlassSubscriptionButton(label: String, enabled: Boolean, primary: Bo
     val pressed by interaction.collectIsPressedAsState()
     val scale by animateFloatAsState(if (pressed) .96f else 1f, tween(100), label = "ガラスボタンの押下")
     val shape = RoundedCornerShape(24.dp)
-    val color = if (primary) (if (destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary).copy(alpha = if (enabled) .82f else .20f)
-        else Color.White.copy(alpha = .12f)
+    val color = if (primary) (if (destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary).copy(alpha = if (enabled) .12f else .04f)
+        else Color.Transparent
     Surface(onClick = onClick, enabled = enabled, interactionSource = interaction,
         modifier = modifier.heightIn(min = 48.dp).graphicsLayer { scaleX = scale; scaleY = scale }
-            .border(1.dp, Color.White.copy(alpha = if (enabled) .42f else .16f), shape),
+            .liquidGlass(shape),
         shape = shape, color = color,
-        contentColor = if (primary && enabled) (if (destructive) MaterialTheme.colorScheme.onError else MaterialTheme.colorScheme.onPrimary) else MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else .45f)) {
+        contentColor = if (destructive && enabled) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else .45f)) {
         Box(Modifier.padding(horizontal = 10.dp, vertical = 14.dp), contentAlignment = Alignment.Center) {
             Text(label, style = MaterialTheme.typography.labelLarge)
         }

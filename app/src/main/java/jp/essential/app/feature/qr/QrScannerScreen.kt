@@ -1,6 +1,7 @@
 package jp.essential.app.feature.qr
 
 import jp.essential.app.ui.fixedHeader
+import jp.essential.app.feature.scanner.scannerSafeArea
 import jp.essential.app.ui.FeatureHeader
 import jp.essential.app.ui.GlassFeatureTitle
 
@@ -380,18 +381,19 @@ fun QrScannerScreen(modePosition: Float = 0f, transitionFrame: android.graphics.
             }
         }
 
-        Box(Modifier.fillMaxSize()) { ScannerOverlay(1f - modePosition) }
+        ScannerOverlay(1f - modePosition)
 
         Box(Modifier.fillMaxSize()) {
             Box(modifier = Modifier.fillMaxSize()) {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
+                        .scannerSafeArea()
                         .padding(start = 18.dp, top = 18.dp, end = 18.dp, bottom = 24.dp),
                     verticalArrangement = Arrangement.SpaceBetween,
                 ) {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().testTag("scanner-top-controls"),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -865,25 +867,32 @@ internal fun GalleryIcon() {
 @Composable
 internal fun ScannerOverlay(visibility: Float = 1f) {
     val progress = visibility.coerceIn(0f, 1f)
+    // 同じ進行度から影と枠を描き、切り替えや方向反転でも位置を連続させる。
+    val shadeProgress = progress * progress * (3f - 2f * progress)
+    val safePadding = jp.essential.app.feature.scanner.scannerSafePadding()
+    val layoutDirection = androidx.compose.ui.platform.LocalLayoutDirection.current
     Canvas(modifier = Modifier.fillMaxSize().testTag("scanner-qr-frame")
         .semantics { this[ScannerMotionProgress] = progress }
-        .graphicsLayer {
-            alpha = progress
-            scaleX = 0.96f + 0.04f * progress
-            scaleY = scaleX
-        }) {
-        val frameWidth = size.width * 0.72f
+        ) {
+        val safeLeft = safePadding.calculateLeftPadding(layoutDirection).toPx()
+        val safeRight = safePadding.calculateRightPadding(layoutDirection).toPx()
+        val safeTop = safePadding.calculateTopPadding().toPx()
+        val safeBottom = safePadding.calculateBottomPadding().toPx()
+        val availableWidth = (size.width - safeLeft - safeRight).coerceAtLeast(1f)
+        val availableHeight = (size.height - safeTop - safeBottom).coerceAtLeast(1f)
+        val baseWidth = availableWidth * 0.72f
+        val frameWidth = baseWidth * (0.96f + 0.04f * progress)
         val frameHeight = frameWidth
-        val left = (size.width - frameWidth) / 2f
-        val top = (size.height - frameHeight) * 0.42f
-        val shade = Color.Black.copy(alpha = 0.28f)
+        val left = safeLeft + (availableWidth - frameWidth) / 2f
+        val top = safeTop + (availableHeight - baseWidth) * 0.42f + (baseWidth - frameHeight) / 2f
+        val shade = Color.Black.copy(alpha = 0.28f * shadeProgress)
         drawRect(shade, topLeft = Offset.Zero, size = Size(size.width, top))
         drawRect(shade, topLeft = Offset(0f, top + frameHeight), size = Size(size.width, size.height - top - frameHeight))
         drawRect(shade, topLeft = Offset(0f, top), size = Size(left, frameHeight))
         drawRect(shade, topLeft = Offset(left + frameWidth, top), size = Size(size.width - left - frameWidth, frameHeight))
         val corner = frameWidth * 0.14f
         val stroke = Stroke(width = 8.dp.toPx(), cap = StrokeCap.Round)
-        val color = Color(0xFFC4F45A)
+        val color = Color(0xFFC4F45A).copy(alpha = progress)
         drawLine(color, Offset(left, top + corner), Offset(left, top), stroke.width, StrokeCap.Round)
         drawLine(color, Offset(left, top), Offset(left + corner, top), stroke.width, StrokeCap.Round)
         drawLine(color, Offset(left + frameWidth - corner, top), Offset(left + frameWidth, top), stroke.width, StrokeCap.Round)
@@ -970,6 +979,7 @@ private fun CameraPermissionScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .scannerSafeArea()
             .padding(24.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,

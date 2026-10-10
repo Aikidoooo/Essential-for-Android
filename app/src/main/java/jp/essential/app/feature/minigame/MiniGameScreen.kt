@@ -307,6 +307,7 @@ private fun MinesweeperScreen(difficulty: MineDifficulty, onBack: () -> Unit) {
     var status by remember { mutableStateOf(MinesweeperStatus.Playing) }
     var flagMode by remember { mutableStateOf(false) }
     var xpAwarded by remember(difficulty) { mutableStateOf(false) }
+    GamePlayXp("minesweeper", status == MinesweeperStatus.Playing && cells.any { it.revealed || it.flagged }, 18)
     val flags = cells.count { it.flagged }
     val revealedSafe = cells.count { it.revealed && !it.isMine }
     val safeCells = cells.count { !it.isMine }
@@ -443,12 +444,12 @@ private fun RowScope.MineCellView(
             .aspectRatio(1f)
             .clip(RoundedCornerShape(7.dp))
             .background(
-                if (cell.revealed) MaterialTheme.colorScheme.surfaceVariant
-                else MaterialTheme.colorScheme.primaryContainer,
+                if (cell.revealed) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .45f)
+                else MaterialTheme.colorScheme.secondaryContainer.copy(alpha = .65f),
             )
             .border(
                 1.dp,
-                if (cell.revealed) MaterialTheme.colorScheme.outlineVariant else MaterialTheme.colorScheme.outline,
+                MaterialTheme.colorScheme.outlineVariant.copy(alpha = .35f),
                 RoundedCornerShape(7.dp),
             )
             .semantics { contentDescription = label }
@@ -464,9 +465,9 @@ private fun RowScope.MineCellView(
             },
             color = when {
                 cell.flagged -> MaterialTheme.colorScheme.error
-                cell.adjacentMines == 1 -> Color(0xFF1769AA)
-                cell.adjacentMines == 2 -> Color(0xFF2E7D32)
-                cell.adjacentMines == 3 -> Color(0xFFB45309)
+                cell.adjacentMines == 1 -> MaterialTheme.colorScheme.primary
+                cell.adjacentMines == 2 -> MaterialTheme.colorScheme.tertiary
+                cell.adjacentMines == 3 -> MaterialTheme.colorScheme.onSurfaceVariant
                 cell.adjacentMines >= 4 -> MaterialTheme.colorScheme.error
                 else -> MaterialTheme.colorScheme.onSurface
             },
@@ -524,11 +525,15 @@ private fun DosukoiWebViewScreen(onBack: () -> Unit, motionFps: Int) {
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
     var connectionState by remember { mutableStateOf("Firebase連携を初期化中…") }
     var pageVisible by remember { mutableStateOf(false) }
-    LaunchedEffect(pageVisible) {
+    var playing by remember { mutableStateOf(false) }
+    GamePlayXp("dosukoi", pageVisible && playing, 90)
+    LaunchedEffect(pageVisible, webViewRef) {
         if (!pageVisible) return@LaunchedEffect
         while (true) {
-            delay(5 * 60 * 1000L)
-            AppProgressStore(context).addXp(2)
+            webViewRef?.evaluateJavascript("typeof gameState !== 'undefined' && ['dosukoi','number','word'].includes(gameState.phase)") {
+                playing = it == "true"
+            }
+            delay(500)
         }
     }
     BackHandler {

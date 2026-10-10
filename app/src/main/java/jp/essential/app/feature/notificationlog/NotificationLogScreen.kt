@@ -1,5 +1,6 @@
 package jp.essential.app.feature.notificationlog
 
+import jp.essential.app.ui.liquidGlass
 import jp.essential.app.ui.fixedHeader
 import jp.essential.app.ui.FeatureHeader
 import jp.essential.app.ui.GlassFeatureTitle
@@ -11,24 +12,27 @@ import android.os.Handler
 import android.os.Looper
 import androidx.compose.ui.Alignment
 import android.provider.Settings
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.core.graphics.drawable.toBitmap
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
-import androidx.compose.foundation.Canvas
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
@@ -68,7 +72,6 @@ internal fun NotificationLogScreen(storeOverride: NotificationLogStore? = null, 
     var error by remember { mutableStateOf<String?>(null) }
     var refresh by remember { mutableLongStateOf(0) }
     var deletion by remember { mutableStateOf<NotificationLogEntry?>(null) }
-    var releaseKeep by remember { mutableStateOf<NotificationLogEntry?>(null) }
     val formatter = remember { DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss") }
     val xiaomiDevice = remember { jp.essential.app.device.DeviceOptimizer.current().isXiaomiFamily }
 
@@ -155,10 +158,7 @@ internal fun NotificationLogScreen(storeOverride: NotificationLogStore? = null, 
             }
         }
         progressiveItem(2, "notification-filter") {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                FilterChip(selected = !keptOnly, onClick = { keptOnly = false; limit = 100 }, label = { Text("すべて") })
-                FilterChip(selected = keptOnly, onClick = { keptOnly = true; limit = 100 }, label = { Text("keep") })
-            }
+            NotificationSegments(keptOnly) { keptOnly = it; limit = 100 }
             Text("通常のログは3日間保存。keepすると自動削除されません。",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text("ログの削除は通知欄の通知には影響しません。", style = MaterialTheme.typography.bodySmall,
@@ -183,37 +183,41 @@ internal fun NotificationLogScreen(storeOverride: NotificationLogStore? = null, 
         }
         itemsIndexed(entries.take(limit), key = { _, entry -> entry.id }) { index, entry ->
             ProgressiveWidget(index + 3) {
-                LogGlassCard(Modifier.testTag("notification-entry-${entry.id}")) {
+                var expanded by rememberSaveable(entry.id) { mutableStateOf(false) }
+                SwipeNotificationCard(
+                    modifier = Modifier.testTag("notification-entry-${entry.id}"),
+                    kept = entry.kept,
+                    onSave = { change { store.keep(entry.id, true) } },
+                    onDelete = { deletion = entry },
+                ) {
+                LogGlassCard {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(entry.appName, style = MaterialTheme.typography.titleMedium)
-                            if (entry.title.isNotBlank()) Text(entry.title, style = MaterialTheme.typography.titleSmall)
-                        }
-                        IconToggleButton(checked = entry.kept, onCheckedChange = { kept ->
-                            if (!kept && entry.receivedAt <= System.currentTimeMillis() - LOG_RETENTION_MILLIS) releaseKeep = entry
-                            else change { store.keep(entry.id, kept) }
-                        }, modifier = Modifier.testTag("notification-keep-${entry.id}")) {
-                            val color = if (entry.kept) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                            Canvas(Modifier.size(24.dp).semantics { contentDescription = if (entry.kept) "keep中" else "keepする" }) {
-                                val path = Path().apply {
-                                    moveTo(size.width * 0.22f, size.height * 0.1f)
-                                    lineTo(size.width * 0.78f, size.height * 0.1f)
-                                    lineTo(size.width * 0.78f, size.height * 0.9f)
-                                    lineTo(size.width * 0.5f, size.height * 0.7f)
-                                    lineTo(size.width * 0.22f, size.height * 0.9f)
-                                    close()
-                                }
-                                if (entry.kept) drawPath(path, color) else drawPath(path, color, style = Stroke(2.dp.toPx()))
+                        NotificationAppIcon(entry.packageName, entry.appName)
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f).clickable { expanded = !expanded }) {
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Text(entry.title.ifBlank { entry.appName }, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Spacer(Modifier.width(8.dp))
+                                Text(DateTimeFormatter.ofPattern("HH:mm").format(Instant.ofEpochMilli(entry.receivedAt).atZone(ZoneId.systemDefault())),
+                                    style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
+                            Text(entry.body.ifBlank { "通知に表示できる本文がありません" }, style = MaterialTheme.typography.bodyLarge,
+                                maxLines = if (expanded) Int.MAX_VALUE else 2, overflow = TextOverflow.Ellipsis)
+                        }
+                        IconButton(onClick = { expanded = !expanded }, modifier = Modifier.testTag("notification-expand-${entry.id}")) {
+                            Text(if (expanded) "⌃" else "⌄", Modifier.semantics { contentDescription = if (expanded) "通知の詳細を閉じる" else "通知の詳細を開く" })
                         }
                     }
+                    AnimatedVisibility(expanded) {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(entry.appName, style = MaterialTheme.typography.labelLarge)
                     Text(formatter.format(Instant.ofEpochMilli(entry.receivedAt).atZone(ZoneId.systemDefault())),
                         style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                    Text(entry.body.ifBlank { "通知に表示できる本文がありません" }, style = MaterialTheme.typography.bodyMedium)
                     Text(entry.packageName, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TextButton(onClick = { deletion = entry }) { Text("削除", color = MaterialTheme.colorScheme.error) }
                     }
+                    }
+                }
                 }
             }
         }
@@ -227,21 +231,28 @@ internal fun NotificationLogScreen(storeOverride: NotificationLogStore? = null, 
             confirmButton = { TextButton(onClick = { deletion = null; change { store.delete(entry.id) } }) { Text("削除する") } },
             dismissButton = { TextButton(onClick = { deletion = null }) { Text("キャンセル") } })
     }
-    releaseKeep?.let { entry ->
-        AlertDialog(onDismissRequest = { releaseKeep = null }, title = { Text("keepを解除しますか？") },
-            text = { Text("受信から3日を過ぎているため、解除するとこのログはすぐに削除されます。") },
-            confirmButton = { TextButton(onClick = { releaseKeep = null; change { store.keep(entry.id, false) } }) { Text("解除して削除") } },
-            dismissButton = { TextButton(onClick = { releaseKeep = null }) { Text("キャンセル") } })
-    }
+
 }
 
 @Composable
 private fun LogGlassCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
-    val shape = RoundedCornerShape(28.dp)
-    Surface(modifier.fillMaxWidth(), shape = shape, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.75f),
-        tonalElevation = 2.dp, shadowElevation = 2.dp) {
-        Column(Modifier.background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.10f), Color.Transparent)))
-            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), shape).padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp), content = content)
+    val shape = RoundedCornerShape(30.dp)
+    Column(modifier.fillMaxWidth().liquidGlass(shape)
+        .padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp), content = content)
+}
+
+/** パッケージのアイコンをIOで取得し、未インストールのアプリは頭文字を表示する。 */
+@Composable
+private fun NotificationAppIcon(packageName: String, appName: String) {
+    val context = LocalContext.current
+    val bitmap by produceState<android.graphics.Bitmap?>(null, packageName) {
+        value = withContext(Dispatchers.IO) {
+            runCatching { context.packageManager.getApplicationIcon(packageName).toBitmap(96, 96) }.getOrNull()
+        }
+    }
+    Box(Modifier.size(48.dp).clip(RoundedCornerShape(15.dp)).background(MaterialTheme.colorScheme.surface.copy(alpha = 0.6f)),
+        contentAlignment = Alignment.Center) {
+        bitmap?.let { Image(it.asImageBitmap(), appName, Modifier.fillMaxSize()) }
+            ?: Text(appName.take(1), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
     }
 }

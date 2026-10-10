@@ -1,5 +1,6 @@
 package jp.essential.app.feature.mannaka
 
+import jp.essential.app.ui.liquidGlass
 import android.app.TimePickerDialog
 import androidx.annotation.DrawableRes
 import androidx.compose.animation.animateContentSize
@@ -63,18 +64,16 @@ internal fun MannakaTheme(content: @Composable () -> Unit) {
 
 @Composable
 internal fun MeetingGlassCard(modifier: Modifier = Modifier, padding: Dp = 14.dp, spacing: Dp = 8.dp, content: @Composable ColumnScope.() -> Unit) {
-    Surface(modifier.fillMaxWidth().animateContentSize(tween(200)), shape = RoundedCornerShape(28.dp),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f), shadowElevation = 2.dp,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
+    Surface(modifier.fillMaxWidth().animateContentSize(tween(200)).liquidGlass(28.dp), shape = RoundedCornerShape(28.dp),
+        color = Color.Transparent, shadowElevation = 0.dp) {
         Column(Modifier.padding(padding), verticalArrangement = Arrangement.spacedBy(spacing), content = content)
     }
 }
 
 @Composable
 internal fun MeetingSummaryCard(@DrawableRes icon: Int, title: String, value: String, placeholder: Boolean = false, enabled: Boolean = true, onClick: () -> Unit) {
-    Surface(onClick = onClick, enabled = enabled, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f), shadowElevation = 2.dp,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
+    Surface(onClick = onClick, enabled = enabled, modifier = Modifier.fillMaxWidth().liquidGlass(28.dp), shape = RoundedCornerShape(28.dp),
+        color = Color.Transparent, shadowElevation = 0.dp) {
         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Box(Modifier.size(38.dp).background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
                 Icon(painterResource(icon), null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(23.dp))

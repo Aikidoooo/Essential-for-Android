@@ -40,10 +40,10 @@ fun blockBlastXp(finalScore: Int): Int = floor(finalScore.coerceAtLeast(0) / 10.
 
 /** マインスイーパーのクリア盤面をアプリXPへ変換する。 */
 fun minesweeperXp(columns: Int, rows: Int): Int = when {
-    columns == 8 && rows == 8 -> 1
-    columns == 9 && rows == 9 -> 1
-    columns == 12 && rows == 12 -> 2
-    columns == 12 && rows == 24 -> 5
+    columns == 8 && rows == 8 -> 35
+    columns == 9 && rows == 9 -> 42
+    columns == 12 && rows == 12 -> 50
+    columns == 12 && rows == 24 -> 100
     else -> 0
 }
 
@@ -98,6 +98,16 @@ class AppProgressStore(context: Context) {
         return next
     }
 
+    /** 更新後の初回起動に1200XPを付与し、同じ版やダウングレードでは再付与しない。 */
+    fun awardAppUpdate(currentVersion: Int, updatedInstallation: Boolean = false): Boolean = synchronized(updateRewardLock) {
+        val previous = preferences.getInt(KEY_UPDATE_VERSION, -1)
+        val reward = if (previous < 0) updatedInstallation else currentVersion > previous
+        val nextVersion = maxOf(previous, currentVersion)
+        val editor = preferences.edit().putInt(KEY_UPDATE_VERSION, nextVersion)
+        if (reward) editor.putInt(KEY_TOTAL_XP, (loadXp().toLong() + 1200L).coerceAtMost(Int.MAX_VALUE.toLong()).toInt())
+        check(editor.commit()) { "更新報酬を保存できませんでした" }
+        reward
+    }
     fun setXp(points: Int) {
         preferences.edit().putInt(KEY_TOTAL_XP, points.coerceAtLeast(0)).apply()
     }
@@ -128,6 +138,8 @@ class AppProgressStore(context: Context) {
     }
 
     private companion object {
+        val updateRewardLock = Any()
+        const val KEY_UPDATE_VERSION = "update_reward_version"
         const val KEY_TOTAL_XP = "total_xp"
         const val KEY_CLAIMED_REWARDS = "claimed_rewards"
         const val KEY_ROUTINE_MIGRATED = "routine_progress_migrated_v1"

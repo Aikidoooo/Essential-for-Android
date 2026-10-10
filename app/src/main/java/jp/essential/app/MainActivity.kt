@@ -19,30 +19,27 @@ import jp.essential.app.update.GitHubUpdateRepository
 class MainActivity : ComponentActivity() {
     private val sharedUrl = mutableStateOf<String?>(null)
     private val requestedFeature = mutableStateOf<String?>(null)
-    private val motionFps = mutableStateOf(60)
+    private val motionFps = mutableStateOf(120)
     private val homeShortcut = mutableStateOf(FEATURE_DOWNLOADER)
     private var appIconOption: AppIconOption = AppIconManager.defaultLight
 
-    private fun applyMotionFps(value: Int) {
-        val fps = value.takeIf { it in listOf(30, 60, 120) } ?: 60
-        motionFps.value = fps
-        getSharedPreferences("appearance", MODE_PRIVATE).edit().putInt("motion_fps", fps).apply()
+    private val powerReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context?, intent: Intent?) { applyAutomaticMotionRate() }
+    }
+
+    private fun applyAutomaticMotionRate() {
         @Suppress("DEPRECATION")
         val display = windowManager.defaultDisplay
-        val currentMode = display.mode
-        val supportedModes = display.supportedModes
-        // 解像度を変えず、端末が実際に持つ表示モードから希望fpsに最も近いものを選ぶ。
-        val sameResolutionModes = supportedModes.filter {
-            it.physicalWidth == currentMode.physicalWidth &&
-                it.physicalHeight == currentMode.physicalHeight
-        }
-        val preferredMode = sameResolutionModes
-            .ifEmpty { supportedModes.toList() }
-            .minByOrNull { kotlin.math.abs(it.refreshRate - fps.toFloat()) }
-        val requested = preferredMode?.refreshRate ?: fps.toFloat()
+        val mode = display.mode
+        val supportedRate = display.supportedModes.filter {
+            it.physicalWidth == mode.physicalWidth && it.physicalHeight == mode.physicalHeight
+        }.maxOfOrNull { it.refreshRate } ?: 120f
+        val saving = getSystemService(android.os.PowerManager::class.java).isPowerSaveMode
+        motionFps.value = kotlin.math.min(supportedRate, if (saving) 60f else 120f).toInt()
+        // 表示モードを固定せず、ユーザーのHz設定・省電力・OSの動的制限を優先する。
         window.attributes = window.attributes.apply {
-            preferredDisplayModeId = preferredMode?.modeId ?: 0
-            preferredRefreshRate = requested
+            preferredDisplayModeId = 0
+            preferredRefreshRate = 0f
         }
     }
 
@@ -92,6 +89,13 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
+        // UIがXPを読み込む前に、インストール済み更新への報酬を確定する。
+        @Suppress("DEPRECATION")
+        val installedPackage = packageManager.getPackageInfo(packageName, 0)
+        jp.essential.app.profile.AppProgressStore(this).awardAppUpdate(
+            BuildConfig.VERSION_CODE,
+            installedPackage.lastUpdateTime > installedPackage.firstInstallTime + 1000L,
+        )
         enableEdgeToEdge()
         val preferences = getSharedPreferences("appearance", MODE_PRIVATE)
         homeShortcut.value = preferences.getString("home_shortcut_feature", FEATURE_DOWNLOADER) ?: FEATURE_DOWNLOADER
@@ -100,7 +104,11 @@ class MainActivity : ComponentActivity() {
         appIconOption = AppIconManager.load(this)
         AppIconManager.apply(this, appIconOption)
         applyWindowBackground(appIconOption)
-        applyMotionFps(preferences.getInt("motion_fps", 60))
+        preferences.edit().remove("motion_fps").apply()
+        androidx.core.content.ContextCompat.registerReceiver(this, powerReceiver,
+            android.content.IntentFilter(android.os.PowerManager.ACTION_POWER_SAVE_MODE_CHANGED),
+            androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED)
+        applyAutomaticMotionRate()
         handleIntent(intent)
         val startedBefore = preferences.getBoolean(KEY_APP_STARTED, false)
         val firstSetup = !startedBefore &&
@@ -117,7 +125,6 @@ class MainActivity : ComponentActivity() {
                 initialAppIconId = appIconOption.id,
                 onAppIconChange = ::applyAppIcon,
                 motionFps = motionFps.value,
-                onMotionFpsChange = ::applyMotionFps,
                 initialHomeShortcut = homeShortcut.value,
                 initialSetupRequired = firstSetup,
                 onHomeShortcutChange = { route ->
@@ -138,7 +145,12 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         // HyperOSの省電力・画面復帰後も、実際の対応モードから描画設定を再適用する。
-        applyMotionFps(motionFps.value)
+        applyAutomaticMotionRate()
+    }
+
+    override fun onDestroy() {
+        unregisterReceiver(powerReceiver)
+        super.onDestroy()
     }
 
     private fun handleIntent(intent: Intent?) {

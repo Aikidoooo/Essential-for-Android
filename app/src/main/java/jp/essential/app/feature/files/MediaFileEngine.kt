@@ -21,6 +21,11 @@ import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import com.google.android.gms.common.moduleinstall.ModuleInstall
+import com.google.android.gms.common.moduleinstall.ModuleInstallRequest
+import com.google.android.gms.common.moduleinstall.InstallStatusListener
+import com.google.android.gms.common.moduleinstall.ModuleInstallStatusUpdate
 
 class MediaFileEngine(private val context: Context) {
     fun inspect(uri: Uri): ReferencedFile {
@@ -74,33 +79,56 @@ class MediaFileEngine(private val context: Context) {
         }
     }
 
-    suspend fun removeBackground(file: ReferencedFile): String {
+    suspend fun removeBackground(file: ReferencedFile, onDownload: (Float?) -> Unit = {}): String {
         require(file.type == ReferencedMediaType.Image) { "背景透過は画像だけで使用できます" }
-        val input = InputImage.fromFilePath(context, file.uri)
+        val input = withContext(Dispatchers.IO) { InputImage.fromFilePath(context, file.uri) }
         val options = SubjectSegmenterOptions.Builder().enableForegroundBitmap().build()
         val segmenter = SubjectSegmentation.getClient(options)
         val bitmap = try {
+            val installer = ModuleInstall.getClient(context)
+            var listener: InstallStatusListener? = null
+            try {
+                withTimeout(180000L) {
+                    suspendCancellableCoroutine<Unit> { continuation ->
+                        onDownload(null)
+                        listener = InstallStatusListener { update ->
+                            update.progressInfo?.let { info ->
+                                if (info.totalBytesToDownload > 0) onDownload(info.bytesDownloaded.toFloat() / info.totalBytesToDownload)
+                            }
+                            when (update.installState) {
+                                ModuleInstallStatusUpdate.InstallState.STATE_COMPLETED -> if (continuation.isActive) { onDownload(1f); continuation.resume(Unit) }
+                                ModuleInstallStatusUpdate.InstallState.STATE_FAILED,
+                                ModuleInstallStatusUpdate.InstallState.STATE_CANCELED -> if (continuation.isActive) continuation.resumeWithException(IllegalStateException("背景透過モデルを取得できませんでした"))
+                            }
+                        }
+                        installer.installModules(ModuleInstallRequest.newBuilder().addApi(segmenter).setListener(listener!!).build())
+                            .addOnSuccessListener { if (it.areModulesAlreadyInstalled() && continuation.isActive) { onDownload(1f); continuation.resume(Unit) } }
+                            .addOnFailureListener { if (continuation.isActive) continuation.resumeWithException(it) }
+                    }
+                }
+            } finally { listener?.let(installer::unregisterListener) }
             suspendCancellableCoroutine { continuation ->
                 segmenter.process(input)
                     .addOnSuccessListener { result ->
                         val foreground = result.foregroundBitmap
-                        if (foreground != null) continuation.resume(foreground)
-                        else continuation.resumeWithException(IllegalStateException("前景を認識できませんでした"))
+                        if (continuation.isActive) {
+                            if (foreground != null) continuation.resume(foreground)
+                            else continuation.resumeWithException(IllegalStateException("前景を認識できませんでした"))
+                        } else foreground?.recycle()
                     }
-                    .addOnFailureListener(continuation::resumeWithException)
+                    .addOnFailureListener { if (continuation.isActive) continuation.resumeWithException(it) }
             }
         } finally {
             segmenter.close()
         }
-        val output = tempFile("background-removed", "png")
-        try {
-            FileOutputStream(output).use { stream ->
-                check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)) { "透過PNGを書き出せませんでした" }
-            }
-            bitmap.recycle()
-            return publishFile(output, "image/png")
-        } finally {
-            output.delete()
+        return withContext(Dispatchers.IO) {
+            val output = tempFile("background-removed", "png")
+            try {
+                FileOutputStream(output).use { stream ->
+                    check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)) { "透過PNGを書き出せませんでした" }
+                }
+                publishFile(output, "image/png")
+            } finally { bitmap.recycle(); output.delete() }
         }
     }
 
@@ -171,10 +199,10 @@ class MediaFileEngine(private val context: Context) {
         require(file.type == ReferencedMediaType.Audio) { "音声切り取りは音声ファイルだけで使用できます" }
         require(endMillis > startMillis) { "終了地点は開始地点より後にしてください" }
         val source = copyToCache(file)
-        val extension = file.name.substringAfterLast('.', "m4a").lowercase().takeIf { it in setOf("mp3", "m4a", "aac", "wav", "flac", "ogg") } ?: "m4a"
+        val extension = "wav"
         val output = tempFile("trimmed-audio", extension)
         try {
-            runFfmpeg(listOf("-ss", seconds(startMillis), "-to", seconds(endMillis), "-i", source.absolutePath, "-c", "copy", "-y", output.absolutePath))
+            runFfmpeg(listOf("-i", source.absolutePath, "-ss", seconds(startMillis), "-t", seconds(endMillis - startMillis), "-vn", "-c:a", "pcm_s16le", "-y", output.absolutePath))
             publishFile(output, mimeFor(extension))
         } finally {
             source.delete()
@@ -316,7 +344,7 @@ class MediaFileEngine(private val context: Context) {
         return output
     }
 
-    private fun publishFile(source: File, mimeType: String, displayNameOverride: String? = null): String {
+    internal fun publishFile(source: File, mimeType: String, displayNameOverride: String? = null): String {
         check(source.exists() && source.length() > 0L) { "出力ファイルが生成されませんでした" }
         val displayName = (displayNameOverride ?: source.name).replace(Regex("[^A-Za-z0-9ぁ-んァ-ヶ一-龠._-]"), "_")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {

@@ -26,74 +26,32 @@ data class AudioStemFiles(
     val baseName: String,
 )
 
-/** Spleeter 2-stemを端末内で実行する音声分離エンジン。 */
+/** 旧2音源APIも別途取得する6音源モデルへ統一する。 */
 class AudioStemSeparationEngine(private val context: Context) {
     suspend fun separate(
         file: ReferencedFile,
         onProgress: (Float) -> Unit = {},
-    ): AudioStemFiles = withContext(Dispatchers.Default) {
-        require(file.type == ReferencedMediaType.Audio) { "音声ファイルだけを分離できます" }
-        val source = copyToCache(file, "source")
-        val normalized = tempFile("normalized", "wav")
-        val vocals = tempFile("vocals", "wav")
+    ): AudioStemFiles = withContext(Dispatchers.IO) {
+        val stems = InstrumentSeparationEngine(context).separate(file) { _, value ->
+            value?.let(onProgress)
+        }
         val accompaniment = tempFile("accompaniment", "wav")
-        val baseName = file.name.substringBeforeLast('.', file.name)
-            .replace(Regex("[^A-Za-z0-9ぁ-んァ-ヶ一-龠._-]"), "_")
-            .ifBlank { "Essential-audio" }
-
         try {
-            FfmpegRunner.execute(
-                context,
-                listOf(
-                    "-i", source.absolutePath,
-                    "-vn", "-ac", CHANNELS.toString(),
-                    "-ar", SAMPLE_RATE.toString(),
-                    "-c:a", "pcm_s16le", "-f", "wav", "-y", normalized.absolutePath,
-                ),
-            )
-            PcmWavReader(normalized).use { reader ->
-                check(reader.sampleRate == SAMPLE_RATE && reader.channels == CHANNELS) {
-                    "音声を44.1kHzステレオへ変換できませんでした"
-                }
-                val vocalModel = copyModel("vocals.fp16.onnx")
-                val accompanimentModel = copyModel("accompaniment.fp16.onnx")
-                val environment = OrtEnvironment.getEnvironment()
-                val sessionOptions = OrtSession.SessionOptions()
-                val vocalSession = environment.createSession(vocalModel.absolutePath, sessionOptions)
-                val accompanimentSession = environment.createSession(
-                    accompanimentModel.absolutePath,
-                    sessionOptions,
-                )
-                try {
-                    PcmWavWriter(vocals, CHANNELS, SAMPLE_RATE).use { vocalWriter ->
-                        PcmWavWriter(accompaniment, CHANNELS, SAMPLE_RATE).use { accompanimentWriter ->
-                            processChunks(
-                                reader = reader,
-                                vocalSession = vocalSession,
-                                accompanimentSession = accompanimentSession,
-                                vocalWriter = vocalWriter,
-                                accompanimentWriter = accompanimentWriter,
-                                onProgress = onProgress,
-                            )
-                        }
-                    }
-                } finally {
-                    vocalSession.close()
-                    accompanimentSession.close()
-                    sessionOptions.close()
-                }
-            }
-            return@withContext AudioStemFiles(vocals, accompaniment, baseName)
+            val instruments = InstrumentStem.entries.filter { it != InstrumentStem.Vocals }
+            val inputs = instruments.flatMap { listOf("-i", stems.files.getValue(it).absolutePath) }
+            FfmpegRunner.execute(context, inputs + listOf(
+                "-filter_complex", "amix=inputs=5:normalize=0", "-c:a", "pcm_s16le",
+                "-y", accompaniment.absolutePath,
+            ))
+            val vocals = stems.files.getValue(InstrumentStem.Vocals)
+            instruments.forEach { stems.files.getValue(it).delete() }
+            AudioStemFiles(vocals, accompaniment, file.name.substringBeforeLast('.', file.name))
         } catch (error: Throwable) {
-            vocals.delete()
+            stems.close()
             accompaniment.delete()
             throw error
-        } finally {
-            source.delete()
-            normalized.delete()
         }
     }
-
     private suspend fun processChunks(
         reader: PcmWavReader,
         vocalSession: OrtSession,
@@ -247,19 +205,6 @@ class AudioStemSeparationEngine(private val context: Context) {
         return result.copyOf(outputLength)
     }
 
-    private fun copyModel(name: String): File {
-        val target = File(context.noBackupFilesDir, "audio-separation/spleeter-2stems-fp16/$name")
-        target.parentFile?.mkdirs()
-        val assetPath = "models/audio_separation/spleeter-2stems-fp16/$name"
-        val expectedSize = context.assets.open(assetPath).use { it.available().toLong() }
-        if (target.length() != expectedSize) {
-            context.assets.open(assetPath).use { input ->
-                FileOutputStream(target).use { output -> input.copyTo(output) }
-            }
-        }
-        return target
-    }
-
     private fun copyToCache(file: ReferencedFile, label: String): File {
         val extension = file.name.substringAfterLast('.', "bin")
             .replace(Regex("[^A-Za-z0-9]"), "")
@@ -317,7 +262,7 @@ class AudioStemSeparationEngine(private val context: Context) {
     private fun window(index: Int): Float =
         (0.5 - 0.5 * cos(2.0 * Math.PI * index / FFT_SIZE)).toFloat()
 
-    private class PcmWavReader(private val file: File) : Closeable {
+    internal class PcmWavReader(private val file: File) : Closeable {
         private val randomAccessFile = RandomAccessFile(file, "r")
         var sampleRate: Int = 0
             private set
@@ -391,7 +336,7 @@ class AudioStemSeparationEngine(private val context: Context) {
         }
     }
 
-    private class PcmWavWriter(
+    internal class PcmWavWriter(
         private val file: File,
         private val channels: Int,
         private val sampleRate: Int,
@@ -417,14 +362,22 @@ class AudioStemSeparationEngine(private val context: Context) {
             writeIntLE(0)
         }
 
+        private var outputBuffer = ByteArray(0)
+
         fun write(stereo: Array<FloatArray>, start: Int, length: Int) {
+            val size = length * channels * 2
+            if (outputBuffer.size < size) outputBuffer = ByteArray(size)
+            var offset = 0
             for (frame in start until start + length) {
                 for (channel in 0 until channels) {
                     val sample = stereo[channel][frame].coerceIn(-1f, 1f)
-                    randomAccessFile.writeShortLE((sample * 32767f).toInt())
-                    dataBytes += 2L
+                    val value = (sample * 32767f).toInt()
+                    outputBuffer[offset++] = value.toByte()
+                    outputBuffer[offset++] = (value shr 8).toByte()
                 }
             }
+            randomAccessFile.write(outputBuffer, 0, size)
+            dataBytes += size
         }
 
         override fun close() {

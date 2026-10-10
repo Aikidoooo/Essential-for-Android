@@ -1,5 +1,12 @@
 package jp.essential.app.feature.scanner
 
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toPixelMap
 import android.content.Context
 import android.content.Intent
 import androidx.compose.ui.test.*
@@ -42,6 +49,38 @@ class ScannerUiTest {
         File(context.getExternalFilesDir(null), name).outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
         bitmap.recycle()
     }
+    /** カメラ映像と別に、操作UIがシステムバーとカットアウトを避けているか確認する。 */
+    private fun assertSafeControls() {
+        var topInset = 0
+        var bottomInset = 0
+        scenario?.onActivity { activity ->
+            val insets = androidx.core.view.ViewCompat.getRootWindowInsets(activity.window.decorView)
+                ?.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars() or androidx.core.view.WindowInsetsCompat.Type.displayCutout())
+            topInset = insets?.top ?: 0
+            bottomInset = insets?.bottom ?: 0
+        }
+        val header = compose.onNodeWithTag("scanner-top-controls").fetchSemanticsNode().boundsInRoot
+        val mode = compose.onNodeWithTag("scanner-qr-mode").fetchSemanticsNode().boundsInRoot
+        val root = compose.onRoot().fetchSemanticsNode().boundsInRoot
+        val statusHeight = context.resources.getIdentifier("status_bar_height", "dimen", "android")
+        val expectedTop = maxOf(topInset, if (statusHeight != 0) context.resources.getDimensionPixelSize(statusHeight) else 0, (32 * context.resources.displayMetrics.density).toInt())
+        assertTrue("上部操作がカメラ下に収まる", header.top >= expectedTop)
+        assertTrue("下部操作がナビゲーション領域を避ける", mode.bottom <= root.bottom - bottomInset)
+    }
+
+    @Test fun qrShadeReachesBothScreenEdges() {
+        scenario = ActivityScenario.launch(Intent(context, MainActivity::class.java))
+        scenario?.onActivity { activity -> activity.setContent {
+            Box(Modifier.fillMaxSize().background(Color.White)) {
+                jp.essential.app.feature.qr.ScannerOverlay()
+            }
+        } }
+        val pixels = compose.onRoot().captureToImage().toPixelMap()
+        assertTrue("上端まで影が連続する", pixels[pixels.width / 2, 2].red < .8f)
+        assertTrue("下端まで影が連続する", pixels[pixels.width / 2, pixels.height - 3].red < .8f)
+        assertTrue("読み取り枠の内側は暗くしない", pixels[pixels.width / 2, pixels.height / 2].red > .95f)
+    }
+
     @Test fun modesRememberLastSelectionAndKeepCameraControlLayout() {
         launch()
         compose.onNodeWithTag("scanner-qr-mode").assertIsSelected()
@@ -52,11 +91,13 @@ class ScannerUiTest {
         assertTrue(zoom.bottom <= shutter.top)
         assertTrue(shutter.bottom <= mode.top)
         compose.onNodeWithContentDescription("写真を選ぶ").assertExists()
+        assertSafeControls()
         capture("scanner-qr-ui.png")
         compose.onNodeWithTag("scanner-text-mode").performClick()
         compose.onNodeWithTag("scanner-auto").assertIsNotEnabled()
         compose.onNodeWithContentDescription("Auto 使用不可").assertExists()
         compose.onNodeWithTag("scanner-text-mode").assertIsSelected()
+        assertSafeControls()
         capture("scanner-text-ui.png")
         scenario?.close()
         launch()
@@ -91,6 +132,7 @@ class ScannerUiTest {
     }
     @Test fun modeElementsAnimateTogetherWithoutScreenReload() {
         launch()
+        val originalBounds = compose.onNodeWithTag("scanner-qr-frame").fetchSemanticsNode().boundsInRoot
         compose.mainClock.autoAdvance = false
         try {
             compose.onNodeWithTag("scanner-text-mode").performClick()
@@ -98,6 +140,12 @@ class ScannerUiTest {
             compose.onNodeWithText("スキャナー", substring = false).assertIsDisplayed()
             val frame = compose.onNodeWithTag("scanner-qr-frame").fetchSemanticsNode().config[ScannerMotionProgress]
             assertTrue("QR枠が徐々に消える", frame > 0f && frame < 1f)
+            assertEquals("モードを切り替えても影の全画面座標を維持", originalBounds, compose.onNodeWithTag("scanner-qr-frame").fetchSemanticsNode().boundsInRoot)
+            compose.onNodeWithTag("scanner-qr-mode").performClick()
+            compose.mainClock.advanceTimeBy(32)
+            val reversed = compose.onNodeWithTag("scanner-qr-frame").fetchSemanticsNode().config[ScannerMotionProgress]
+            assertTrue("途中反転で影が瞬間的に全表示されない", reversed > 0f && reversed < 1f)
+            compose.onNodeWithTag("scanner-text-mode").performClick()
             compose.onNodeWithTag("scanner-shutter-disabled-mark", useUnmergedTree = true).assertExists()
             compose.onNodeWithTag("scanner-auto-disabled-mark", useUnmergedTree = true).assertExists()
             compose.mainClock.advanceTimeBy(1200)

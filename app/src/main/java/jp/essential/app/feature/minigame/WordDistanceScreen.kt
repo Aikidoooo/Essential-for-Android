@@ -1,5 +1,7 @@
 package jp.essential.app.feature.minigame
 
+import jp.essential.app.ui.liquidGlass
+
 import jp.essential.app.ui.fixedHeader
 import jp.essential.app.ui.FeatureHeader
 import jp.essential.app.ui.GlassFeatureTitle
@@ -100,6 +102,7 @@ internal fun WordDistanceScreen(onBack: () -> Unit) {
     var pageReady by remember { mutableStateOf(false) }
     var loadError by remember { mutableStateOf(false) }
     var playerNavigationRequested by remember { mutableStateOf(false) }
+    GamePlayXp("word-distance", pageReady && !loadError && playerNavigationRequested, 70)
     var chromeStarted by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { chromeStarted = true }
 
@@ -497,20 +500,7 @@ private fun GlassActionButton(
         modifier = Modifier
             .size(42.dp)
             .graphicsLayer(scaleX = scale, scaleY = scale)
-            .clip(CircleShape)
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        Color.White.copy(alpha = if (pressed) 0.3f else 0.2f),
-                        Color(0xFFB9D7FF).copy(alpha = if (pressed) 0.2f else 0.08f),
-                    ),
-                ),
-            )
-            .border(
-                1.dp,
-                Brush.linearGradient(listOf(Color.White.copy(alpha = 0.48f), Color.White.copy(alpha = 0.12f))),
-                CircleShape,
-            )
+            .liquidGlass(CircleShape)
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,

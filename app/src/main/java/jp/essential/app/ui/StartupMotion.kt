@@ -125,11 +125,10 @@ internal fun ProgressiveWidget(index: Int, modifier: Modifier = Modifier, conten
             .graphicsLayer {
                 val fraction = progress.value
                 alpha = fraction
-                if (horizontalDirection == 0) {
-                    translationY = (fraction - 1f) * 34.dp.toPx()
-                } else {
-                    translationX = (1f - fraction) * horizontalDirection * 38.dp.toPx()
-                }
+                // 再利用されるレイヤーに前の軸の移動量を残さず、タブ移動は水平だけにする。
+                translationX = if (horizontalDirection == 0) 0f else
+                    (1f - fraction) * horizontalDirection * 38.dp.toPx()
+                translationY = if (horizontalDirection == 0) (fraction - 1f) * 34.dp.toPx() else 0f
             },
     ) { content() }
 }

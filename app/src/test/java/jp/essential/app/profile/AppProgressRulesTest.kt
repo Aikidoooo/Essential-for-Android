@@ -13,10 +13,10 @@ class AppProgressRulesTest {
 
     @Test
     fun `マインスイーパーは盤面サイズごとのXPを返す`() {
-        assertEquals(1, minesweeperXp(8, 8))
-        assertEquals(1, minesweeperXp(9, 9))
-        assertEquals(2, minesweeperXp(12, 12))
-        assertEquals(5, minesweeperXp(12, 24))
+        assertEquals(35, minesweeperXp(8, 8))
+        assertEquals(42, minesweeperXp(9, 9))
+        assertEquals(50, minesweeperXp(12, 12))
+        assertEquals(100, minesweeperXp(12, 24))
         assertEquals(0, minesweeperXp(10, 10))
     }
 }

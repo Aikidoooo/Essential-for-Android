@@ -101,6 +101,7 @@ internal fun SnakeGameScreen(onBack: () -> Unit) {
         animationSpec = infiniteRepeatable(tween(650), RepeatMode.Reverse),
         label = "snake-food-scale",
     )
+    GamePlayXp("snake", status == SnakeStatus.Playing, 16)
     val score = foodCount * 10
 
     fun restart() {
@@ -129,8 +130,8 @@ internal fun SnakeGameScreen(onBack: () -> Unit) {
             bestScore = score
             preferences.edit().putInt("best_score", score).apply()
         }
-        if (!xpAwarded && foodCount > 0) {
-            AppProgressStore(context).addXp((foodCount / 5).coerceAtLeast(1))
+        if (!xpAwarded && cleared) {
+            AppProgressStore(context).addXp(50)
             xpAwarded = true
         }
     }

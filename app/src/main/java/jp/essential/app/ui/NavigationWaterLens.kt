@@ -56,7 +56,7 @@ internal fun NavigationWaterLens(backdrop: GraphicsLayer, origin: Offset, positi
     val effects = remember(density, shader) {
         List(21) { step ->
             if (Build.VERSION.SDK_INT >= 31) {
-                val radius = with(density) { (14f - 13.4f * step / 20f).dp.toPx() }
+                val radius = with(density) { (LiquidGlassStyle.blurRadius.value * (1f - 0.20f * step / 20f)).dp.toPx() }
                 val blur = RenderEffect.createBlurEffect(radius, radius, Shader.TileMode.CLAMP)
                 if (Build.VERSION.SDK_INT >= 33 && shader != null)
                     RenderEffect.createChainEffect(RenderEffect.createRuntimeShaderEffect(shader, "contents"), blur).asComposeRenderEffect()

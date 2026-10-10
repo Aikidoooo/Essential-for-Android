@@ -14,6 +14,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -52,7 +53,7 @@ internal fun TuningPanel(preset: TuningPreset, presetIndex: Int, targetNote: Int
         if (!running) differences.clear()
         else if (frequency != null && targetNote != null) differences[targetNote] = centsFrom(frequency, noteFrequency(targetNote, reference))
     }
-    val needle by animateFloatAsState((cents ?: 0.0).coerceIn(-50.0, 50.0).toFloat(), tween(140), label = "扇形メーターの針")
+    val needle by animateFloatAsState((if (running) cents ?: 0.0 else 0.0).coerceIn(-50.0, 50.0).toFloat(), spring(dampingRatio = 1f, stiffness = 500f), label = "扇形メーターの針")
     val noteColor by animateColorAsState(if (aligned) glow else colors.onSurface, tween(180), label = "合致した音名の発光")
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         GlassModeSelector(listOf("ウクレレ  g C E A", "ギター  E A D G B E"),
@@ -60,10 +61,21 @@ internal fun TuningPanel(preset: TuningPreset, presetIndex: Int, targetNote: Int
             if (presetIndex == 3) 0 else if (presetIndex == 0) 1 else -1,
             modePosition, { onPreset(if (it == 0) 3 else 0) }, Modifier.fillMaxWidth())
         SubscriptionGlass {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-                Text(noteLabel(displayed - 1).dropLast(1), fontSize = 30.sp, color = colors.onSurface.copy(alpha = .35f))
-                Text(noteLabel(displayed).dropLast(1), fontSize = 64.sp, fontWeight = FontWeight.Bold, color = noteColor)
-                Text(noteLabel(displayed + 1).dropLast(1), fontSize = 30.sp, color = colors.onSurface.copy(alpha = .35f))
+            // 針先と同じ補間値・横幅比率で音名の帯も追従させる。
+            BoxWithConstraints(Modifier.fillMaxWidth().clipToBounds()) {
+                val noteTravel = with(LocalDensity.current) { maxWidth.toPx() } * .42f
+                Row(Modifier.fillMaxWidth().graphicsLayer { translationX = needle / 50f * noteTravel },
+                    verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                    Text(noteLabel(displayed - 1).dropLast(1), fontSize = 30.sp, color = colors.onSurface.copy(alpha = .35f))
+                }
+                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                    Text(noteLabel(displayed).dropLast(1), fontSize = 64.sp, fontWeight = FontWeight.Bold, color = noteColor)
+                }
+                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                    Text(noteLabel(displayed + 1).dropLast(1), fontSize = 30.sp, color = colors.onSurface.copy(alpha = .35f))
+                }
+            }
             }
             Text(frequency?.let { String.format(Locale.JAPAN, "%.1f Hz · %+.1f セント", it, cents) }
                 ?: "目標 ${noteLabel(displayed)} · ${String.format(Locale.JAPAN, "%.1f Hz", noteFrequency(displayed, reference))}",

@@ -28,6 +28,9 @@ internal class AppUpdateModel(application: Application) : AndroidViewModel(appli
     var showDialog by mutableStateOf(false)
     var downloaded by mutableStateOf(false); private set
     var downloadFailed by mutableStateOf(false); private set
+    var detailOpen = false
+    var installedNotes by mutableStateOf(preferences.getString("notes_${BuildConfig.VERSION_NAME.removeSuffix("-debug")}", "").orEmpty()); private set
+    var notesMessage by mutableStateOf(""); private set
     private var started = false
 
     fun onStart() {
@@ -39,7 +42,7 @@ internal class AppUpdateModel(application: Application) : AndroidViewModel(appli
         startupCheck = value
         preferences.edit().putBoolean("startup_check", value).apply()
     }
-    fun check(manual: Boolean = true) {
+    fun check(manual: Boolean = true, showPrompt: Boolean = true) {
         if (busy) return
         busy = true
         message = "更新を確認しています"
@@ -49,7 +52,17 @@ internal class AppUpdateModel(application: Application) : AndroidViewModel(appli
                 downloaded = false
                 downloadFailed = false
                 message = if (release == null) "最新版を使用しています" else "新しいバージョンがあります"
-                showDialog = release != null
+                showDialog = showPrompt && release != null && !detailOpen
+                if (release == null && detailOpen) {
+                    try {
+                        installedNotes = repository.installedReleaseNotes()
+                        preferences.edit().putString("notes_${BuildConfig.VERSION_NAME.removeSuffix("-debug")}", installedNotes).apply()
+                        notesMessage = ""
+                    } catch (error: Exception) {
+                        if (error is CancellationException) throw error
+                        notesMessage = error.message ?: "更新詳細を取得できませんでした"
+                    }
+                }
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
                 message = if (manual) error.message ?: "確認できませんでした。再試行してください" else "起動時の更新確認に失敗しました。設定から再試行できます"
@@ -73,6 +86,7 @@ internal class AppUpdateModel(application: Application) : AndroidViewModel(appli
                         viewModelScope.launch { progress = value }
                     }
                 }
+                preferences.edit().putString("notes_${target.version}", target.notes).apply()
                 downloaded = true
                 message = "検証済みです。インストールへ進めます"
             } catch (error: Exception) {

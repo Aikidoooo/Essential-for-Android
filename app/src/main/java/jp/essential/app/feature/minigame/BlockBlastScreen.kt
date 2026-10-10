@@ -13,6 +13,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -302,6 +303,7 @@ internal fun BlockBlastScreen(onBack: () -> Unit) {
     }
     var message by remember { mutableStateOf("ブロックをドラッグして盤面へ置こう") }
     var draggingIndex by remember { mutableIntStateOf(-1) }
+    var overlayOrigin by remember { mutableStateOf(Offset.Zero) }
     var dragPointer by remember { mutableStateOf<Offset?>(null) }
     var boardBounds by remember { mutableStateOf<Rect?>(null) }
     var handBounds by remember { mutableStateOf<Map<Int, Rect>>(emptyMap()) }
@@ -318,7 +320,7 @@ internal fun BlockBlastScreen(onBack: () -> Unit) {
     }
     val draggingShape = hand.getOrNull(draggingIndex) ?: -1
     val dragTargetPointer = dragPointer?.let { pointer ->
-        blockPointerAboveFinger(pointer, draggingShape, with(density) { 18.dp.toPx() }, with(density) { 1.dp.toPx() }, with(density) { 16.dp.toPx() })
+        blockPointerAboveFinger(pointer, draggingShape, with(density) { 18.dp.toPx() }, with(density) { 1.dp.toPx() }, with(density) { 48.dp.toPx() })
     }
     val dropCell = dragTargetPointer?.let { pointer ->
         gridBounds?.let { grid ->
@@ -405,7 +407,7 @@ internal fun BlockBlastScreen(onBack: () -> Unit) {
     fun dropDraggedShape(index: Int, pointer: Offset?) {
         val shape = hand.getOrNull(index) ?: -1
         val targetPointer = pointer?.let { current ->
-            blockPointerAboveFinger(current, shape, with(density) { 18.dp.toPx() }, with(density) { 1.dp.toPx() }, with(density) { 16.dp.toPx() })
+            blockPointerAboveFinger(current, shape, with(density) { 18.dp.toPx() }, with(density) { 1.dp.toPx() }, with(density) { 48.dp.toPx() })
         }
         val cell = targetPointer?.let { current ->
             gridBounds?.let { grid ->
@@ -425,7 +427,8 @@ internal fun BlockBlastScreen(onBack: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(BlockBlastBackground),
+            .background(BlockBlastBackground)
+            .onGloballyPositioned { overlayOrigin = it.boundsInRoot().topLeft },
     ) {
         Column(
             modifier = Modifier
@@ -570,7 +573,7 @@ internal fun BlockBlastScreen(onBack: () -> Unit) {
                         verticalArrangement = Arrangement.Center,
                     ) {
                         // 手札はブロック形状だけを表示し、カードの枠や状態文言は描画しない。
-                        ShapePreviewGrid(shape = shape, cellSize = 25.dp)
+                        if (draggingIndex != index) ShapePreviewGrid(shape = shape, cellSize = 25.dp)
                     }
                 }
             }
@@ -581,7 +584,7 @@ internal fun BlockBlastScreen(onBack: () -> Unit) {
         if (previewShape in BlockBlastRules.shapes.indices && pointer != null) {
             val previewOffset = with(density) {
                 // 外接矩形に合わせたプレビューの中心を指の位置へ合わせる。
-                blockPreviewOffset(pointer, previewShape, 18.dp.toPx(), 1.dp.toPx())
+                blockPreviewOffset(pointer - overlayOrigin, previewShape, 18.dp.toPx(), 1.dp.toPx())
             }
             Box(
                 modifier = Modifier
@@ -682,34 +685,26 @@ private fun BlastBoardCell(
 @Composable
 private fun ShapePreviewGrid(shape: Int, cellSize: Dp) {
     val metrics = blockShapeMetrics(shape) ?: return
-    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
-        for (y in metrics.minY..metrics.maxY) {
-            Row(horizontalArrangement = Arrangement.spacedBy(1.dp)) {
-                for (x in metrics.minX..metrics.maxX) {
-                    val filled = (x to y) in BlockBlastRules.shapes[shape]
-                    Box(
-                        modifier = Modifier
-                            .size(cellSize)
-                            .clip(RoundedCornerShape(3.dp))
-                            .background(
-                                if (filled) {
-                                    Brush.linearGradient(
-                                        listOf(
-                                            BlockBlastBlockColors[shape % 4 + 1].copy(alpha = 0.98f),
-                                            BlockBlastBlockColors[shape % 4 + 1].copy(alpha = 0.68f),
-                                        ),
-                                    )
-                                } else {
-                                    Brush.linearGradient(listOf(Color.Transparent, Color.Transparent))
-                                },
-                            )
-                            .border(
-                                width = if (filled) 1.dp else 0.dp,
-                                color = if (filled) Color.White.copy(alpha = 0.32f) else Color.Transparent,
-                                shape = RoundedCornerShape(3.dp),
-                            ),
-                    )
-                }
+    BoxWithConstraints {
+        val columns = metrics.maxX - metrics.minX + 1
+        val rows = metrics.maxY - metrics.minY + 1
+        // 長い手札でも各セルを均等に縮め、Rowの制約によるつぶれを防ぐ。
+        val fittedCell = minOf(cellSize, (maxWidth - 1.dp * (columns - 1)) / columns)
+        androidx.compose.foundation.Canvas(Modifier.size(
+            fittedCell * columns + 1.dp * (columns - 1),
+            fittedCell * rows + 1.dp * (rows - 1),
+        )) {
+            val edge = fittedCell.toPx()
+            val pitch = edge + 1.dp.toPx()
+            val color = BlockBlastBlockColors[shape % 4 + 1]
+            BlockBlastRules.shapes[shape].forEach { (x, y) ->
+                val origin = Offset((x - metrics.minX) * pitch, (y - metrics.minY) * pitch)
+                drawRoundRect(color, origin, androidx.compose.ui.geometry.Size(edge, edge),
+                    androidx.compose.ui.geometry.CornerRadius(3.dp.toPx()))
+                drawRoundRect(Color.White.copy(alpha = .32f), origin,
+                    androidx.compose.ui.geometry.Size(edge, edge),
+                    androidx.compose.ui.geometry.CornerRadius(3.dp.toPx()),
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx()))
             }
         }
     }

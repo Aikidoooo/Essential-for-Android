@@ -12,6 +12,12 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.geometry.CornerRadius
+import jp.essential.app.ui.liquidGlass
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -77,23 +83,30 @@ import android.graphics.drawable.GradientDrawable
 import android.view.ViewOutlineProvider
 
 @Composable
-fun FileReferenceScreen(onBack: () -> Unit) {
+fun FileReferenceScreen(initialFile: ReferencedFile? = null, onBack: () -> Unit) {
+    androidx.compose.runtime.CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides MaterialTheme.colorScheme.onSurface) {
+        FileReferenceContent(initialFile, onBack)
+    }
+}
+
+@Composable
+private fun FileReferenceContent(initialFile: ReferencedFile?, onBack: () -> Unit) {
     val context = LocalContext.current
     val engine = remember(context) { MediaFileEngine(context.applicationContext) }
     val scope = rememberCoroutineScope()
-    var referencedFile by remember { mutableStateOf<ReferencedFile?>(null) }
+    var referencedFile by remember { mutableStateOf<ReferencedFile?>(initialFile) }
     var frameEditorFile by remember { mutableStateOf<ReferencedFile?>(null) }
     var targetMegabytes by remember { mutableIntStateOf(20) }
-    var trimStart by remember { mutableFloatStateOf(0f) }
-    var trimEnd by remember { mutableFloatStateOf(1f) }
+
     var gifPreset by remember { mutableStateOf(GifPreset.Standard) }
     var processingLabel by remember { mutableStateOf<String?>(null) }
     var resultMessage by remember { mutableStateOf<String?>(null) }
-    var separatedAudio by remember { mutableStateOf<AudioStemFiles?>(null) }
-    var separationProgress by remember { mutableFloatStateOf(0f) }
-    var vocalGain by rememberSaveable { mutableFloatStateOf(1f) }
-    var accompanimentGain by rememberSaveable { mutableFloatStateOf(1f) }
 
+    var editorMode by remember { mutableStateOf<MediaEditorMode?>(null) }
+    if (editorMode != null && referencedFile != null) {
+        MediaEditorScreen(referencedFile!!, editorMode!!, onBack = { editorMode = null })
+        return
+    }
     frameEditorFile?.let { file ->
         FrameExtractionScreen(
             file = file,
@@ -115,48 +128,19 @@ fun FileReferenceScreen(onBack: () -> Unit) {
         }
     }
 
-    fun separateAudio(file: ReferencedFile) {
-        if (processingLabel != null) return
-        scope.launch {
-            processingLabel = "AI分離"
-            separationProgress = 0f
-            separatedAudio = null
-            resultMessage = null
-            runCatching {
-                engine.separateAudio(file) { separationProgress = it }
-            }.onSuccess {
-                separatedAudio = it
-                vocalGain = 1f
-                accompanimentGain = 1f
-                resultMessage = "分離が完了しました。音量を調整して保存できます"
-            }.onFailure {
-                resultMessage = it.message ?: "AI分離に失敗しました"
-            }
-            processingLabel = null
-        }
-    }
-
     val picker = rememberLauncherForActivityResult(EssentialMediaPickerContract()) { uri ->
-        if (uri != null) {
-            runCatching {
-                // ACTION_GET_CONTENTは永続権限を返さない場合があるため、取得できるときだけ維持する。
-                runCatching {
-                    context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        if (uri != null) scope.launch {
+            try {
+                referencedFile = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    // 永続権限を返すプロバイダーの場合だけ、次回以降の読込権限を維持する。
+                    runCatching { context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+                    engine.inspect(uri)
                 }
-                engine.inspect(uri)
-            }.onSuccess {
-                referencedFile = it
-                trimStart = 0f
-                trimEnd = 1f
-                separatedAudio = null
-                separationProgress = 0f
-                vocalGain = 1f
-                accompanimentGain = 1f
                 resultMessage = null
-            }.onFailure { resultMessage = it.message ?: "ファイルを参照できませんでした" }
+            } catch (error: kotlinx.coroutines.CancellationException) { throw error }
+            catch (error: Exception) { resultMessage = error.message ?: "ファイルを参照できませんでした" }
         }
     }
-
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = 20.dp, top = 18.dp, end = 20.dp, bottom = 30.dp),
@@ -164,40 +148,25 @@ fun FileReferenceScreen(onBack: () -> Unit) {
     ) {
         var motionIndex = 0
         fixedHeader { FileTopBar(onBack) }
-        progressiveItem(motionIndex++) {
-            Surface(
-                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.74f),
-                shape = RoundedCornerShape(24.dp),
-            ) {
-                Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("画像・動画・音声を端末内で加工", style = MaterialTheme.typography.titleLarge)
-                    Text(
-                        "参照元は変更せず、処理結果を新しいファイルとして保存します。",
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                    )
-                    Button(
-                        onClick = { picker.launch(arrayOf("image/*", "video/*", "audio/*")) },
-                        enabled = processingLabel == null,
-                        modifier = Modifier.fillMaxWidth().height(54.dp),
-                        shape = RoundedCornerShape(18.dp),
-                    ) { Text(if (referencedFile == null) "ファイルを参照" else "別のファイルを参照") }
-                }
-            }
+        referencedFile?.let { file ->
+            progressiveItem(motionIndex++) { MediaFilePreview(file) }
         }
         progressiveItem(motionIndex++) {
-            AnimatedContent(referencedFile, label = "参照ファイル") { file ->
-                if (file == null) {
-                    Surface(
-                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
-                        shape = RoundedCornerShape(22.dp),
-                    ) {
-                        Text("まだファイルが選択されていません", modifier = Modifier.padding(20.dp))
+            Box(Modifier.fillMaxWidth().height(190.dp).liquidGlass(RoundedCornerShape(24.dp))
+                .drawWithCache {
+                    val stroke = Stroke(1.5.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(7.dp.toPx(), 5.dp.toPx())))
+                    onDrawWithContent {
+                        drawContent()
+                        drawRoundRect(Color.White.copy(alpha = .35f), cornerRadius = CornerRadius(24.dp.toPx()), style = stroke)
                     }
-                } else {
-                    FileSummary(file)
+                }.clickable(enabled = processingLabel == null) { picker.launch(arrayOf("image/*", "video/*", "audio/*")) }, contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Box(Modifier.size(58.dp).liquidGlass(CircleShape), contentAlignment = Alignment.Center) { Text("↑", style = MaterialTheme.typography.headlineLarge) }
+                    Text(if (referencedFile == null) "ファイルを参照" else "別のファイルを参照", style = MaterialTheme.typography.titleMedium)
                 }
             }
         }
+        referencedFile?.let { file -> progressiveItem(motionIndex++) { FileSummary(file) } }
         referencedFile?.let { file ->
             progressiveItem(motionIndex++) { SectionTitle("圧縮", "目標以下を目指して新しいファイルを生成") }
             progressiveItem(motionIndex++) {
@@ -224,18 +193,17 @@ fun FileReferenceScreen(onBack: () -> Unit) {
             when (file.type) {
                 ReferencedMediaType.Image -> item {
                     ToolCard {
-                        SectionTitle("AI背景透過", "前景を認識し、背景が透明なPNGへ")
-                        Text(
-                            "初回はGoogle Play開発者サービスがAIモデルを取得するため時間がかかる場合があります。",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        ActionButton("背景を透明にする", processingLabel) {
-                            process("背景透過") { engine.removeBackground(file) }
-                        }
+                        SectionTitle("AI画像編集", "背景透過・3モデルの高画質化")
+                        GlassMediaButton("AI画像編集を開く", processingLabel == null) { editorMode = MediaEditorMode.Image }
                     }
                 }
                 ReferencedMediaType.Video -> {
+                    progressiveItem(motionIndex++) {
+                        ToolCard {
+                            SectionTitle("ボーカル・楽器ミキサー", "動画の音声を6種類へ分離して合成")
+                            GlassMediaButton("ボーカル・楽器ミキサーを開く", processingLabel == null) { editorMode = MediaEditorMode.Mixer }
+                        }
+                    }
                     progressiveItem(motionIndex++) {
                         ToolCard {
                             SectionTitle("フレーム切り取り", "動画を見ながら専用画面で時刻を選択")
@@ -268,60 +236,9 @@ fun FileReferenceScreen(onBack: () -> Unit) {
                 }
                 ReferencedMediaType.Audio -> item {
                     ToolCard {
-                        SectionTitle("AIボーカル分離", "Spleeter 2-stem FP16でボーカルと楽器を端末内処理")
-                        Text(
-                            "初回はモデルを端末へ展開します。参照元は変更せず、ボーカル・楽器・合成音声を別ファイルで保存します。",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        ActionButton(
-                            if (separatedAudio == null) "ボーカルと楽器に分離" else "もう一度分離する",
-                            processingLabel,
-                        ) {
-                            separateAudio(file)
-                        }
-                        AnimatedVisibility(processingLabel == "AI分離") {
-                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text("AI分離中 ${(separationProgress * 100f).roundToInt()}%")
-                                LinearProgressIndicator(
-                                    progress = { separationProgress.coerceIn(0f, 1f) },
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
-                            }
-                        }
-                        separatedAudio?.let {
-                            AudioStemMixer(
-                                vocalGain = vocalGain,
-                                accompanimentGain = accompanimentGain,
-                                onVocalGainChange = { vocalGain = it },
-                                onAccompanimentGainChange = { accompanimentGain = it },
-                            )
-                            ActionButton("調整した3ファイルを保存", processingLabel) {
-                                process("音量調整と合成") {
-                                    engine.exportSeparatedAudio(it, vocalGain, accompanimentGain)
-                                        .joinToString("、")
-                                }
-                            }
-                        }
-                    }
-                    ToolCard {
-                        SectionTitle("音声ファイル切り取り", "開始地点と終了地点を指定")
-                        val startMillis = (file.durationMillis * trimStart).toLong()
-                        val endMillis = (file.durationMillis * trimEnd).toLong()
-                        Text("開始 ${formatTime(startMillis)}")
-                        EssentialBubblySlider(
-                            value = trimStart,
-                            onValueChange = { trimStart = it.coerceAtMost(trimEnd - 0.001f) },
-                            valueRange = 0f..1f,
-                        )
-                        Text("終了 ${formatTime(endMillis)}")
-                        EssentialBubblySlider(
-                            value = trimEnd,
-                            onValueChange = { trimEnd = it.coerceAtLeast(trimStart + 0.001f) },
-                            valueRange = 0f..1f,
-                        )
-                        ActionButton("指定範囲を切り取る", processingLabel) {
-                            process("音声切り取り") { engine.trimAudio(file, startMillis, endMillis) }
-                        }
+                        SectionTitle("音声編集", "波形で切り取り・再生しながら音量を調整")
+                        GlassMediaButton("音声切り取りを開く", processingLabel == null) { editorMode = MediaEditorMode.Trim }
+                        GlassMediaButton("ボーカル・楽器ミキサーを開く", processingLabel == null) { editorMode = MediaEditorMode.Mixer }
                     }
                 }
             }
@@ -345,41 +262,6 @@ fun FileReferenceScreen(onBack: () -> Unit) {
     }
 }
 
-/** 分離済み2ステムの音量を調整し、合成結果を確認するためのミキサー。 */
-@Composable
-private fun AudioStemMixer(
-    vocalGain: Float,
-    accompanimentGain: Float,
-    onVocalGainChange: (Float) -> Unit,
-    onAccompanimentGainChange: (Float) -> Unit,
-) {
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.66f),
-        shape = RoundedCornerShape(18.dp),
-    ) {
-        Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Text("2ステムミキサー", fontWeight = FontWeight.Bold)
-            Text("ボーカルと楽器を個別に調整し、合成音声へ反映します。")
-            Text("ボーカル　${(vocalGain * 100f).roundToInt()}%")
-            EssentialBubblySlider(
-                value = vocalGain,
-                onValueChange = onVocalGainChange,
-                valueRange = 0f..2f,
-            )
-            Text("楽器　${(accompanimentGain * 100f).roundToInt()}%")
-            EssentialBubblySlider(
-                value = accompanimentGain,
-                onValueChange = onAccompanimentGainChange,
-                valueRange = 0f..2f,
-            )
-        }
-    }
-}
-
-/** 動画を確認しながら、保存する一瞬を選べる専用画面。 */
 @Composable
 private fun FrameExtractionScreen(
     file: ReferencedFile,
@@ -664,17 +546,7 @@ private fun FileSummary(file: ReferencedFile) {
 
 @Composable
 private fun ToolCard(content: @Composable ColumnScope.() -> Unit) {
-    Surface(
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.76f),
-        shape = RoundedCornerShape(24.dp),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-            content = content,
-        )
-    }
+    MediaGlassCard(content)
 }
 
 @Composable

@@ -18,7 +18,7 @@ fun ScannerScreen(onBack: () -> Unit) {
     var textMode by rememberSaveable { mutableStateOf(preferences.getBoolean("text_mode", false)) }
     var transitionFrame by remember { mutableStateOf<Bitmap?>(null) }
     val modePosition by animateFloatAsState(if (textMode) 1f else 0f,
-        spring(dampingRatio = 0.76f, stiffness = 420f), label = "スキャナーの選択位置")
+        spring(dampingRatio = 1f, stiffness = 380f), label = "スキャナーの選択位置")
     fun selectText(enabled: Boolean) {
         textMode = enabled
         preferences.edit().putBoolean("text_mode", enabled).apply()
