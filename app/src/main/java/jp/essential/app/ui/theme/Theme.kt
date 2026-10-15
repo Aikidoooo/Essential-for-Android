@@ -12,10 +12,15 @@ import androidx.compose.material3.Typography
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.remember
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.dp
 
 private val LightColors = lightColorScheme(
     primary = Color(0xFF4F6700),
@@ -125,6 +130,31 @@ fun EssentialTheme(
     content: @Composable () -> Unit,
 ) {
     val target = if (darkTheme) DarkColors else LightColors
+    val density = LocalDensity.current
+    // 文字の背後へ小さく柔らかな影を加え、背景の絵と輪郭を分離する。
+    val typography = remember(darkTheme, density) {
+        val shadow = with(density) {
+            Shadow(Color.Black.copy(alpha = if (darkTheme) .62f else .40f),
+                offset = Offset(0f, .8.dp.toPx()), blurRadius = 2.5.dp.toPx())
+        }
+        EssentialTypography.copy(
+            displayLarge = EssentialTypography.displayLarge.copy(shadow = shadow),
+            displayMedium = EssentialTypography.displayMedium.copy(shadow = shadow),
+            displaySmall = EssentialTypography.displaySmall.copy(shadow = shadow),
+            headlineLarge = EssentialTypography.headlineLarge.copy(shadow = shadow),
+            headlineMedium = EssentialTypography.headlineMedium.copy(shadow = shadow),
+            headlineSmall = EssentialTypography.headlineSmall.copy(shadow = shadow),
+            titleLarge = EssentialTypography.titleLarge.copy(shadow = shadow),
+            titleMedium = EssentialTypography.titleMedium.copy(shadow = shadow),
+            titleSmall = EssentialTypography.titleSmall.copy(shadow = shadow),
+            bodyLarge = EssentialTypography.bodyLarge.copy(shadow = shadow),
+            bodyMedium = EssentialTypography.bodyMedium.copy(shadow = shadow),
+            bodySmall = EssentialTypography.bodySmall.copy(shadow = shadow),
+            labelLarge = EssentialTypography.labelLarge.copy(shadow = shadow),
+            labelMedium = EssentialTypography.labelMedium.copy(shadow = shadow),
+            labelSmall = EssentialTypography.labelSmall.copy(shadow = shadow),
+        )
+    }
     // 文字と面も背景と同時に補間し、切り替え途中だけ白文字が白い面へ重なるのを避ける。
     val colors = target.copy(
         primary = animateThemeColor(target.primary),
@@ -151,7 +181,7 @@ fun EssentialTheme(
     CompositionLocalProvider(LocalEssentialDark provides darkTheme) {
     MaterialTheme(
         colorScheme = colors,
-        typography = EssentialTypography,
+        typography = typography,
         shapes = EssentialShapes,
         content = content,
     )

@@ -1,5 +1,9 @@
 package jp.essential.app.feature.mannaka
 
+import jp.essential.app.ui.elasticListEdges
+
+import jp.essential.app.ui.liquidGlass
+
 import jp.essential.app.ui.fixedHeader
 import jp.essential.app.ui.FeatureHeader
 import jp.essential.app.ui.GlassFeatureTitle
@@ -29,7 +33,7 @@ internal fun MeetingFacilities(station: MeetingPoint, categories: List<String>, 
     onRetry: () -> Unit, onMap: (MeetingPoint, String) -> Unit,
     onShare: () -> Unit, onCopy: () -> Unit, onFavorite: () -> Unit) {
     val searches = (categories + listOf(custom).filter { it.isNotBlank() }).ifEmpty { meetingCategories }
-    LazyColumn(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).imePadding()
+    LazyColumn(overscrollEffect = null, modifier = Modifier.elasticListEdges().fillMaxSize().imePadding()
         .testTag("mannaka-facilities"), contentPadding = PaddingValues(16.dp, 8.dp, 16.dp, 40.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)) {
         fixedHeader { FeatureHeader(if (choosingActivity) "集まって何する？" else "付近の施設", onBack,

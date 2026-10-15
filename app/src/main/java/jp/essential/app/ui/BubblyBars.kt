@@ -25,6 +25,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.CornerRadius
@@ -53,7 +54,7 @@ internal fun EssentialBubblySlider(
     val start = valueRange.start
     val end = valueRange.endInclusive
     val fraction = ((value - start) / (end - start).coerceAtLeast(0.0001f)).coerceIn(0f, 1f)
-    val animatedFraction by animateFloatAsState(
+    val animatedFraction = animateFloatAsState(
         targetValue = fraction,
         animationSpec = spring(stiffness = 850f, dampingRatio = 0.82f),
         label = "共通バーの位置",
@@ -97,7 +98,7 @@ internal fun EssentialBubblySlider(
         contentAlignment = Alignment.Center,
     ) {
         BubblySliderRail(
-            fraction = animatedFraction,
+            fraction = { animatedFraction.value },
             modifier = Modifier.fillMaxWidth(),
         )
     }
@@ -105,14 +106,8 @@ internal fun EssentialBubblySlider(
 
 /** レールの終端と白いノブを同じピクセル座標から描く。 */
 @Composable
-private fun BubblySliderRail(fraction: Float, modifier: Modifier = Modifier) {
-    val transition = rememberInfiniteTransition(label = "スライダーの泡")
-    val phase by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(2400, easing = LinearEasing)),
-        label = "スライダーの泡移動",
-    )
+private fun BubblySliderRail(fraction: () -> Float, modifier: Modifier = Modifier) {
+    val phase = rememberDecorativePhase(2400)
     val inactiveColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.74f)
     val bubbles = remember {
         listOf(0.04f to 0.16f, 0.18f to 0.10f, 0.31f to 0.13f, 0.47f to 0.08f,
@@ -122,7 +117,7 @@ private fun BubblySliderRail(fraction: Float, modifier: Modifier = Modifier) {
         val diameter = 28.dp.toPx()
         val radius = diameter / 2f
         val railTop = (size.height - diameter) / 2f
-        val thumbCenter = radius + (size.width - diameter).coerceAtLeast(0f) * fraction
+        val thumbCenter = radius + (size.width - diameter).coerceAtLeast(0f) * fraction()
         val activeRight = (thumbCenter + radius).coerceIn(0f, size.width)
         val corner = CornerRadius(radius)
         drawRoundRect(inactiveColor, topLeft = Offset(0f, railTop),
@@ -131,7 +126,7 @@ private fun BubblySliderRail(fraction: Float, modifier: Modifier = Modifier) {
             size = Size(activeRight, diameter), cornerRadius = corner)
         clipRect(left = 0f, top = railTop, right = activeRight, bottom = railTop + diameter) {
             bubbles.forEachIndexed { index, (offset, sizeFactor) ->
-                val travel = (phase + offset) % 1f
+                val travel = (phase.value + offset) % 1f
                 val x = size.width * (1f - travel)
                 val wave = sin(travel * Math.PI * 2.0 + index * 1.7).toFloat()
                 val bubbleRadius = diameter * (sizeFactor +
@@ -151,37 +146,18 @@ internal fun EssentialBubblyProgressBar(
     progress: Float? = null,
     modifier: Modifier = Modifier,
 ) {
-    val transition = rememberInfiniteTransition(label = "共通進捗バー")
-    val phase by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(2200, easing = LinearEasing)),
-        label = "共通バーの泡",
-    )
-    val indeterminate by transition.animateFloat(
-        initialValue = 0.18f,
-        targetValue = 0.88f,
-        animationSpec = infiniteRepeatable(tween(1050, easing = LinearEasing), RepeatMode.Reverse),
-        label = "共通バーの進捗",
-    )
-    val fraction = (progress ?: indeterminate).coerceIn(0f, 1f)
-    BubblyRail(fraction = fraction, phaseOverride = phase, modifier = modifier.height(28.dp))
+    val phase = rememberDecorativePhase(2200)
+    val indeterminate = if (progress == null) rememberDecorativePhase(1050, .18f, .88f, RepeatMode.Reverse) else null
+    BubblyRail(fraction = { (progress ?: indeterminate!!.value).coerceIn(0f, 1f) },
+        phase = phase, modifier = modifier.height(28.dp))
 }
 
 @Composable
 private fun BubblyRail(
-    fraction: Float,
+    fraction: () -> Float,
+    phase: androidx.compose.runtime.State<Float>,
     modifier: Modifier,
-    phaseOverride: Float? = null,
 ) {
-    val transition = rememberInfiniteTransition(label = "共通バーの泡レール")
-    val phase by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(2400, easing = LinearEasing)),
-        label = "共通バーの泡移動",
-    )
-    val actualPhase = phaseOverride ?: phase
     val bubbles = remember {
         listOf(0.04f to 0.16f, 0.18f to 0.10f, 0.31f to 0.13f, 0.47f to 0.08f, 0.63f to 0.12f, 0.78f to 0.07f, 0.92f to 0.11f)
     }
@@ -193,13 +169,13 @@ private fun BubblyRail(
                 .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.74f)),
         ) {
             Box(
-                modifier = Modifier.fillMaxHeight().fillMaxWidth(fraction)
-                    .background(Color(0xFFB77BF4)),
+                modifier = Modifier.fillMaxHeight().fillMaxWidth()
+                    .drawBehind { drawRect(Color(0xFFB77BF4), size = Size(size.width * fraction(), size.height)) },
             )
             Canvas(Modifier.fillMaxSize()) {
-                clipRect(right = size.width * fraction) {
+                clipRect(right = size.width * fraction()) {
                     bubbles.forEachIndexed { index, (offset, sizeFactor) ->
-                        val travel = (actualPhase + offset) % 1f
+                        val travel = (phase.value + offset) % 1f
                         val x = size.width * (1f - travel)
                         val wave = sin(travel * Math.PI * 2.0 + index * 1.7).toFloat()
                         val radius = size.height * (sizeFactor + sin(travel * Math.PI * 2.0 + index).toFloat() * 0.025f)

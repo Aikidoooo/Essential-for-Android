@@ -1,5 +1,7 @@
 package jp.essential.app.feature.tuning
 
+import jp.essential.app.ui.elasticListEdges
+
 import android.Manifest
 import android.content.pm.PackageManager
 import android.media.AudioFormat
@@ -71,7 +73,8 @@ fun TuningScreen(onBack: () -> Unit) {
                     var filled = 0
                     val recent = ArrayDeque<Double>()
                     while (isActive) {
-                        val read = recorder.read(samples, filled, samples.size - filled, AudioRecord.READ_NON_BLOCKING)
+                        // 約46ms分ずつ待って読み、音程の解析窓を保ったまま空読みを避ける。
+                        val read = recorder.read(samples, filled, minOf(1024, samples.size - filled), AudioRecord.READ_BLOCKING)
                         check(read >= 0) { "マイクからの読み取りに失敗しました。" }
                         filled += read
                         if (filled == samples.size) {
@@ -85,7 +88,6 @@ fun TuningScreen(onBack: () -> Unit) {
                             withContext(Dispatchers.Main) { frequency = stable }
                             filled = 0
                         }
-                        delay(12)
                     }
                 } finally {
                     runCatching { recorder.stop() }
@@ -105,7 +107,7 @@ fun TuningScreen(onBack: () -> Unit) {
         frequency = null
         preferences.edit().putInt("preset", index).apply()
     }
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp, 12.dp, 20.dp, 36.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    LazyColumn(overscrollEffect = null, modifier = Modifier.elasticListEdges().fillMaxSize(), contentPadding = PaddingValues(20.dp, 12.dp, 20.dp, 36.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         fixedHeader { FeatureHeader("チューニング", onBack) }
         item {
             TuningPanel(preset, presetIndex, targetNote, manualNote, frequency, reference ?: 440, running, reference != null,

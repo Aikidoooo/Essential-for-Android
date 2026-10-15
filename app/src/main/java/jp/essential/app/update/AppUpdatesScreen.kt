@@ -1,5 +1,7 @@
 package jp.essential.app.update
 
+import jp.essential.app.ui.elasticListEdges
+
 import android.content.Intent
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -35,7 +37,7 @@ internal fun AppUpdatesScreen(onBack: () -> Unit, bottomPadding: Dp, model: AppU
     val release = model.release
     val title = if (BuildConfig.IS_XIAOMI_PACKAGE) "Essential Xiaomi" else "Essential Universal"
     GlassBackdropScope(Modifier.fillMaxSize().testTag("app-updates-screen"), background = { SettingsGradientBackground() }) {
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 24.dp, end = 24.dp,
+        LazyColumn(overscrollEffect = null, modifier = Modifier.elasticListEdges().fillMaxSize(), contentPadding = PaddingValues(start = 24.dp, end = 24.dp,
             top = WindowInsets.safeDrawing.asPaddingValues().calculateTopPadding() + 88.dp,
             bottom = bottomPadding + if (release != null) 106.dp else 32.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp)) {

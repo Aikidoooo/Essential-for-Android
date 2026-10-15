@@ -51,12 +51,12 @@ internal fun MannakaTheme(content: @Composable () -> Unit) {
     val colors = MaterialTheme.colorScheme
     val typography = MaterialTheme.typography
     MaterialTheme(colorScheme = colors, typography = typography.copy(
-        headlineLarge = TextStyle(fontSize = 26.sp, lineHeight = 34.sp, fontWeight = FontWeight.Normal),
-        titleLarge = TextStyle(fontSize = 22.sp, lineHeight = 30.sp, fontWeight = FontWeight.Normal),
-        titleMedium = TextStyle(fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.Normal),
-        bodyLarge = TextStyle(fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.Normal),
-        bodyMedium = TextStyle(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Normal),
-        labelLarge = TextStyle(fontSize = 15.sp, lineHeight = 20.sp, fontWeight = FontWeight.Normal),
+        headlineLarge = typography.headlineLarge.copy(fontSize = 26.sp, lineHeight = 34.sp, fontWeight = FontWeight.Normal),
+        titleLarge = typography.titleLarge.copy(fontSize = 22.sp, lineHeight = 30.sp, fontWeight = FontWeight.Normal),
+        titleMedium = typography.titleMedium.copy(fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.Normal),
+        bodyLarge = typography.bodyLarge.copy(fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.Normal),
+        bodyMedium = typography.bodyMedium.copy(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Normal),
+        labelLarge = typography.labelLarge.copy(fontSize = 15.sp, lineHeight = 20.sp, fontWeight = FontWeight.Normal),
     )) {
         CompositionLocalProvider(LocalContentColor provides colors.onSurface, content = content)
     }
@@ -132,12 +132,12 @@ internal fun MeetingParticipantCard(participant: MeetingParticipant, index: Int,
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         suggestions.forEach { station ->
             Surface(onClick = { onPick(station); focusManager.clearFocus() }, enabled = enabled,
-                shape = RoundedCornerShape(15.dp), color = MaterialTheme.colorScheme.primaryContainer,
-                modifier = Modifier.fillMaxWidth().testTag("mannaka-suggestion-${participant.id}-${station.id}")) {
+                shape = RoundedCornerShape(15.dp), color = Color.Transparent,
+                modifier = Modifier.fillMaxWidth().liquidGlass(15.dp).testTag("mannaka-suggestion-${participant.id}-${station.id}")) {
                 Row(Modifier.padding(horizontal = 12.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Icon(painterResource(R.drawable.ic_mannaka_place), null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(station.name, color = MaterialTheme.colorScheme.onPrimaryContainer, fontSize = 15.sp, lineHeight = 18.sp)
+                        Text(station.name, color = MaterialTheme.colorScheme.onSurface, fontSize = 15.sp, lineHeight = 18.sp)
                         Text(station.detail.ifBlank { "位置：%.4f, %.4f".format(java.util.Locale.US, station.latitude, station.longitude) },
                             color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, lineHeight = 13.sp)
                     }
@@ -150,7 +150,7 @@ internal fun MeetingParticipantCard(participant: MeetingParticipant, index: Int,
             TextButton(onClick = { retry++ }, enabled = enabled) { Text("再検索") }
         }
         OutlinedTextField(participant.input, onInput, enabled = enabled, singleLine = true,
-            modifier = Modifier.fillMaxWidth().onFocusChanged { focused = it.isFocused }
+            modifier = Modifier.fillMaxWidth().liquidGlass(18.dp).onFocusChanged { focused = it.isFocused }
                 .semantics { contentDescription = "${index + 1}人目の最寄り駅" },
             placeholder = { Text("最寄り駅を選ぶ", fontSize = 16.sp) },
             leadingIcon = { Icon(painterResource(R.drawable.ic_mannaka_place), null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp)) },
@@ -160,7 +160,7 @@ internal fun MeetingParticipantCard(participant: MeetingParticipant, index: Int,
             shape = RoundedCornerShape(18.dp),
             colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Color.Transparent,
                 focusedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
-                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant, focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant),
+                unfocusedContainerColor = Color.Transparent, focusedContainerColor = Color.Transparent),
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
             keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }))
         if (participant.selected != null) Text("選択済み：${participant.selected.detail.ifBlank { participant.selected.name }}",
@@ -179,7 +179,7 @@ internal fun MeetingParticipantCard(participant: MeetingParticipant, index: Int,
 internal fun MeetingAddButton(enabled: Boolean, onClick: () -> Unit) {
     val color = MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
     Surface(onClick = onClick, enabled = enabled, shape = RoundedCornerShape(24.dp), color = Color.Transparent,
-        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).drawWithCache {
+        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).liquidGlass(RoundedCornerShape(24.dp), drawBorder = false).drawWithCache {
             val stroke = Stroke(1.5.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 5.dp.toPx())))
             onDrawBehind { drawRoundRect(color, cornerRadius = CornerRadius(24.dp.toPx()), style = stroke) }
         }) {
@@ -203,8 +203,8 @@ internal fun MeetingTimePanel(day: Int, minutes: Int, onDone: (Int, Int) -> Unit
             Text("集合時間", style = MaterialTheme.typography.titleLarge)
         }
         MeetingDaySelector(draftDay) { draftDay = it }
-        Surface(shape = RoundedCornerShape(26.dp), color = MaterialTheme.colorScheme.surface,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
+        Surface(modifier = Modifier.liquidGlass(26.dp), shape = RoundedCornerShape(26.dp), color = Color.Transparent,
+            border = null) {
             Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 listOf(-30, -5).forEach { delta -> MeetingTimeStep(delta) { draftMinutes = shiftMeetingTime(draftMinutes, delta) } }
                 TextButton(onClick = {
@@ -229,7 +229,7 @@ internal fun MeetingTimePanel(day: Int, minutes: Int, onDone: (Int, Int) -> Unit
 
 @Composable
 private fun MeetingDaySelector(day: Int, onSelect: (Int) -> Unit) {
-    BoxWithConstraints(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(18.dp)).padding(4.dp)) {
+    BoxWithConstraints(Modifier.fillMaxWidth().liquidGlass(18.dp).padding(4.dp)) {
         val tabWidth = maxWidth / 3
         val position = animateDpAsState(tabWidth * day, tween(220), label = "集合日の選択位置")
         Surface(Modifier.offset { IntOffset(position.value.roundToPx(), 0) }.width(tabWidth).height(38.dp), shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surface, shadowElevation = 3.dp) {}

@@ -277,15 +277,27 @@ class AudioStemSeparationEngine(private val context: Context) {
             parseHeader()
         }
 
+        private var inputBuffer = ByteArray(0)
+
         fun readStereo(startFrame: Long, frameLength: Int): Array<FloatArray> {
             val stereo = Array(CHANNELS) { FloatArray(frameLength) }
+            readStereoInto(startFrame, frameLength, stereo)
+            return stereo
+        }
+
+        /** 再生中は同じバッファを使い、ブロックごとの配列生成を避ける。 */
+        fun readStereoInto(startFrame: Long, frameLength: Int, stereo: Array<FloatArray>) {
+            require(stereo.size == CHANNELS && stereo.all { it.size >= frameLength })
+            stereo.forEach { it.fill(0f, 0, frameLength) }
             val validStart = max(0L, startFrame)
             val validEnd = min(frameCount, startFrame + frameLength)
-            if (validStart >= validEnd) return stereo
+            if (validStart >= validEnd) return
             val validFrames = (validEnd - validStart).toInt()
-            val bytes = ByteArray(validFrames * bytesPerFrame)
+            val byteCount = validFrames * bytesPerFrame
+            if (inputBuffer.size < byteCount) inputBuffer = ByteArray(byteCount)
+            val bytes = inputBuffer
             randomAccessFile.seek(dataOffset + validStart * bytesPerFrame)
-            randomAccessFile.readFully(bytes)
+            randomAccessFile.readFully(bytes, 0, byteCount)
             val destinationOffset = (validStart - startFrame).toInt()
             var cursor = 0
             for (frame in 0 until validFrames) {
@@ -296,7 +308,6 @@ class AudioStemSeparationEngine(private val context: Context) {
                     stereo[outputChannel][destinationOffset + frame] = sample
                 }
             }
-            return stereo
         }
 
         private fun parseHeader() {

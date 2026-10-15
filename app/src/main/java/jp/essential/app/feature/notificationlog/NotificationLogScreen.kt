@@ -1,8 +1,9 @@
 package jp.essential.app.feature.notificationlog
 
+import jp.essential.app.ui.elasticListEdges
+
 import jp.essential.app.ui.liquidGlass
 import jp.essential.app.ui.fixedHeader
-import jp.essential.app.ui.FeatureHeader
 import jp.essential.app.ui.GlassFeatureTitle
 
 import android.content.ComponentName
@@ -71,7 +72,8 @@ internal fun NotificationLogScreen(storeOverride: NotificationLogStore? = null, 
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var refresh by remember { mutableLongStateOf(0) }
-    var deletion by remember { mutableStateOf<NotificationLogEntry?>(null) }
+    var settingsOpen by rememberSaveable { mutableStateOf(false) }
+    var selectedPackages by remember { mutableStateOf(emptySet<String>()) }
     val formatter = remember { DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss") }
     val xiaomiDevice = remember { jp.essential.app.device.DeviceOptimizer.current().isXiaomiFamily }
 
@@ -111,7 +113,9 @@ internal fun NotificationLogScreen(storeOverride: NotificationLogStore? = null, 
     LaunchedEffect(revision, keptOnly, limit, refresh) {
         loading = true
         try {
-            entries = withContext(Dispatchers.IO) { store.list(keptOnly, limit) }
+            val loaded = withContext(Dispatchers.IO) { store.list(keptOnly, limit) to store.selectedPackages() }
+            entries = loaded.first
+            selectedPackages = loaded.second
             error = null
         } catch (failure: Exception) {
             if (failure is kotlinx.coroutines.CancellationException) throw failure
@@ -120,7 +124,7 @@ internal fun NotificationLogScreen(storeOverride: NotificationLogStore? = null, 
     }
     fun change(action: () -> Unit) {
         scope.launch {
-            try { withContext(Dispatchers.IO) { action() } }
+            try { withContext(Dispatchers.IO) { action() }; error = null }
             catch (failure: Exception) {
                 if (failure is kotlinx.coroutines.CancellationException) throw failure
                 error = "変更を保存できませんでした。もう一度お試しください。"
@@ -128,15 +132,22 @@ internal fun NotificationLogScreen(storeOverride: NotificationLogStore? = null, 
         }
     }
     LazyColumn(
-        modifier = Modifier.fillMaxSize().testTag("notification-log-screen"),
+        overscrollEffect = null, modifier = Modifier.elasticListEdges().fillMaxSize().testTag("notification-log-screen"),
         contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 12.dp, bottom = 110.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         fixedHeader {
-            FeatureHeader("通知ログ", onBack) { NotificationLogLogo() }
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                GlassBackButton(onClick = onBack)
+                GlassFeatureTitle("通知ログ", Modifier.weight(1f))
+                NotificationLogLogo()
+                TextButton(onClick = { settingsOpen = true }, modifier = Modifier.liquidGlass(22.dp)
+                    .testTag("notification-settings")) { Text("設定") }
+            }
         }
         item("notification-connection") {
-            if (allowed) Text(if (connected) "通知を記録しています" else "通知サービスの接続待ち",
+            if (allowed) Text(if (selectedPackages.isEmpty()) "設定から記録するアプリを追加してください" else if (connected) "選択した${selectedPackages.size}個のアプリの通知を記録しています" else "通知サービスの接続待ち",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (!allowed) progressiveItem(1, "notification-access") {
@@ -146,7 +157,7 @@ internal fun NotificationLogScreen(storeOverride: NotificationLogStore? = null, 
                     connected -> "通知を記録しています"
                     else -> "許可済み・通知サービスの接続待ち"
                 }, style = MaterialTheme.typography.titleMedium)
-                Text("許可後に届いた通知を、この端末だけに保存します。通知を消してもログは残ります。", style = MaterialTheme.typography.bodyMedium)
+                Text("許可後に届いた、設定で選択したアプリの通知をこの端末だけに保存します。通知を消してもログは残ります。", style = MaterialTheme.typography.bodyMedium)
                 Text("通常のログは受信から3日後に自動削除。keepすると残せます。OSが伏せる内容は記録できません。", style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text("省電力制御などでバックグラウンド削除が遅れる場合も、画面表示時に期限切れを削除します。", style = MaterialTheme.typography.bodySmall,
@@ -161,7 +172,7 @@ internal fun NotificationLogScreen(storeOverride: NotificationLogStore? = null, 
             NotificationSegments(keptOnly) { keptOnly = it; limit = 100 }
             Text("通常のログは3日間保存。keepすると自動削除されません。",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text("ログの削除は通知欄の通知には影響しません。", style = MaterialTheme.typography.bodySmall,
+            Text("右にスワイプでkeep、左にスワイプで削除。ログの削除は通知欄の通知には影響しません。", style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (xiaomiDevice) {
                 Text("HyperOSで記録が途切れる場合は、自動起動とアプリのバッテリー設定を確認してください。設定変更は任意です。",
@@ -188,7 +199,7 @@ internal fun NotificationLogScreen(storeOverride: NotificationLogStore? = null, 
                     modifier = Modifier.testTag("notification-entry-${entry.id}"),
                     kept = entry.kept,
                     onSave = { change { store.keep(entry.id, true) } },
-                    onDelete = { deletion = entry },
+                    onDelete = { change { store.delete(entry.id) } },
                 ) {
                 LogGlassCard {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -225,12 +236,9 @@ internal fun NotificationLogScreen(storeOverride: NotificationLogStore? = null, 
             OutlinedButton(onClick = { limit += 100 }, modifier = Modifier.fillMaxWidth()) { Text("さらに表示") }
         }
     }
-    deletion?.let { entry ->
-        AlertDialog(onDismissRequest = { deletion = null }, title = { Text("このログを削除しますか？") },
-            text = { Text("${entry.appName}のログを削除します。元に戻せません。") },
-            confirmButton = { TextButton(onClick = { deletion = null; change { store.delete(entry.id) } }) { Text("削除する") } },
-            dismissButton = { TextButton(onClick = { deletion = null }) { Text("キャンセル") } })
-    }
+    if (settingsOpen) NotificationAppSettings(store, selectedPackages,
+        onChange = { packageName, selected -> change { store.setAppSelected(packageName, selected) } },
+        saveError = error, onClose = { settingsOpen = false })
 
 }
 
@@ -243,7 +251,7 @@ private fun LogGlassCard(modifier: Modifier = Modifier, content: @Composable Col
 
 /** パッケージのアイコンをIOで取得し、未インストールのアプリは頭文字を表示する。 */
 @Composable
-private fun NotificationAppIcon(packageName: String, appName: String) {
+internal fun NotificationAppIcon(packageName: String, appName: String) {
     val context = LocalContext.current
     val bitmap by produceState<android.graphics.Bitmap?>(null, packageName) {
         value = withContext(Dispatchers.IO) {

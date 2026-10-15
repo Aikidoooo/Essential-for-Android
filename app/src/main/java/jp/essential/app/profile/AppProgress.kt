@@ -23,6 +23,20 @@ data class AppReward(
     val imageRes: Int,
 )
 
+/** 条件達成時のおしらせと、端末に保存された既読状態。 */
+data class RewardNotice(val reward: AppReward, val read: Boolean)
+
+/** 報酬とXP配布を共通の一覧・未読表示で扱う。 */
+data class AppNotice(
+    val id: String,
+    val title: String,
+    val detail: String,
+    val read: Boolean,
+    val imageRes: Int? = null,
+    val xp: Int? = null,
+    val createdAt: Long = 0,
+)
+
 val appRewards = listOf(
     AppReward(16, "Anemo Essential", "アネモカラーのアプリアイコン", R.drawable.routine_reward_lv16),
     AppReward(20, "Geo Essential", "ジオカラーのアプリアイコン", R.drawable.routine_reward_lv20),
@@ -86,30 +100,156 @@ class AppProgressStore(context: Context) {
 
     init {
         migrateRoutineProgress()
+        synchronized(updateRewardLock) {
+            val editor = preferences.edit()
+            if (recordRewardNotices(editor, loadXp())) editor.apply()
+        }
     }
 
     fun loadXp(): Int = preferences.getInt(KEY_TOTAL_XP, 0).coerceAtLeast(0)
 
+    /** 予定の完了IDとXPを同時保存し、再試行でも二重付与しない。 */
+    fun awardTaskXp(occurrenceId: String, points: Int): Boolean = synchronized(updateRewardLock) {
+        require(points in 1..300)
+        val awarded = preferences.getStringSet("task_xp_awarded_v1", emptySet()).orEmpty()
+        if (occurrenceId in awarded) return@synchronized false
+        val next = (loadXp().toLong() + points).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+        val editor = preferences.edit().putInt(KEY_TOTAL_XP, next)
+            .putStringSet("task_xp_awarded_v1", awarded + occurrenceId)
+        recordRewardNotices(editor, next)
+        check(editor.commit()) { "完了XPを保存できませんでした" }
+        true
+    }
+
     /** 正の値だけを加算し、加算後の累計XPを返す。 */
-    fun addXp(points: Int): Int {
-        if (points <= 0) return loadXp()
+    fun addXp(points: Int): Int = synchronized(updateRewardLock) {
+        if (points <= 0) return@synchronized loadXp()
         val next = (loadXp().toLong() + points.toLong()).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
-        preferences.edit().putInt(KEY_TOTAL_XP, next).apply()
-        return next
+        preferences.edit().putInt(KEY_TOTAL_XP, next).also { recordRewardNotices(it, next) }.apply()
+        next
     }
 
     /** 更新後の初回起動に1200XPを付与し、同じ版やダウングレードでは再付与しない。 */
-    fun awardAppUpdate(currentVersion: Int, updatedInstallation: Boolean = false): Boolean = synchronized(updateRewardLock) {
+    fun awardAppUpdate(currentVersion: Int, updatedInstallation: Boolean = false, now: Long = System.currentTimeMillis() / 1000): Boolean = synchronized(updateRewardLock) {
         val previous = preferences.getInt(KEY_UPDATE_VERSION, -1)
         val reward = if (previous < 0) updatedInstallation else currentVersion > previous
         val nextVersion = maxOf(previous, currentVersion)
         val editor = preferences.edit().putInt(KEY_UPDATE_VERSION, nextVersion)
-        if (reward) editor.putInt(KEY_TOTAL_XP, (loadXp().toLong() + 1200L).coerceAtMost(Int.MAX_VALUE.toLong()).toInt())
+        // 次回更新のキャンペーンは更新報酬と同時保存し、再起動や後続更新で延長しない。
+        if (reward && currentVersion >= 30 && previous < 30 && !preferences.contains("design_update_trial_start_v30")) {
+            val start = jp.essential.app.design.AppDesignAccessStore(applicationContext).effectiveNow(now)
+            editor.putLong("design_update_trial_start_v30", start)
+                .putLong("design_update_trial_end_v30", start + 7L * 24 * 60 * 60)
+        }
+        if (reward) {
+            val current = loadXp()
+            val next = (current.toLong() + 1200L).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+            editor.putInt(KEY_TOTAL_XP, next)
+            recordRewardNotices(editor, next)
+            recordXpNotice(editor, "update:$currentVersion", "update", next - current)
+        }
         check(editor.commit()) { "更新報酬を保存できませんでした" }
         reward
     }
-    fun setXp(points: Int) {
-        preferences.edit().putInt(KEY_TOTAL_XP, points.coerceAtLeast(0)).apply()
+    fun setXp(points: Int) = synchronized(updateRewardLock) {
+        val next = points.coerceAtLeast(0)
+        preferences.edit().putInt(KEY_TOTAL_XP, next).also { recordRewardNotices(it, next) }.apply()
+    }
+
+    /** 使用済みIDとXPを同一コミットで保存し、連打や同時受取で二重加算しない。 */
+    fun redeemQrXp(value: String): Boolean = synchronized(updateRewardLock) {
+        val modulus = applicationContext.assets.open("xp-issuer-public.txt").bufferedReader().use { it.readText() }
+        val grant = jp.essential.app.feature.qr.XpVoucher.verify(value, modulus)
+        val claimed = preferences.getStringSet("xp_qr_claimed_v1", emptySet()).orEmpty().toSet()
+        if (grant.id in claimed) return@synchronized false
+        // 使用済みIDは期限切れ後も削除せず、端末日時を戻した再使用を防ぐ。
+        check(claimed.size < 100_000) { "受取履歴の上限に達しました" }
+        val current = loadXp()
+        val next = (current.toLong() + grant.points).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+        val editor = preferences.edit().putInt(KEY_TOTAL_XP, next)
+            .putStringSet("xp_qr_claimed_v1", claimed + grant.id)
+        recordRewardNotices(editor, next)
+        recordXpNotice(editor, "qr:${grant.id}", "qr", next - current)
+        check(editor.commit()) { "XP受取を保存できませんでした" }
+        true
+    }
+
+    fun loadRewardNotices(): List<RewardNotice> {
+        val levels = preferences.getStringSet(KEY_NOTICE_LEVELS, emptySet()).orEmpty()
+        val read = preferences.getStringSet(KEY_NOTICE_READ, emptySet()).orEmpty()
+        return appRewards.filter { it.level.toString() in levels }.asReversed()
+            .map { RewardNotice(it, it.level.toString() in read) }
+    }
+
+    fun loadNotices(): List<AppNotice> {
+        val rewards = loadRewardNotices().map {
+            AppNotice("reward:${it.reward.level}", "${it.reward.title}を獲得しました",
+                "LV ${it.reward.level} 達成\n${it.reward.description}", it.read, imageRes = it.reward.imageRes)
+        }
+        val read = preferences.getStringSet(KEY_XP_NOTICE_READ, emptySet()).orEmpty()
+        val entries = org.json.JSONArray(preferences.getString(KEY_XP_NOTICES, "[]"))
+        val xpNotices = (0 until entries.length()).map { index ->
+            val entry = entries.getJSONObject(index)
+            val qr = entry.getString("kind") == "qr"
+            val id = entry.getString("id")
+            AppNotice(id, if (qr) "QRコードのXPを獲得しました" else "アップデートのXPを獲得しました",
+                if (qr) "QRコードからのXP受取" else "アップデートによるXP配布", id in read,
+                xp = entry.getInt("points"), createdAt = entry.getLong("time"))
+        }
+        return (xpNotices.asReversed() + rewards).sortedByDescending { it.createdAt }
+    }
+
+    /** 一覧に表示した通知のIDだけを既読へ保存する。 */
+    fun markNoticesRead(ids: Set<String>) = synchronized(updateRewardLock) {
+        val existing = loadNotices().map { it.id }.toSet()
+        val selected = ids.intersect(existing)
+        val rewardLevels = selected.mapNotNull { it.removePrefix("reward:").toIntOrNull() }.toSet()
+        markRewardNoticesRead(rewardLevels)
+        val read = preferences.getStringSet(KEY_XP_NOTICE_READ, emptySet()).orEmpty()
+        val next = read + selected.filter { it.startsWith("qr:") || it.startsWith("update:") }
+        if (next != read) preferences.edit().putStringSet(KEY_XP_NOTICE_READ, next).apply()
+    }
+
+    /** XP付与・受取済みIDと同じコミットに通知を含め、再起動や連打で重複しない。 */
+    private fun recordXpNotice(editor: android.content.SharedPreferences.Editor, id: String, kind: String, points: Int) {
+        val entries = org.json.JSONArray(preferences.getString(KEY_XP_NOTICES, "[]"))
+        if ((0 until entries.length()).any { entries.getJSONObject(it).getString("id") == id }) return
+        entries.put(org.json.JSONObject().put("id", id).put("kind", kind).put("points", points)
+            .put("time", System.currentTimeMillis()))
+        editor.putString(KEY_XP_NOTICES, entries.toString())
+    }
+
+    /** 一覧を開いた時点の通知だけを既読にする。次に届いた通知は未読のまま残す。 */
+    fun markRewardNoticesRead(levels: Set<Int>) = synchronized(updateRewardLock) {
+        val existing = preferences.getStringSet(KEY_NOTICE_LEVELS, emptySet()).orEmpty()
+        val read = preferences.getStringSet(KEY_NOTICE_READ, emptySet()).orEmpty()
+        val next = read + levels.map(Int::toString).filter { it in existing }
+        if (next != read) preferences.edit().putStringSet(KEY_NOTICE_READ, next).apply()
+    }
+
+    /** 登録した画面が破棄されたら、返された解除処理を呼び出す。 */
+    fun observeChanges(onChange: () -> Unit): () -> Unit {
+        val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, _ -> onChange() }
+        preferences.registerOnSharedPreferenceChangeListener(listener)
+        return { preferences.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+
+    /** XPと同じ編集で報酬を自動獲得し、レベルごとに一度だけ通知する。 */
+    private fun recordRewardNotices(editor: android.content.SharedPreferences.Editor, xp: Int): Boolean {
+        val claimed = loadClaimedRewards().map(Int::toString).toSet()
+        // 導入前に受け取った報酬は通知済みとして扱い、過去の獲得を再通知しない。
+        val seen = preferences.getStringSet(KEY_NOTICE_SEEN, null)?.toSet() ?: claimed
+        val level = calculateAppLevel(xp).level
+        val unlocked = appRewards.filter { it.level <= level }.map { it.level.toString() }.toSet()
+        val added = unlocked - seen
+        val initialize = !preferences.contains(KEY_NOTICE_SEEN)
+        if (added.isNotEmpty() || initialize) {
+            editor.putStringSet(KEY_NOTICE_SEEN, seen + unlocked)
+            editor.putStringSet(KEY_NOTICE_LEVELS,
+                preferences.getStringSet(KEY_NOTICE_LEVELS, emptySet()).orEmpty() + added)
+            editor.putStringSet(KEY_CLAIMED_REWARDS, claimed + unlocked)
+        }
+        return added.isNotEmpty() || initialize
     }
 
     fun loadClaimedRewards(): Set<Int> = preferences.getStringSet(KEY_CLAIMED_REWARDS, emptySet())
@@ -138,6 +278,11 @@ class AppProgressStore(context: Context) {
     }
 
     private companion object {
+        const val KEY_XP_NOTICES = "xp_notices_v1"
+        const val KEY_XP_NOTICE_READ = "xp_notice_read_v1"
+        const val KEY_NOTICE_SEEN = "reward_notice_seen_v1"
+        const val KEY_NOTICE_LEVELS = "reward_notice_levels_v1"
+        const val KEY_NOTICE_READ = "reward_notice_read_v1"
         val updateRewardLock = Any()
         const val KEY_UPDATE_VERSION = "update_reward_version"
         const val KEY_TOTAL_XP = "total_xp"
@@ -213,6 +358,12 @@ class ProfileStore(context: Context) {
     }
 
     fun loadHomeBackgroundPath(): String? = preferences.getString(KEY_HOME_BACKGROUND, null)?.takeIf { File(it).isFile }
+
+    fun loadHomeBackgroundEnabled(): Boolean = preferences.getBoolean("home_background_enabled", true)
+
+    fun saveHomeBackgroundEnabled(enabled: Boolean) {
+        preferences.edit().putBoolean("home_background_enabled", enabled).apply()
+    }
 
     fun clearHomeBackground() {
         val previous = loadHomeBackgroundPath()

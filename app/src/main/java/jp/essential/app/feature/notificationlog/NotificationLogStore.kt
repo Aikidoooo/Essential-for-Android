@@ -21,7 +21,7 @@ internal data class NotificationLogEntry(
 
 /** 通知の本文をバックアップ対象外の端末内DBに保存する。処理はIOスレッドから呼ぶ。 */
 internal class NotificationLogStore(context: Context, databaseName: String = "notification-log.db") :
-    SQLiteOpenHelper(context, java.io.File(context.noBackupFilesDir, databaseName).absolutePath, null, 1) {
+    SQLiteOpenHelper(context, java.io.File(context.noBackupFilesDir, databaseName).absolutePath, null, 2) {
     private val updates = MutableStateFlow(0L)
     val revision = updates.asStateFlow()
     private var nextPruneAt = 0L
@@ -30,9 +30,45 @@ internal class NotificationLogStore(context: Context, databaseName: String = "no
         db.execSQL("CREATE TABLE logs (id INTEGER PRIMARY KEY AUTOINCREMENT, package_name TEXT NOT NULL, app_name TEXT NOT NULL, title TEXT NOT NULL, body TEXT NOT NULL, received_at INTEGER NOT NULL, kept INTEGER NOT NULL DEFAULT 0)")
         db.execSQL("CREATE INDEX logs_expiry ON logs(kept, received_at)")
         db.execSQL("CREATE INDEX logs_order ON logs(received_at DESC, id DESC)")
+        createSelectionTable(db)
     }
 
-    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        if (oldVersion < 2) createSelectionTable(db)
+    }
+
+    private fun createSelectionTable(db: SQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS selected_apps (package_name TEXT PRIMARY KEY NOT NULL)")
+    }
+
+    @Synchronized
+    fun selectedPackages(): Set<String> = readableDatabase.query("selected_apps", arrayOf("package_name"),
+        null, null, null, null, null).use { cursor ->
+        buildSet { while (cursor.moveToNext()) add(cursor.getString(0)) }
+    }
+
+    @Synchronized
+    fun setAppSelected(packageName: String, selected: Boolean) {
+        require(packageName.isNotBlank() && packageName.length <= 512)
+        if (selected) writableDatabase.execSQL("INSERT OR IGNORE INTO selected_apps(package_name) VALUES (?)", arrayOf(packageName))
+        else writableDatabase.delete("selected_apps", "package_name=?", arrayOf(packageName))
+        updates.value += 1
+    }
+
+    @Synchronized
+    fun isAppSelected(packageName: String): Boolean = readableDatabase.rawQuery(
+        "SELECT 1 FROM selected_apps WHERE package_name=?", arrayOf(packageName)).use { it.moveToFirst() }
+
+    /** 対象の削除と記録を同じロックで直列化し、保存直前にも選択を検査する。 */
+    @Synchronized
+    fun recordSelected(packageName: String, appName: String, title: String, body: String,
+        now: Long = System.currentTimeMillis()): Long =
+        if (isAppSelected(packageName)) record(packageName, appName, title, body, now) else -1L
+
+    @Synchronized
+    fun knownPackages(): Set<String> = readableDatabase.rawQuery("SELECT DISTINCT package_name FROM logs", null).use { cursor ->
+        buildSet { while (cursor.moveToNext()) add(cursor.getString(0)) }
+    }
 
     @Synchronized
     fun record(packageName: String, appName: String, title: String, body: String, now: Long = System.currentTimeMillis()): Long {

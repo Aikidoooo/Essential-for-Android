@@ -160,7 +160,6 @@ internal fun WordDistanceScreen(onBack: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF151622))
             .statusBarsPadding()
             .navigationBarsPadding()
             .imePadding(),
@@ -191,17 +190,7 @@ internal fun WordDistanceScreen(onBack: () -> Unit) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 22.dp, vertical = 4.dp)
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(Color.White.copy(alpha = 0.12f), Color(0xFFB9D7FF).copy(alpha = 0.06f)),
-                        ),
-                    )
-                    .border(
-                        1.dp,
-                        Brush.horizontalGradient(listOf(Color.White.copy(alpha = 0.28f), Color.White.copy(alpha = 0.08f))),
-                        RoundedCornerShape(18.dp),
-                    )
+                    .liquidGlass(18.dp)
                     .padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -218,7 +207,7 @@ internal fun WordDistanceScreen(onBack: () -> Unit) {
                         pageReady -> "unityroomのゲーム"
                         else -> "ゲームを読み込み中…"
                     },
-                    color = Color(0xFFDAE5F3),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.labelMedium,
                 )
             }
@@ -392,25 +381,15 @@ internal fun WordDistanceScreen(onBack: () -> Unit) {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(
-                            Brush.verticalGradient(
-                                listOf(Color(0xE61B2635), Color(0xD9121925), Color(0xE6090A10)),
-                            ),
-                            RoundedCornerShape(26.dp),
-                        )
-                        .border(
-                            1.dp,
-                            Brush.linearGradient(listOf(Color.White.copy(alpha = 0.42f), Color.White.copy(alpha = 0.06f))),
-                            RoundedCornerShape(26.dp),
-                        )
+                        .liquidGlass(26.dp)
                         .padding(24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center,
                 ) {
                     if (loadError) {
-                        Text("ゲームを読み込めませんでした", color = Color.White, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        Text("ゲームを読み込めませんでした", color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                         Spacer(Modifier.height(8.dp))
-                        Text("通信状態を確認して、もう一度お試しください。", color = Color(0xFFDAE5F3), textAlign = TextAlign.Center)
+                        Text("通信状態を確認して、もう一度お試しください。", color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
                         Spacer(Modifier.height(16.dp))
                         Button(
                             onClick = ::loadGame,
@@ -421,10 +400,10 @@ internal fun WordDistanceScreen(onBack: () -> Unit) {
                             Text("再読み込み")
                         }
                     } else {
-                        CircularProgressIndicator(color = Color(0xFFD7E8FF), strokeWidth = 2.5.dp)
+                        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary, strokeWidth = 2.5.dp)
                         Spacer(Modifier.height(14.dp))
-                        Text("公式ゲームを読み込んでいます", color = Color.White, style = MaterialTheme.typography.titleMedium)
-                        Text("初回は数秒かかる場合があります", color = Color(0xFFDAE5F3), style = MaterialTheme.typography.bodySmall)
+                        Text("公式ゲームを読み込んでいます", color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.titleMedium)
+                        Text("初回は数秒かかる場合があります", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
@@ -435,21 +414,13 @@ internal fun WordDistanceScreen(onBack: () -> Unit) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp, vertical = 10.dp)
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(
-                        Brush.horizontalGradient(listOf(Color.White.copy(alpha = 0.13f), Color(0xFFB9D7FF).copy(alpha = 0.06f))),
-                    )
-                    .border(
-                        1.dp,
-                        Brush.horizontalGradient(listOf(Color.White.copy(alpha = 0.26f), Color.White.copy(alpha = 0.07f))),
-                        RoundedCornerShape(20.dp),
-                    )
+                    .liquidGlass(20.dp)
                     .padding(horizontal = 14.dp, vertical = 9.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("Essential", color = Color(0xFFF3F1FF), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge)
+                Text("Essential", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge)
                 Spacer(Modifier.weight(1f))
-                Text("提供元 unityroom", color = Color(0xFFDAE5F3), style = MaterialTheme.typography.labelSmall)
+                Text("提供元 unityroom", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
             }
         }
     }

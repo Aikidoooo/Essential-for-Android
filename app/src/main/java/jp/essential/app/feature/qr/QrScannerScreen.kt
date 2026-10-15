@@ -421,7 +421,11 @@ fun QrScannerScreen(modePosition: Float = 0f, transitionFrame: android.graphics.
                             visible = scannedValue != null,
                             enter = fadeIn() + scaleIn(initialScale = 0.92f),
                         ) {
-                            ScanResultCard(
+                            if (scannedValue.orEmpty().startsWith(XpVoucher.PREFIX)) {
+                                XpVoucherOffer(scannedValue.orEmpty())
+                            } else if (scannedValue.orEmpty().startsWith(DesignVoucher.PREFIX)) {
+                                DesignVoucherOffer(scannedValue.orEmpty())
+                            } else ScanResultCard(
                                 value = scannedValue.orEmpty(),
                                 onCopy = {
                                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager

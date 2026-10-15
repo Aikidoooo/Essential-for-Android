@@ -1,5 +1,9 @@
 package jp.essential.app.feature.mannaka
 
+import jp.essential.app.ui.elasticListEdges
+
+import jp.essential.app.ui.liquidGlass
+
 import jp.essential.app.ui.fixedHeader
 import jp.essential.app.ui.FeatureHeader
 import jp.essential.app.ui.GlassFeatureTitle
@@ -211,13 +215,13 @@ internal fun MannakaContent(onBack: () -> Unit, repository: MeetingDataSource = 
     val searchAction: @Composable () -> Unit = {
             Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (firstMissing >= 0 && !busy) {
-                    Surface(shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.primaryContainer) {
-                        Text("${firstMissing + 1}人目の最寄り駅を選んでください", color = MaterialTheme.colorScheme.onPrimaryContainer, fontSize = 12.sp,
+                    Surface(modifier = Modifier.liquidGlass(24.dp), shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp), color = Color.Transparent) {
+                        Text("${firstMissing + 1}人目の最寄り駅を選んでください", color = MaterialTheme.colorScheme.onSurface, fontSize = 12.sp,
                             modifier = Modifier.padding(horizontal = 14.dp, vertical = 5.dp))
                     }
                 }
-                Button(onClick = ::search, enabled = !busy && firstMissing < 0, modifier = Modifier.fillMaxWidth().height(54.dp),
-                    colors = ButtonDefaults.buttonColors(disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant, disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant)) {
+                Button(onClick = ::search, enabled = !busy && firstMissing < 0, modifier = Modifier.fillMaxWidth().height(54.dp).liquidGlass(androidx.compose.foundation.shape.CircleShape),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f), contentColor = MaterialTheme.colorScheme.onSurface, disabledContainerColor = Color.Transparent, disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant)) {
                     Icon(painterResource(R.drawable.ic_mannaka_spark), null, modifier = Modifier.size(21.dp))
                     Spacer(Modifier.width(8.dp))
                     Text(if (busy) "中心駅を探しています…" else "中心駅を探す", fontSize = 18.sp)
@@ -264,7 +268,7 @@ internal fun MannakaContent(onBack: () -> Unit, repository: MeetingDataSource = 
         }
     } else Box(Modifier.fillMaxSize().imePadding()) {
     LazyColumn(
-        Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
+        overscrollEffect = null, modifier = Modifier.elasticListEdges().fillMaxSize(),
         contentPadding = PaddingValues(start = 16.dp, top = 24.dp, end = 16.dp, bottom = if (keyboardOpen) 150.dp else 56.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -274,8 +278,7 @@ internal fun MannakaContent(onBack: () -> Unit, repository: MeetingDataSource = 
                 GlassBackButton(onClick = onBack, modifier = Modifier.semantics { contentDescription = "ホームに戻る" })
                 Box(Modifier.weight(1f)) { GlassFeatureTitle("まんなか") }
                 val actionShape = RoundedCornerShape(28.dp)
-                Row(Modifier.background(Color.White.copy(alpha = 0.17f), actionShape)
-                    .border(1.dp, Color.White.copy(alpha = 0.48f), actionShape)
+                Row(Modifier.liquidGlass(actionShape)
                     .padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = { openSheet(MeetingSheet.Favorites) }, modifier = Modifier.size(46.dp)) {
                     Icon(painterResource(R.drawable.ic_mannaka_favorite_border), "お気に入り", tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -296,8 +299,8 @@ internal fun MannakaContent(onBack: () -> Unit, repository: MeetingDataSource = 
         progressiveItem(3, keyPrefix = "mannaka-input") {
             Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("参加者", fontSize = 15.sp)
-                FilledTonalButton(onClick = ::addParticipant, enabled = !busy, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp), modifier = Modifier.height(34.dp),
-                    colors = ButtonDefaults.filledTonalButtonColors(containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer)) {
+                FilledTonalButton(onClick = ::addParticipant, enabled = !busy, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp), modifier = Modifier.height(34.dp).liquidGlass(androidx.compose.foundation.shape.CircleShape),
+                    colors = ButtonDefaults.filledTonalButtonColors(containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f), contentColor = MaterialTheme.colorScheme.onSurface)) {
                     Icon(painterResource(R.drawable.ic_mannaka_add), null, modifier = Modifier.size(18.dp))
                     Text("追加", fontSize = 14.sp)
                 }
@@ -328,8 +331,8 @@ internal fun MannakaContent(onBack: () -> Unit, repository: MeetingDataSource = 
     }
 
         if (keyboardOpen) {
-            Surface(Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
-                color = MaterialTheme.colorScheme.background.copy(alpha = 0.97f),
+            Surface(Modifier.align(Alignment.BottomCenter).fillMaxWidth().liquidGlass(androidx.compose.foundation.shape.RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)),
+                color = Color.Transparent,
                 shape = androidx.compose.foundation.shape.RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)) {
                 Box(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) { searchAction() }
             }
@@ -339,7 +342,7 @@ internal fun MannakaContent(onBack: () -> Unit, repository: MeetingDataSource = 
     }
 
     sheet?.let { activeSheet ->
-        ModalBottomSheet(onDismissRequest = { sheet = null }, sheetState = sheetState, containerColor = MaterialTheme.colorScheme.background,
+        ModalBottomSheet(onDismissRequest = { sheet = null }, sheetState = sheetState, containerColor = Color.Transparent,
             modifier = Modifier.padding(horizontal = 8.dp).padding(bottom = 8.dp),
             shape = androidx.compose.foundation.shape.RoundedCornerShape(30.dp),
             dragHandle = {
@@ -348,7 +351,7 @@ internal fun MannakaContent(onBack: () -> Unit, repository: MeetingDataSource = 
             },
             scrimColor = androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.22f)) {
             MeetingMotionScope("sheet-${activeSheet.name}") {
-                ProgressiveWidget(0) {
+                ProgressiveWidget(0, Modifier.liquidGlass(30.dp)) {
             when (activeSheet) {
                 MeetingSheet.Time -> MeetingTimePanel(meetingDay, meetingMinutes) { day, minutes ->
                     meetingDay = day; meetingMinutes = minutes; notice = null; closeSheet()
@@ -364,7 +367,7 @@ internal fun MannakaContent(onBack: () -> Unit, repository: MeetingDataSource = 
                     Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text(if (activeSheet == MeetingSheet.Favorites) "お気に入り" else "最近の予定", style = MaterialTheme.typography.titleLarge)
                         if (entries.isEmpty()) Text(if (activeSheet == MeetingSheet.Favorites) "検索結果から予定を保存できます。" else "中心駅を検索すると、最近の予定がここに残ります。", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        LazyColumn(Modifier.heightIn(max = 420.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        LazyColumn(overscrollEffect = null, modifier = Modifier.elasticListEdges().heightIn(max = 420.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             itemsIndexed(entries, key = { index, _ -> index }) { _, entry ->
                                 MeetingGlassCard {
                                     Text(entry.substringBefore("https://").trim(), fontSize = 13.sp)
@@ -374,7 +377,7 @@ internal fun MannakaContent(onBack: () -> Unit, repository: MeetingDataSource = 
                         }
                     }
                 }
-                MeetingSheet.Information -> Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 28.dp),
+                MeetingSheet.Information -> Column(Modifier.fillMaxWidth().elasticListEdges().verticalScroll(rememberScrollState(), overscrollEffect = null).padding(horizontal = 20.dp).padding(bottom = 28.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     Text("まんなかについて", style = MaterialTheme.typography.titleLarge)
                     Text("友達の最寄り駅を選んで、集合しやすい駅と周辺の遊びを探せます。参加者の人数に固定の上限はありません。")

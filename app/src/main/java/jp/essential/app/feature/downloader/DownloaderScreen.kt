@@ -1,8 +1,11 @@
 package jp.essential.app.feature.downloader
 
+import jp.essential.app.ui.elasticListEdges
+
 import jp.essential.app.ui.fixedHeader
 import jp.essential.app.ui.FeatureHeader
 import jp.essential.app.ui.GlassFeatureTitle
+import jp.essential.app.ui.liquidGlass
 
 import android.Manifest
 import android.content.ClipData
@@ -172,7 +175,7 @@ fun DownloaderScreen(
     }
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        overscrollEffect = null, modifier = Modifier.elasticListEdges().fillMaxSize(),
         contentPadding = PaddingValues(start = 20.dp, top = 18.dp, end = 20.dp, bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
@@ -187,7 +190,7 @@ fun DownloaderScreen(
         progressiveItem(motionIndex++) {
             MotionSurface(
                 shape = RoundedCornerShape(20.dp),
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.78f),
+                color = Color.Transparent,
                 contentColor = MaterialTheme.colorScheme.onSurface,
                 enabled = !isBusy,
                 onClick = onOpenSettings,
@@ -213,7 +216,7 @@ fun DownloaderScreen(
             OutlinedTextField(
                 value = url,
                 onValueChange = { url = it },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().liquidGlass(RoundedCornerShape(22.dp)),
                 enabled = true,
                 shape = RoundedCornerShape(22.dp),
                 label = { Text("公開URL") },
@@ -354,8 +357,14 @@ fun DownloaderScreen(
                     (mediaType != DownloadMediaType.Image || (!imageLoading && analyzedUrl == url && selectedCandidateIds.isNotEmpty())),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(58.dp),
+                    .height(58.dp)
+                    .liquidGlass(RoundedCornerShape(20.dp)),
                 shape = RoundedCornerShape(20.dp),
+                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                    disabledContainerColor = Color.Transparent,
+                    disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)),
             ) {
                 Text(if (mediaType == DownloadMediaType.Image) "選択した${selectedCandidateIds.size}枚を保存" else "Download/Essentialへ保存")
             }
@@ -462,8 +471,8 @@ internal fun ImageCandidateCard(
     }
     MotionSurface(
         shape = RoundedCornerShape(22.dp),
-        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
-        contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+        color = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
+        contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
         enabled = enabled, onClick = onToggle, onLongClick = { showPreview = true }, modifier = modifier,
     ) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -569,8 +578,8 @@ private fun <T> OptionRow(
         values.forEach { value ->
             val isSelected = value == selected
             MotionSurface(
-                color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
-                contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
                 shape = CircleShape,
                 enabled = enabled,
                 onClick = { onSelected(value) },
@@ -597,7 +606,7 @@ private fun DownloadStatus(state: DownloadState) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.78f), RoundedCornerShape(20.dp))
+                .liquidGlass(RoundedCornerShape(20.dp))
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -665,7 +674,7 @@ private fun MotionSurface(
         shape = shape,
         modifier = modifier
             .graphicsLayer(scaleX = scale, scaleY = scale)
-            .clip(shape)
+            .liquidGlass(shape)
             .combinedClickable(
                 enabled = enabled,
                 interactionSource = interactionSource,

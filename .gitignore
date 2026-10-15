@@ -11,6 +11,9 @@ captures/
 .cxx/
 *.jks
 *.keystore
+*.dpapi
+/scripts/zxing-core.jar
+/Essential-XP発行者/
 keystore.properties
 # 検証成果物と利用者の添付画像を公開リポジトリへ含めない。
 /.codex-remote-attachments/
@@ -31,3 +34,6 @@ keystore.properties
 # 学習・ビルドのローカル環境は再生成可能なためGitへ含めない。
 /CameraStyleAI_Codex_Starter/.venv-dped/
 /CameraStyleAI_Codex_Starter/.gradle-home/
+
+# デザイン配布の秘密鍵と発行済みQRは公開しない。
+/Essential-デザイン発行者/

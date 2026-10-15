@@ -1,5 +1,9 @@
 package jp.essential.app.feature.mannaka
 
+import jp.essential.app.ui.elasticListEdges
+
+import jp.essential.app.ui.liquidGlass
+
 import jp.essential.app.ui.fixedHeader
 import jp.essential.app.ui.FeatureHeader
 import jp.essential.app.ui.GlassFeatureTitle
@@ -60,14 +64,14 @@ internal fun MeetingResults(participants: List<MeetingParticipant>, stations: Li
     fun maximum(point: MeetingPoint) = origins.maxOfOrNull { MeetingGeometry.distance(it, point) } ?: 0.0
     val distances = participants.map { it.selected?.let { origin -> MeetingGeometry.distance(origin, selected) } ?: 0.0 }
     val longest = distances.indices.maxByOrNull { distances[it] }
-    LazyColumn(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).testTag("mannaka-results"),
+    LazyColumn(overscrollEffect = null, modifier = Modifier.elasticListEdges().fillMaxSize().testTag("mannaka-results"),
         contentPadding = PaddingValues(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 40.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         fixedHeader { FeatureHeader("まんなか候補", onBack, backDescription = "駅入力に戻る") }
         progressiveItem(1, keyPrefix = "mannaka-candidates") {
-            Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.primaryContainer) {
+            Surface(modifier = Modifier.liquidGlass(24.dp), shape = RoundedCornerShape(24.dp), color = Color.Transparent) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Icon(painterResource(R.drawable.ic_mannaka_spark), null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-                    Text("いちばん遠い人の距離が短くなる順", color = MaterialTheme.colorScheme.onPrimaryContainer, fontSize = 13.sp)
+                    Text("いちばん遠い人の距離が短くなる順", color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp)
                 }
             }
         }
@@ -104,8 +108,8 @@ internal fun MeetingResults(participants: List<MeetingParticipant>, stations: Li
         }
         itemsIndexed(candidates.filter { it != selected }, key = { _, point -> point.id.ifBlank { point.name } }) { index, point ->
                 ProgressiveWidget(index + 4) {
-            Surface(onClick = { onSelect(point) }, enabled = !busy, shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), modifier = Modifier.fillMaxWidth().testTag("mannaka-candidate-${point.id}")) {
+            Surface(onClick = { onSelect(point) }, enabled = !busy, shape = RoundedCornerShape(24.dp), color = Color.Transparent,
+                modifier = Modifier.fillMaxWidth().liquidGlass(24.dp).testTag("mannaka-candidate-${point.id}")) {
                 Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Box(Modifier.size(28.dp).background(MaterialTheme.colorScheme.surfaceVariant, CircleShape), contentAlignment = Alignment.Center) {
                         Text("${candidates.indexOf(point) + 1}", color = MaterialTheme.colorScheme.onSurfaceVariant)

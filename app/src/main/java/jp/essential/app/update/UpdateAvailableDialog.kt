@@ -1,5 +1,7 @@
 package jp.essential.app.update
 
+import jp.essential.app.ui.elasticListEdges
+
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -99,7 +101,7 @@ internal fun UpdateAvailableCard(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             // 本文だけをスクロールさせ、長いリリースノートでも操作ボタンを残す。
-            Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Column(Modifier.weight(1f, fill = false).elasticListEdges().verticalScroll(rememberScrollState(), overscrollEffect = null), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     Image(
                         painterResource(if (LocalEssentialDark.current) R.drawable.essential_icon_dark else R.drawable.essential_icon),
@@ -139,7 +141,7 @@ internal fun UpdateAvailableCard(
                         if (busy) { if (fraction >= 1f) "ダウンロード完了・APKを検証中" else "ダウンロード中  ${(fraction * 100).toInt()}%" } else message,
                         style = MaterialTheme.typography.bodyMedium,
                         color = if (failed) colors.error else colors.onSurfaceVariant,
-                        modifier = Modifier.heightIn(max = 100.dp).verticalScroll(rememberScrollState()).semantics { liveRegion = LiveRegionMode.Polite },
+                        modifier = Modifier.heightIn(max = 100.dp).elasticListEdges().verticalScroll(rememberScrollState(), overscrollEffect = null).semantics { liveRegion = LiveRegionMode.Polite },
                     )
                 }
                 Button(

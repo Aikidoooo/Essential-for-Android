@@ -6625,6 +6625,40 @@ window.showAlert = showCustomAlert;
     .slot-pulse,
     .dosukoi-logo-anim { animation: none !important; }
   }
+  /* Essentialのホームと同じニュートラルなガラスへ統一する。値はAndroidから渡す。 */
+  :root {
+    --essential-glass-start: rgba(46,46,46,.432);
+    --essential-glass-end: rgba(46,46,46,.189);
+    --essential-glass-edge: rgba(255,255,255,.48);
+    --essential-glass-edge-end: rgba(255,255,255,.10);
+    --essential-glass-blur: 3px;
+  }
+  .shortcut-item::before, .shortcut-item:hover::before,
+  :is(.glass-card, .glass-panel, .glass-icon-btn, .glass-btn-primary, .glass-btn-action,
+      .glass-input-lg, .glass-input-giant, .profile-shortcut-btn, .input-glow-wrapper input,
+      .icon-wrapper, .menu-button, .menu-popup, .url-input, .modal-content,
+      .dosukoi-avatar-card, .standby-stage, .lobby-card,
+      .game-status-panel, .game-arena, .game-sidebar, .quick-profile-panel, .glass-btn-neon),
+  :is(.glass-card, .glass-panel, .glass-icon-btn, .glass-btn-primary, .glass-btn-action,
+      .glass-input-lg, .glass-input-giant, .profile-shortcut-btn, .input-glow-wrapper input,
+      .icon-wrapper, .menu-button, .menu-popup, .url-input, .modal-content,
+      .dosukoi-avatar-card, .standby-stage, .lobby-card,
+      .game-status-panel, .game-arena, .game-sidebar, .quick-profile-panel, .glass-btn-neon):is(:hover, :focus) {
+    background: linear-gradient(135deg, var(--essential-glass-start), var(--essential-glass-end)) !important;
+    border-color: var(--essential-glass-edge) !important;
+    border-bottom-color: var(--essential-glass-edge-end) !important;
+    box-shadow: none !important;
+    backdrop-filter: blur(var(--essential-glass-blur));
+    -webkit-backdrop-filter: blur(var(--essential-glass-blur));
+  }
+  /* 入れ子のガラスをさらに青く塗る装飾は、面の透明度を変えない。 */
+  .quick-profile-panel::before { opacity: 0 !important; }
+  .quick-profile-panel .input-glow-wrapper {
+    background: transparent !important;
+    border: 1px solid var(--essential-glass-edge);
+    box-shadow: none !important;
+  }
+  .quick-profile-panel .glass-btn-neon { color: #fff !important; }
 </style>
 <script>
 // VH fix for mobile browsers (Androidのキーボードバグ対策)

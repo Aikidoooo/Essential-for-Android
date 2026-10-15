@@ -31,6 +31,79 @@ class NotificationLogTest {
     @get:Rule val compose = createEmptyComposeRule()
     private val context get() = ApplicationProvider.getApplicationContext<Context>()
 
+    @Test fun selectionPersistsAndExistingLogsSurviveRemovalAndUpgrade() {
+        val name = "notification-log-selection-test.db"
+        val file = File(context.noBackupFilesDir, name)
+        SQLiteFiles.delete(file)
+        // 旧版DBのログを残したまま、空の記録対象を追加する。
+        android.database.sqlite.SQLiteDatabase.openOrCreateDatabase(file, null).use { db ->
+            db.execSQL("CREATE TABLE logs (id INTEGER PRIMARY KEY AUTOINCREMENT, package_name TEXT NOT NULL, app_name TEXT NOT NULL, title TEXT NOT NULL, body TEXT NOT NULL, received_at INTEGER NOT NULL, kept INTEGER NOT NULL DEFAULT 0)")
+            db.execSQL("INSERT INTO logs VALUES (1, 'legacy', '旧アプリ', '保持する通知', '本文', ?, 1)", arrayOf(System.currentTimeMillis()))
+            db.version = 1
+        }
+        try {
+            NotificationLogStore(context, name).use { store ->
+                assertTrue(store.selectedPackages().isEmpty())
+                assertEquals(-1L, store.recordSelected("other", "対象外", "タイトル", "本文"))
+                store.setAppSelected("allowed", true)
+                store.setAppSelected("allowed", true)
+                assertEquals(setOf("allowed"), store.selectedPackages())
+                assertTrue(store.recordSelected("allowed", "対象", "新着", "本文") > 0)
+                assertEquals(-1L, store.recordSelected("other", "対象外", "新着", "本文"))
+            }
+            NotificationLogStore(context, name).use { store ->
+                assertEquals(setOf("allowed"), store.selectedPackages())
+                store.setAppSelected("allowed", false)
+                assertEquals(-1L, store.recordSelected("allowed", "対象", "削除後", "本文"))
+                assertEquals(2, store.list(false, 100).size)
+                assertEquals("保持する通知", store.list(true, 100).single().title)
+            }
+        } finally { SQLiteFiles.delete(file) }
+    }
+
+    @Test fun settingsAddsAndRemovesAppsWithoutDeletingLogs() {
+        val name = "notification-log-settings-test.db"
+        val file = File(context.noBackupFilesDir, name)
+        val store = NotificationLogStore(context, name)
+        val scenario = ActivityScenario.launch<MainActivity>(Intent(context, MainActivity::class.java))
+        try {
+            scenario.onActivity { activity -> activity.setContent {
+                EssentialTheme(darkTheme = false) {
+                    androidx.compose.material3.Surface(color = MaterialTheme.colorScheme.background,
+                        contentColor = MaterialTheme.colorScheme.onSurface) {
+                        Box(Modifier.fillMaxSize().safeDrawingPadding()) { NotificationLogScreen(store) {} }
+                    }
+                }
+            } }
+            compose.onNodeWithTag("notification-settings").performClick()
+            compose.onNodeWithTag("notification-add-mode").performClick()
+            compose.onNodeWithTag("notification-app-search").performTextInput(context.packageName)
+            compose.onNodeWithTag("notification-app-search").performImeAction()
+            compose.waitUntil(10000) { compose.onAllNodesWithTag("notification-app-${context.packageName}").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithTag("notification-app-${context.packageName}").performClick()
+            compose.waitUntil(10000) { store.isAppSelected(context.packageName) }
+            val id = store.recordSelected(context.packageName, "Essential", "選択後", "本文")
+            compose.onNodeWithTag("notification-remove-mode").performClick()
+            compose.waitUntil(10000) { compose.onAllNodesWithTag("notification-app-${context.packageName}").fetchSemanticsNodes().isNotEmpty() }
+            val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+            compose.mainClock.advanceTimeBy(1000)
+            compose.waitForIdle()
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+            android.os.SystemClock.sleep(300)
+            automation.takeScreenshot().let { bitmap ->
+                File(context.getExternalFilesDir(null), "notification-settings-ui.png").outputStream().use {
+                    bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+                }
+                bitmap.recycle()
+            }
+            compose.onNodeWithTag("notification-app-${context.packageName}").performClick()
+            compose.waitUntil(10000) { !store.isAppSelected(context.packageName) }
+            assertTrue(store.list(false, 100).any { it.id == id })
+            compose.onNodeWithText("閉じる").performClick()
+            compose.waitUntil(10000) { compose.onAllNodesWithTag("notification-entry-$id").fetchSemanticsNodes().isNotEmpty() }
+        } finally { scenario.close(); store.close(); SQLiteFiles.delete(file) }
+    }
+
     @Test fun retentionBoundaryKeepPersistenceAndDeletion() {
         val name = "notification-log-retention-test.db"
         val file = File(context.noBackupFilesDir, name)
@@ -54,7 +127,7 @@ class NotificationLogTest {
         } finally { store.close(); SQLiteFiles.delete(file) }
     }
 
-    @Test fun uiShowsSecondsKeepFilterAndConfirmedDelete() {
+    @Test fun uiShowsSecondsRightKeepAndLeftDelete() {
         val name = "notification-log-ui-test.db"
         val file = File(context.noBackupFilesDir, name)
         val store = NotificationLogStore(context, name)
@@ -94,7 +167,7 @@ class NotificationLogTest {
             }
             compose.waitForIdle()
             assertFalse(store.list(false, 100).single().kept)
-            compose.onNodeWithTag("notification-entry-$id").performScrollTo().performTouchInput { swipeLeft() }
+            compose.onNodeWithTag("notification-entry-$id").performScrollTo().performTouchInput { swipeRight() }
             compose.waitUntil(10000) { store.list(true, 100).any { it.id == id } }
             compose.onNodeWithTag("notification-entry-$id").assert(SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "保存済み"))
             val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
@@ -110,13 +183,9 @@ class NotificationLogTest {
             compose.onNodeWithTag("notification-entry-$id").performScrollTo()
             if (compose.onAllNodesWithText(expected).fetchSemanticsNodes().isEmpty()) compose.onNodeWithTag("notification-expand-$id").performClick()
             compose.onNodeWithTag("notification-entry-$id").performTouchInput { swipeRight() }
-            compose.onNodeWithText("キャンセル").performClick()
-            compose.onNodeWithText("通知ログのテスト本文").assertExists()
-            compose.onNodeWithTag("notification-entry-$id").performTouchInput { swipeLeft() }
             compose.waitForIdle()
             assertTrue(store.list(true, 100).any { it.id == id })
-            compose.onNodeWithTag("notification-entry-$id").performTouchInput { swipeRight() }
-            compose.onNodeWithText("削除する").performClick()
+            compose.onNodeWithTag("notification-entry-$id").performTouchInput { swipeLeft() }
             compose.waitUntil(10000) { compose.onAllNodesWithText("keepしたログはありません").fetchSemanticsNodes().isNotEmpty() }
         } finally { scenario.close(); store.close(); SQLiteFiles.delete(file) }
     }
@@ -167,12 +236,18 @@ class NotificationLogTest {
         val channel = "notification-log-test"
         val token = "通知記録テスト-${System.nanoTime()}"
         val store = NotificationLogStore.get(context)
+        val originallySelected = store.isAppSelected(context.packageName)
         manager.createNotificationChannel(NotificationChannel(channel, "通知ログ検証", NotificationManager.IMPORTANCE_DEFAULT))
         val postedAt = System.currentTimeMillis()
         fun post(body: String, sentAt: Long = postedAt) = manager.notify(74032, Notification.Builder(context, channel)
             .setWhen(sentAt).setSmallIcon(android.R.drawable.ic_dialog_info).setContentTitle(token).setContentText(body).build())
         fun rows() = store.list(false, 1000).filter { it.title == token }
         try {
+            store.setAppSelected(context.packageName, false)
+            post("対象外の本文")
+            Thread.sleep(700)
+            assertTrue(rows().isEmpty())
+            store.setAppSelected(context.packageName, true)
             val before = System.currentTimeMillis()
             post("最初の本文")
             compose.waitUntil(15000) { rows().size == 1 }
@@ -185,11 +260,16 @@ class NotificationLogTest {
             compose.waitUntil(15000) { rows().size == 2 }
             post("更新された本文", postedAt + 1000)
             compose.waitUntil(15000) { rows().size == 3 }
+            store.setAppSelected(context.packageName, false)
+            post("削除後の本文")
+            Thread.sleep(700)
+            assertEquals(3, rows().size)
             manager.cancel(74032)
             assertEquals(3, rows().size)
         } finally {
             manager.cancel(74032)
             manager.deleteNotificationChannel(channel)
+            store.setAppSelected(context.packageName, originallySelected)
             rows().forEach { store.delete(it.id) }
         }
     }

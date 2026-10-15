@@ -5,6 +5,7 @@ import android.media.AudioFormat
 import android.media.AudioTrack
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.Channel
 
 /** 6音源を同じサンプル位置で混ぜ、音量の変更を次の音声ブロックから反映する。 */
 internal class StemPreviewPlayer(private val stems: InstrumentStems, private val scope: CoroutineScope) {
@@ -16,6 +17,7 @@ internal class StemPreviewPlayer(private val stems: InstrumentStems, private val
     private val seek = AtomicLong(-1L)
     private var job: Job? = null
     private var track: AudioTrack? = null
+    private val wake = Channel<Unit>(Channel.CONFLATED)
     @Volatile var error: String? = null
         private set
     fun seekTo(millis: Long) { positionMillis = millis; seek.set(millis * 44100 / 1000) }
@@ -23,6 +25,7 @@ internal class StemPreviewPlayer(private val stems: InstrumentStems, private val
     fun play() {
         if (playing) return
         playing = true
+        wake.trySend(Unit)
         if (job?.isActive == true) return
         job = scope.launch(Dispatchers.IO + CoroutineExceptionHandler { _, cause -> error = cause.message ?: "再生に失敗しました"; playing = false }) {
             val readers = InstrumentStem.entries.map { AudioStemSeparationEngine.PcmWavReader(stems.files.getValue(it)) }
@@ -34,14 +37,15 @@ internal class StemPreviewPlayer(private val stems: InstrumentStems, private val
             try {
                 var frame = positionMillis * 44100 / 1000
                 val mixed = ShortArray(2048)
+                val blocks = Array(6) { Array(2) { FloatArray(1024) } }
                 while (isActive) {
                     val target = seek.getAndSet(-1)
                     if (target >= 0) { frame = target; output.pause(); output.flush() }
-                    if (!playing) { delay(30); continue }
+                    if (!playing) { wake.receive(); continue }
                     if (frame >= readers.first().frameCount) { playing = false; frame = 0; positionMillis = 0; continue }
                     if (output.playState != AudioTrack.PLAYSTATE_PLAYING) output.play()
                     val length = minOf(1024L, readers.first().frameCount - frame).toInt()
-                    val blocks = readers.map { it.readStereo(frame, length) }
+                    readers.forEachIndexed { index, reader -> reader.readStereoInto(frame, length, blocks[index]) }
                     val volumes = gains
                     for (sample in 0 until length) for (channel in 0..1) {
                         var value = 0f

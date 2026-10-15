@@ -1,732 +1,294 @@
 package jp.essential.app.feature.routine
 
-import jp.essential.app.ui.fixedHeader
-import jp.essential.app.ui.FeatureHeader
-import jp.essential.app.ui.GlassFeatureTitle
-
-import android.content.Context
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.scaleIn
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
-import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Switch
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.slideInVertically
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
+import jp.essential.app.R
+import jp.essential.app.ui.FeatureHeader
+import jp.essential.app.ui.elasticListEdges
+import jp.essential.app.ui.fixedHeader
+import jp.essential.app.ui.liquidGlass
 import jp.essential.app.ui.progressiveItem
-import jp.essential.app.ui.EssentialBubblyProgressBar
-import jp.essential.app.ui.EssentialBubblySlider
-import jp.essential.app.profile.AppLevel
-import jp.essential.app.profile.AppProgressStore
-import jp.essential.app.profile.calculateAppLevel
-import org.json.JSONArray
-import org.json.JSONObject
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.LocalDate
-import java.time.LocalTime
-import java.time.temporal.WeekFields
-import java.util.Locale
-import java.util.UUID
-import android.Manifest
-import android.os.Build
+import java.time.LocalDateTime
+import java.time.YearMonth
+import java.time.format.DateTimeFormatter
 
-internal enum class RoutineCadence(val label: String, val pointRange: IntRange) {
-    Daily("デイリー", 1..5),
-    Weekly("ウィークリー", 5..15),
-    Event("イベントミッション", 1..30),
-}
-
-internal data class RoutineTask(
-    val id: String,
-    val title: String,
-    val emoji: String,
-    val cadence: RoutineCadence,
-    val points: Int,
-    val completedPeriod: String? = null,
-    val notificationEnabled: Boolean = false,
-    val notificationHour: Int = 9,
-    val notificationMinute: Int = 0,
-    val eventStartDate: String? = null,
-    val eventStartTime: String? = null,
-    val eventDurationDays: Int = 1,
-)
-
-/** 既存の日課テストと互換性を保ちながら、アプリレベル計算へ移行する。 */
-internal typealias RoutineLevel = AppLevel
-internal fun requiredRoutineXp(level: Int): Int = jp.essential.app.profile.requiredAppXp(level)
-internal fun calculateRoutineLevel(totalPoints: Int): RoutineLevel = calculateAppLevel(totalPoints)
-
-/** 達成状態をデイリーは日付、ウィークリーはISO週単位で区切る。 */
-internal fun routinePeriodKey(cadence: RoutineCadence, date: LocalDate = LocalDate.now()): String =
-    when (cadence) {
-        RoutineCadence.Daily -> "D:$date"
-        RoutineCadence.Weekly -> {
-            val weekFields = WeekFields.ISO
-            "W:${date.get(weekFields.weekBasedYear())}-${date.get(weekFields.weekOfWeekBasedYear())}"
-        }
-        RoutineCadence.Event -> "E:$date"
-    }
-
-/** イベント日課が指定期間内かどうかを判定する。日課と週課は常に有効とする。 */
-internal fun isRoutineTaskActive(
-    task: RoutineTask,
-    date: LocalDate = LocalDate.now(),
-    time: LocalTime = LocalTime.now(),
-): Boolean {
-    if (task.cadence != RoutineCadence.Event) return true
-    val start = runCatching { LocalDate.parse(task.eventStartDate.orEmpty()) }.getOrNull() ?: return false
-    val end = start.plusDays(task.eventDurationDays.coerceAtLeast(1) - 1L)
-    if (date !in start..end) return false
-    if (date == start) {
-        val startTime = runCatching { LocalTime.parse(task.eventStartTime.orEmpty()) }.getOrNull()
-        if (startTime != null && time.isBefore(startTime)) return false
-    }
-    return true
-}
-
-/** 日課の種類ごとに、達成済み状態を一日単位で保存するキーを返す。 */
-internal fun routineTaskPeriodKey(task: RoutineTask, date: LocalDate = LocalDate.now()): String =
-    if (task.cadence == RoutineCadence.Event) routinePeriodKey(RoutineCadence.Event, date) else routinePeriodKey(task.cadence, date)
-
-private class RoutineStore(context: Context) {
-    private val preferences = context.getSharedPreferences("routine", Context.MODE_PRIVATE)
-    private val progressStore = AppProgressStore(context)
-
-    fun loadTasks(): List<RoutineTask> = runCatching {
-        val array = JSONArray(preferences.getString("tasks", "[]"))
-        buildList {
-            repeat(array.length()) { index ->
-                val item = array.getJSONObject(index)
-                val cadence = runCatching { RoutineCadence.valueOf(item.getString("cadence")) }
-                    .getOrDefault(RoutineCadence.Daily)
-                add(
-                    RoutineTask(
-                        id = item.getString("id"),
-                        title = item.getString("title"),
-                        emoji = item.optString("emoji", "✨"),
-                        cadence = cadence,
-                        points = item.optInt("points", cadence.pointRange.first)
-                            .coerceIn(cadence.pointRange),
-                        completedPeriod = item.optString("completedPeriod").takeIf { it.isNotBlank() },
-                        notificationEnabled = item.optBoolean("notificationEnabled", false),
-                        notificationHour = item.optInt("notificationHour", 9).coerceIn(0, 23),
-                        notificationMinute = item.optInt("notificationMinute", 0).coerceIn(0, 59),
-                        eventStartDate = item.optString("eventStartDate").takeIf { it.isNotBlank() },
-                        eventStartTime = item.optString("eventStartTime").takeIf { it.isNotBlank() },
-                        eventDurationDays = item.optInt("eventDurationDays", 1).coerceIn(1, 365),
-                    ),
-                )
-            }
-        }
-    }.getOrDefault(emptyList())
-
-    fun loadTotalPoints(): Int = progressStore.loadXp()
-
-    fun save(tasks: List<RoutineTask>) {
-        val array = JSONArray()
-        tasks.forEach { task ->
-            array.put(
-                JSONObject()
-                    .put("id", task.id)
-                    .put("title", task.title)
-                    .put("emoji", task.emoji)
-                    .put("cadence", task.cadence.name)
-                    .put("points", task.points)
-                    .put("completedPeriod", task.completedPeriod.orEmpty())
-                    .put("notificationEnabled", task.notificationEnabled)
-                    .put("notificationHour", task.notificationHour)
-                    .put("notificationMinute", task.notificationMinute)
-                    .put("eventStartDate", task.eventStartDate.orEmpty())
-                    .put("eventStartTime", task.eventStartTime.orEmpty())
-                    .put("eventDurationDays", task.eventDurationDays),
-            )
-        }
-        preferences.edit().putString("tasks", array.toString()).apply()
-    }
-}
-
+/** 月の予定、期限順のタスク、日別の24時間表を一つのタスク機能として提供する。 */
 @Composable
 internal fun RoutineScreen(onBack: () -> Unit) {
     val context = LocalContext.current
-    val store = remember { RoutineStore(context.applicationContext) }
-    val progressStore = remember { AppProgressStore(context.applicationContext) }
-    var tasks by remember { mutableStateOf(store.loadTasks()) }
-    var totalPoints by remember { mutableStateOf(store.loadTotalPoints()) }
-    var selectedCadenceNames by rememberSaveable {
-        mutableStateOf(RoutineCadence.entries.map { it.name }.toSet())
+    val store = remember(context) { TaskStore(context.applicationContext) }
+    val scope = rememberCoroutineScope()
+    var tasks by remember { mutableStateOf<List<ScheduledTask>>(emptyList()) }
+    var loaded by remember { mutableStateOf(false) }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var now by remember { mutableStateOf(LocalDateTime.now()) }
+    var monthValue by rememberSaveable { mutableStateOf(YearMonth.now().toString()) }
+    var dayValue by rememberSaveable { mutableStateOf<String?>(null) }
+    var editorOpen by rememberSaveable { mutableStateOf(false) }
+    var editingId by rememberSaveable { mutableStateOf<String?>(null) }
+    var editingSnapshot by remember { mutableStateOf<ScheduledTask?>(null) }
+    var editorClosing by remember { mutableStateOf(false) }
+    var draftStart by rememberSaveable { mutableStateOf(LocalDateTime.now().withMinute(0).withSecond(0).withNano(0).toString()) }
+    var calendarFilter by remember { mutableStateOf(store.loadFilter("calendar")) }
+    var listFilter by remember { mutableStateOf(store.loadFilter("list")) }
+    var filterTarget by rememberSaveable { mutableStateOf<String?>(null) }
+    val homeListState = rememberLazyListState()
+    var permissionMissing by remember { mutableStateOf(false) }
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        permissionMissing = !granted
     }
-    var addCadence by remember { mutableStateOf<RoutineCadence?>(null) }
-    var editingTask by remember { mutableStateOf<RoutineTask?>(null) }
-    val notificationPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { }
-    val level = calculateRoutineLevel(totalPoints)
-
-    LaunchedEffect(tasks) {
-        tasks.forEach { RoutineNotificationScheduler.schedule(context, it) }
-    }
-
-    fun save(updatedTasks: List<RoutineTask>) {
-        tasks.filterNot { previous -> updatedTasks.any { it.id == previous.id } }
-            .forEach { RoutineNotificationScheduler.cancel(context, it.id) }
-        tasks = updatedTasks
-        store.save(updatedTasks)
-        updatedTasks.forEach { RoutineNotificationScheduler.schedule(context, it) }
-    }
-
-    fun complete(task: RoutineTask) {
-        if (!isRoutineTaskActive(task)) return
-        val period = routineTaskPeriodKey(task)
-        if (task.completedPeriod == period) return
-        val updatedTasks = tasks.map { if (it.id == task.id) it.copy(completedPeriod = period) else it }
-        totalPoints = progressStore.addXp(task.points)
-        save(updatedTasks)
-    }
-
-    BackHandler(onBack = onBack)
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 20.dp, top = 22.dp, end = 20.dp, bottom = 30.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        fixedHeader { RoutineHeader(onBack) }
-        progressiveItem(1) {
-            RoutineLevelCard(
-                totalPoints = totalPoints,
-                level = level,
-            )
-        }
-        progressiveItem(2) {
-            RoutineCadenceMultiFilter(
-                selectedNames = selectedCadenceNames,
-                onToggle = { cadence ->
-                    selectedCadenceNames = if (cadence.name in selectedCadenceNames) {
-                        selectedCadenceNames - cadence.name
-                    } else {
-                        selectedCadenceNames + cadence.name
-                    }
-                },
-            )
-        }
-        RoutineCadence.entries.forEachIndexed { index, cadence ->
-            if (cadence.name in selectedCadenceNames) progressiveItem(index + 3) {
-                RoutineSection(
-                    cadence = cadence,
-                    tasks = tasks.filter { it.cadence == cadence },
-                    onAdd = { addCadence = cadence },
-                    onEdit = { editingTask = it },
-                    onComplete = ::complete,
-                    onDelete = { task -> save(tasks.filterNot { it.id == task.id }) },
-                )
-            }
-        }
-        if (selectedCadenceNames.isEmpty()) {
-            progressiveItem(3) {
-                Text(
-                    "表示する日課を1つ以上選択してください",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 4.dp),
-                )
-            }
+    fun requestNotifications() {
+        if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
+    LaunchedEffect(store) {
+        try { tasks = withContext(Dispatchers.IO) { store.load() }; loaded = true }
+        catch (_: Exception) { error = "タスクを読み込めませんでした。保存データは保持しています。" }
+    }
+    LaunchedEffect(loaded) {
+        if (loaded) withContext(Dispatchers.IO) { store.rescheduleAll() }
+    }
+    LaunchedEffect(Unit) { while (true) { delay(30_000); now = LocalDateTime.now() } }
 
-    val editorCadence = editingTask?.cadence ?: addCadence
-    editorCadence?.let { cadence ->
-        RoutineEditorDialog(
-            initialCadence = cadence,
-            existingTask = editingTask,
-            onDismiss = {
-                addCadence = null
-                editingTask = null
-            },
-            onSave = { title, emoji, selectedCadence, points, notificationEnabled, notificationHour, notificationMinute, eventStartDate, eventStartTime, eventDurationDays ->
-                val existing = editingTask
-                val savedTask = RoutineTask(
-                    id = existing?.id ?: UUID.randomUUID().toString(),
-                    title = title,
-                    emoji = emoji.ifBlank { "✨" },
-                    cadence = selectedCadence,
-                    points = points,
-                    completedPeriod = existing?.completedPeriod
-                        ?.takeIf { existing.cadence == selectedCadence },
-                    notificationEnabled = notificationEnabled,
-                    notificationHour = notificationHour,
-                    notificationMinute = notificationMinute,
-                    eventStartDate = eventStartDate.takeIf { selectedCadence == RoutineCadence.Event },
-                    eventStartTime = eventStartTime.takeIf { selectedCadence == RoutineCadence.Event },
-                    eventDurationDays = eventDurationDays,
-                )
-                save(if (existing == null) tasks + savedTask else tasks.map { if (it.id == existing.id) savedTask else it })
-                if (savedTask.notificationEnabled && Build.VERSION.SDK_INT >= 33) {
-                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+    fun persist(updated: List<ScheduledTask>, closeEditor: Boolean = false) {
+        if (busy) return
+        busy = true
+        scope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    store.save(updated)
                 }
-                addCadence = null
-                editingTask = null
-            },
-        )
-    }
-
-}
-
-@Composable
-private fun RoutineHeader(onBack: () -> Unit) {
-    FeatureHeader("日課", onBack)
-}
-
-/** 日課の表示対象を複数選択できるフィルター。 */
-@Composable
-private fun RoutineCadenceMultiFilter(
-    selectedNames: Set<String>,
-    onToggle: (RoutineCadence) -> Unit,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
-        Text("表示する日課", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            RoutineCadence.entries.forEach { cadence ->
-                FilterChip(
-                    selected = cadence.name in selectedNames,
-                    onClick = { onToggle(cadence) },
-                    label = { Text(cadence.label) },
-                    modifier = Modifier.weight(1f),
-                )
-            }
+                tasks = updated
+                error = null
+                if (closeEditor) editorClosing = true
+            } catch (_: Exception) { error = "タスクを保存できませんでした。もう一度お試しください。" }
+            finally { busy = false }
         }
-        Text(
-            "複数選択できます",
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodySmall,
-        )
     }
-}
-
-@Composable
-private fun RoutineLevelCard(totalPoints: Int, level: RoutineLevel) {
-    val shape = RoundedCornerShape(36.dp, 36.dp, 18.dp, 36.dp)
-    Box(
-        modifier = Modifier.fillMaxWidth().clip(shape)
-            .background(Brush.linearGradient(listOf(Color(0xCC21B79B), Color(0xCC5B8DFF), Color(0xAA8D6AFF))))
-            .border(1.dp, Color.White.copy(alpha = 0.56f), shape)
-            .padding(22.dp),
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    Modifier.size(70.dp).clip(RoundedCornerShape(25.dp))
-                        .background(Color.White.copy(alpha = 0.18f)),
-                    contentAlignment = Alignment.Center,
-                ) { Text("LV\n${level.level}", color = Color.White, fontWeight = FontWeight.Black) }
-                Spacer(Modifier.width(16.dp))
-                Column {
-                    Text("合計 $totalPoints pt", color = Color.White, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black)
-                    Text(
-                        if (level.level == 60) "MAX LEVEL" else "次のレベルまで ${level.pointsForNextLevel - level.pointsInLevel} XP",
-                        color = Color.White.copy(alpha = 0.82f),
-                    )
-                    if (level.level < 60) {
-                        Text(
-                            "必要XP ${level.pointsForNextLevel}",
-                            color = Color.White.copy(alpha = 0.68f),
-                            style = MaterialTheme.typography.bodySmall,
-                        )
+    fun complete(occurrence: TaskOccurrence) {
+        if (busy) return
+        busy = true
+        scope.launch {
+            try { tasks = withContext(Dispatchers.IO) { store.complete(occurrence.task.id, occurrence.key) }; error = null }
+            catch (_: Exception) { error = "完了を保存できませんでした。もう一度お試しください。" }
+            finally { busy = false }
+        }
+    }
+    fun openEditor(task: ScheduledTask? = null, initial: LocalDateTime = now.withMinute(0).withSecond(0).withNano(0)) {
+        if (!loaded || busy) return
+        editingId = task?.id
+        editingSnapshot = task
+        editorClosing = false
+        error = null
+        draftStart = initial.toString()
+        editorOpen = true
+    }
+    BackHandler(enabled = !editorOpen && filterTarget == null) {
+        if (dayValue != null) dayValue = null else onBack()
+    }
+    val month = YearMonth.parse(monthValue)
+    val highlights by produceState<Map<LocalDate, TaskStatus>>(emptyMap(), tasks, month, calendarFilter, now) {
+        value = withContext(Dispatchers.Default) {
+        (1..month.lengthOfMonth()).mapNotNull { day ->
+            val date = month.atDay(day)
+            val statuses = tasks.flatMap { occurrencesOn(it, date) }.map { it.status(now) }.filter { it in calendarFilter }
+            val status = when {
+                TaskStatus.Expired in statuses -> TaskStatus.Expired
+                TaskStatus.Pending in statuses -> TaskStatus.Pending
+                TaskStatus.Completed in statuses -> TaskStatus.Completed
+                else -> null
+            }
+            status?.let { date to it }
+        }.toMap()
+        }
+    }
+    val ordered by produceState<List<TaskOccurrence>>(emptyList(), tasks, listFilter, now) {
+        value = withContext(Dispatchers.Default) { taskList(tasks, listFilter, now) }
+    }
+    AnimatedContent(targetState = dayValue, label = "日別予定への移動", transitionSpec = {
+        (fadeIn(TaskMotion.fade) + slideInHorizontally(TaskMotion.navigation) { it / 12 })
+            .togetherWith(fadeOut(TaskMotion.fade) + slideOutHorizontally(TaskMotion.navigation) { -it / 12 })
+    }) { day ->
+        if (day == null) {
+            LazyColumn(modifier = Modifier.fillMaxSize().elasticListEdges().testTag("task-home"),
+                state = homeListState, overscrollEffect = null, contentPadding = PaddingValues(20.dp, 12.dp, 20.dp, 36.dp),
+                verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                fixedHeader { FeatureHeader("日課", onBack) }
+                progressiveItem(0, keyPrefix = "tasks") {
+                    Column(Modifier.fillMaxWidth().liquidGlass(28.dp).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("カレンダー", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            TaskGlassButton("Multi-select", modifier = Modifier.testTag("calendar-multi-select"), onClick = { filterTarget = "calendar" })
+                        }
+                        TaskCalendar(month, null, highlights,
+                            onMonthChange = { monthValue = it.toString() }, onDate = { dayValue = it.toString() })
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Text("● 未完了", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall)
+                            Text("● 完了", color = Color(0xFF39B98A), style = MaterialTheme.typography.labelSmall)
+                            Text("● 期限切れ", color = Color(0xFFE7A453), style = MaterialTheme.typography.labelSmall)
+                        }
+                        TaskGlassButton("今日", modifier = Modifier.align(Alignment.End), onClick = { monthValue = YearMonth.now().toString() })
                     }
                 }
-            }
-            EssentialBubblyProgressBar(
-                progress = level.progress,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Text("レベルが上がるほど、次のレベルに必要なポイントが増えます", color = Color.White.copy(alpha = 0.76f), style = MaterialTheme.typography.bodySmall)
-        }
-    }
-}
-
-@Composable
-private fun RoutineSection(
-    cadence: RoutineCadence,
-    tasks: List<RoutineTask>,
-    onAdd: () -> Unit,
-    onEdit: (RoutineTask) -> Unit,
-    onComplete: (RoutineTask) -> Unit,
-    onDelete: (RoutineTask) -> Unit,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(11.dp)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(cadence.label, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
-                Text(
-                    when (cadence) {
-                        RoutineCadence.Daily -> "毎日リセット"
-                        RoutineCadence.Weekly -> "毎週月曜日にリセット"
-                        RoutineCadence.Event -> "指定期間中、毎日1回"
-                    },
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-            Button(onClick = onAdd, shape = RoundedCornerShape(18.dp)) { Text("＋ 追加") }
-        }
-        if (tasks.isEmpty()) {
-            Box(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(26.dp))
-                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.58f))
-                    .border(1.dp, Color.White.copy(alpha = 0.42f), RoundedCornerShape(26.dp))
-                    .padding(22.dp),
-            ) { Text("まだ目標がありません。絵文字と一緒に追加しましょう。", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        } else {
-            tasks.forEach { task ->
-                RoutineTaskCard(
-                    task = task,
-                    completed = isRoutineTaskActive(task) && task.completedPeriod == routineTaskPeriodKey(task),
-                    active = isRoutineTaskActive(task),
-                    onEdit = onEdit,
-                    onComplete = onComplete,
-                    onDelete = onDelete,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun RoutineTaskCard(
-    task: RoutineTask,
-    completed: Boolean,
-    active: Boolean,
-    onEdit: (RoutineTask) -> Unit,
-    onComplete: (RoutineTask) -> Unit,
-    onDelete: (RoutineTask) -> Unit,
-) {
-    val cardColor by animateColorAsState(
-        if (completed) Color(0xFF27B99A).copy(alpha = 0.24f) else MaterialTheme.colorScheme.surface.copy(alpha = 0.68f),
-        animationSpec = spring(dampingRatio = 0.82f, stiffness = 420f),
-        label = "日課達成カード",
-    )
-    val shape = RoundedCornerShape(28.dp, 28.dp, 14.dp, 28.dp)
-    Column(
-        modifier = Modifier.fillMaxWidth().clip(shape).background(cardColor)
-            .border(1.dp, Color.White.copy(alpha = 0.46f), shape).padding(15.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Row(
-            modifier = Modifier.pointerInput(task.id) {
-                detectTapGestures(onLongPress = { onEdit(task) })
-            },
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                Modifier.size(52.dp).clip(RoundedCornerShape(18.dp))
-                    .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)),
-                contentAlignment = Alignment.Center,
-            ) { Text(task.emoji, style = MaterialTheme.typography.headlineSmall) }
-            Spacer(Modifier.width(13.dp))
-            Column(Modifier.weight(1f)) {
-                Text(task.title, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text("+${task.points} pt", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
-            }
-            AnimatedVisibility(completed, enter = fadeIn() + scaleIn()) {
-                Text("達成済み", color = Color(0xFF15836E), fontWeight = FontWeight.Black)
-            }
-            TextButton(onClick = { onDelete(task) }) { Text("削除", color = MaterialTheme.colorScheme.error) }
-        }
-        if (task.notificationEnabled || task.cadence == RoutineCadence.Event) {
-            Text(
-                buildString {
-                    if (task.notificationEnabled) append("通知 ${task.notificationHour.toString().padStart(2, '0')}:${task.notificationMinute.toString().padStart(2, '0')}")
-                    if (task.cadence == RoutineCadence.Event) {
-                        if (isNotEmpty()) append("　")
-                        append("期間 ${task.eventStartDate ?: "未設定"}〜${task.eventDurationDays}日")
-                        if (!active) append("（期間外）")
-                    }
-                },
-                color = if (active) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
-        Text(
-            if (task.cadence == RoutineCadence.Event) "長押しで通知・開催期間を設定" else "長押しで通知時刻などの詳細設定",
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.labelSmall,
-        )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.End,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            TextButton(onClick = { onEdit(task) }) { Text("設定") }
-            if (!completed && active) {
-                Spacer(Modifier.width(8.dp))
-                Button(
-                    onClick = { onComplete(task) },
-                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 9.dp),
-                ) { Text("達成") }
-            }
-        }
-    }
-}
-
-@Composable
-private fun RoutineEditorDialog(
-    initialCadence: RoutineCadence,
-    existingTask: RoutineTask?,
-    onDismiss: () -> Unit,
-    onSave: (String, String, RoutineCadence, Int, Boolean, Int, Int, String, String, Int) -> Unit,
-) {
-    var title by remember(existingTask?.id) { mutableStateOf(existingTask?.title.orEmpty()) }
-    var emoji by remember(existingTask?.id) { mutableStateOf(existingTask?.emoji ?: "✨") }
-    var cadence by remember(existingTask?.id, initialCadence) { mutableStateOf(existingTask?.cadence ?: initialCadence) }
-    var points by remember(existingTask?.id, initialCadence) {
-        mutableStateOf(existingTask?.points ?: initialCadence.pointRange.first)
-    }
-    var notificationEnabled by remember(existingTask?.id, initialCadence) { mutableStateOf(existingTask?.notificationEnabled ?: false) }
-    var notificationHour by remember(existingTask?.id, initialCadence) { mutableStateOf((existingTask?.notificationHour ?: 9).toString()) }
-    var notificationMinute by remember(existingTask?.id, initialCadence) { mutableStateOf((existingTask?.notificationMinute ?: 0).toString().padStart(2, '0')) }
-    var eventStartDate by remember(existingTask?.id, initialCadence) {
-        mutableStateOf(existingTask?.eventStartDate ?: LocalDate.now().toString())
-    }
-    var eventStartTime by remember(existingTask?.id, initialCadence) {
-        mutableStateOf(existingTask?.eventStartTime ?: "09:00")
-    }
-    var eventDurationDays by remember(existingTask?.id, initialCadence) {
-        mutableStateOf((existingTask?.eventDurationDays ?: 1).toString())
-    }
-
-    val fieldColors = OutlinedTextFieldDefaults.colors(
-        focusedTextColor = Color.White, unfocusedTextColor = Color.White,
-        cursorColor = Color(0xFFAAE6F3),
-        focusedContainerColor = Color(0xFF122537).copy(alpha = 0.48f),
-        unfocusedContainerColor = Color(0xFF122537).copy(alpha = 0.32f),
-        focusedBorderColor = Color(0xFFAAE6F3),
-        unfocusedBorderColor = Color.White.copy(alpha = 0.3f),
-        focusedLabelColor = Color(0xFFAAE6F3), unfocusedLabelColor = Color.White.copy(alpha = 0.8f),
-        focusedSupportingTextColor = Color.White.copy(alpha = 0.75f),
-        unfocusedSupportingTextColor = Color.White.copy(alpha = 0.75f),
-    )
-    var visible by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { visible = true }
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        val dialogView = androidx.compose.ui.platform.LocalView.current
-        androidx.compose.runtime.SideEffect {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                // 背後の文字をぼかし、半透明パネルの入力内容を読みやすくする。
-                (dialogView.parent as? androidx.compose.ui.window.DialogWindowProvider)
-                    ?.window?.setBackgroundBlurRadius(48)
-            }
-        }
-        AnimatedVisibility(
-            visible = visible,
-            enter = fadeIn(tween(260)) + slideInVertically(tween(380)) { it / 5 },
-            modifier = Modifier.padding(horizontal = 18.dp, vertical = 24.dp).imePadding(),
-        ) {
-            androidx.compose.runtime.CompositionLocalProvider(
-                androidx.compose.material3.LocalContentColor provides Color.White,
-            ) {
-                Column(
-                    Modifier.fillMaxWidth().heightIn(max = 700.dp)
-                        .clip(RoundedCornerShape(32.dp))
-                        .background(Brush.linearGradient(listOf(
-                            Color(0xFF23576A).copy(alpha = 0.88f),
-                            Color(0xFF20354D).copy(alpha = 0.9f),
-                            Color(0xFF443764).copy(alpha = 0.88f),
-                        )))
-                        .border(1.dp, Brush.linearGradient(listOf(
-                            Color(0xFFBBF4FF).copy(alpha = 0.65f), Color.White.copy(alpha = 0.16f),
-                            Color(0xFFBCADFF).copy(alpha = 0.4f),
-                        )), RoundedCornerShape(32.dp))
-                        .padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically) {
-                        Column {
-                            Text("MISSION", color = Color(0xFFBBF4FF), style = MaterialTheme.typography.labelSmall)
-                            Text(if (existingTask == null) "ミッションを作成" else "ミッションを編集",
-                                style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                        }
-                        TextButton(onClick = onDismiss) { Text("閉じる", color = Color.White) }
-                    }
-                    Column(
-                        Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(13.dp),
-                    ) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            RoutineCadence.entries.forEach { option ->
-                                FilterChip(
-                                    selected = cadence == option,
-                                    onClick = {
-                                        cadence = option
-                                        points = points.coerceIn(option.pointRange)
-                                    },
-                                    label = { Text(if (option == RoutineCadence.Event) "イベント" else option.label) },
-                                    colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
-                                        containerColor = Color.White.copy(alpha = 0.07f),
-                                        labelColor = Color.White.copy(alpha = 0.8f),
-                                        selectedContainerColor = Color(0xFF89DAEC).copy(alpha = 0.28f),
-                                        selectedLabelColor = Color.White,
-                                    ),
-                                )
-                            }
-                        }
-                        OutlinedTextField(
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = fieldColors,
-                                shape = RoundedCornerShape(18.dp),value = emoji, onValueChange = { emoji = it.take(4) }, label = { Text("絵文字") }, singleLine = true)
-                        OutlinedTextField(
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = fieldColors,
-                                shape = RoundedCornerShape(18.dp),value = title, onValueChange = { title = it.take(60) }, label = { Text("目標") }, singleLine = true)
-                        Text("達成ポイント　$points pt", fontWeight = FontWeight.Bold)
-                        EssentialBubblySlider(
-                            value = points.toFloat(),
-                            onValueChange = { points = it.toInt().coerceIn(cadence.pointRange) },
-                            valueRange = cadence.pointRange.first.toFloat()..cadence.pointRange.last.toFloat(),
-                            steps = (cadence.pointRange.last - cadence.pointRange.first - 1).coerceAtLeast(0),
-                        )
-                        Text("${cadence.pointRange.first}〜${cadence.pointRange.last}ptから設定できます", color = Color.White.copy(alpha = 0.75f), style = MaterialTheme.typography.bodySmall)
-                        if (cadence == RoutineCadence.Event) {
-                            Text("イベント期間", fontWeight = FontWeight.Bold)
-                            OutlinedTextField(
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = fieldColors,
-                                shape = RoundedCornerShape(18.dp),
-                                value = eventStartDate,
-                                onValueChange = { eventStartDate = it.take(10) },
-                                label = { Text("開始日 (YYYY-MM-DD)") },
-                                singleLine = true,
-                            )
-                            OutlinedTextField(
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = fieldColors,
-                                shape = RoundedCornerShape(18.dp),
-                                value = eventStartTime,
-                                onValueChange = { eventStartTime = it.take(5) },
-                                label = { Text("開始時刻 (HH:MM)") },
-                                singleLine = true,
-                            )
-                            OutlinedTextField(
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = fieldColors,
-                                shape = RoundedCornerShape(18.dp),
-                                value = eventDurationDays,
-                                onValueChange = { eventDurationDays = it.filter(Char::isDigit).take(3) },
-                                label = { Text("期間（日数）") },
-                                supportingText = { Text("期間中は1日1回達成できます") },
-                                singleLine = true,
-                            )
-                        }
+                progressiveItem(1, keyPrefix = "tasks") {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("リマインダー", fontWeight = FontWeight.Bold)
-                            Switch(checked = notificationEnabled, onCheckedChange = { notificationEnabled = it })
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text("タスク一覧", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            TaskGlassButton("Multi-select", modifier = Modifier.testTag("list-multi-select"), onClick = { filterTarget = "list" })
+                            TaskGlassButton("タスクを追加", icon = R.drawable.ic_mannaka_add, iconOnly = true,
+                                modifier = Modifier.size(44.dp).testTag("task-add"), enabled = loaded && !busy, onClick = { openEditor() })
                         }
-                        if (notificationEnabled) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                OutlinedTextField(
-                                colors = fieldColors,
-                                shape = RoundedCornerShape(18.dp),
-                                    value = notificationHour,
-                                    onValueChange = { notificationHour = it.filter(Char::isDigit).take(2) },
-                                    label = { Text("時") },
-                                    singleLine = true,
-                                    modifier = Modifier.weight(1f),
-                                )
-                                OutlinedTextField(
-                                colors = fieldColors,
-                                shape = RoundedCornerShape(18.dp),
-                                    value = notificationMinute,
-                                    onValueChange = { notificationMinute = it.filter(Char::isDigit).take(2) },
-                                    label = { Text("分") },
-                                    singleLine = true,
-                                    modifier = Modifier.weight(1f),
-                                )
-                            }
-                            Text("指定時刻にこの項目を通知します", color = Color.White.copy(alpha = 0.75f), style = MaterialTheme.typography.bodySmall)
-                        }
+                        Text("終了が早い順 · ${ordered.size}件", style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                        if (permissionMissing) Text("通知するには端末の通知許可が必要です", color = MaterialTheme.colorScheme.error)
+                        if (!loaded && error == null) LinearProgressIndicator(Modifier.fillMaxWidth())
                     }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically) {
-                        TextButton(onClick = onDismiss) { Text("キャンセル", color = Color.White.copy(alpha = 0.85f)) }
-                        Button(
-                            modifier = Modifier.weight(1f).height(50.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFAAE6F3), contentColor = Color(0xFF122A40)),
-                            onClick = {
-                                onSave(
-                                    title.trim(),
-                                    emoji.trim(),
-                                    cadence,
-                                    points,
-                                    notificationEnabled,
-                                    notificationHour.toIntOrNull()?.coerceIn(0, 23) ?: 9,
-                                    notificationMinute.toIntOrNull()?.coerceIn(0, 59) ?: 0,
-                                    eventStartDate,
-                                    eventStartTime,
-                                    eventDurationDays.toIntOrNull()?.coerceIn(1, 365) ?: 1,
-                                )
-                            },
-                            enabled = title.isNotBlank() && (
-                                cadence != RoutineCadence.Event || (
-                                    runCatching { LocalDate.parse(eventStartDate) }.isSuccess &&
-                                        runCatching { LocalTime.parse(eventStartTime) }.isSuccess
-                                    )
-                                ),
-                        ) {
-                            Text(if (existingTask == null) "追加する" else "変更を保存")
-                        }
+                }
+                if (loaded && ordered.isEmpty()) item {
+                    Box(Modifier.fillMaxWidth().liquidGlass(24.dp).padding(24.dp)) {
+                        Text(if (tasks.isEmpty()) "＋から最初のタスクを追加" else "選択した状態のタスクはありません")
+                    }
+                }
+                items(ordered, key = { it.rewardId }) { occurrence ->
+                    ScheduledTaskCard(occurrence, now, !busy,
+                        onEdit = { openEditor(occurrence.task) }, onComplete = { complete(occurrence) })
+                }
+            }
+        } else {
+            TaskDayTable(LocalDate.parse(day), tasks, calendarFilter, now, !busy,
+                onBack = { dayValue = null }, onAdd = { openEditor(initial = it) },
+                onEdit = { openEditor(it) }, onComplete = { complete(it) },
+                onFilter = { filterTarget = "calendar" }, onDay = { dayValue = it.toString() })
+        }
+    }
+    if (editorOpen && loaded) {
+        val existing = tasks.firstOrNull { it.id == editingId } ?: editingSnapshot
+        TaskEditor(existing, LocalDateTime.parse(draftStart), busy,
+            onDismiss = { editorOpen = false; editorClosing = false; editingSnapshot = null },
+            onSave = { updated ->
+                editingId = updated.id
+                editingSnapshot = updated
+                persist(if (tasks.any { it.id == updated.id }) tasks.map { if (it.id == updated.id) updated else it } else tasks + updated, true)
+            },
+            onDelete = { persist(tasks.filterNot { it.id == editingId }, true) }, onNotificationEnabled = ::requestNotifications,
+            closeRequested = editorClosing, onCloseInterrupted = { editorClosing = false }, saveError = error)
+    }
+    filterTarget?.let { target ->
+        TaskFilterSheet(if (target == "calendar") calendarFilter else listFilter, onDismiss = { filterTarget = null }, onChange = { statuses ->
+            if (target == "calendar") calendarFilter = statuses else listFilter = statuses
+            store.saveFilter(target, statuses)
+        })
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TaskFilterSheet(statuses: Set<TaskStatus>, onDismiss: () -> Unit, onChange: (Set<TaskStatus>) -> Unit) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val scope = rememberCoroutineScope()
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, containerColor = Color.Transparent,
+        contentColor = MaterialTheme.colorScheme.onSurface) {
+        Column(Modifier.fillMaxWidth().liquidGlass(32.dp).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Text("表示するタスク", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text("状態を複数選択できます", style = MaterialTheme.typography.bodySmall)
+            TaskStatusFilters(statuses, onChange)
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                TaskGlassButton("すべて", onClick = { onChange(TaskStatus.entries.toSet()) })
+                TaskGlassButton("解除", onClick = { onChange(emptySet()) })
+                TaskGlassButton("決定", onClick = { scope.launch { sheetState.hide(); onDismiss() } })
+            }
+        }
+    }
+}
+
+/** 各時間帯に重なる予定を表示し、空き枠からその時刻の予定を追加する。 */
+@Composable
+private fun TaskDayTable(date: LocalDate, tasks: List<ScheduledTask>, filter: Set<TaskStatus>, now: LocalDateTime,
+    enabled: Boolean, onBack: () -> Unit, onAdd: (LocalDateTime) -> Unit, onEdit: (ScheduledTask) -> Unit,
+    onComplete: (TaskOccurrence) -> Unit, onFilter: () -> Unit, onDay: (LocalDate) -> Unit) {
+    val data by produceState<List<TaskOccurrence>?>(null, tasks, date, filter, now) {
+        value = withContext(Dispatchers.Default) {
+            tasks.flatMap { occurrencesOn(it, date) }.filter { it.status(now) in filter }.sortedBy { it.start }
+        }
+    }
+    val occurrences = data.orEmpty()
+    LazyColumn(Modifier.fillMaxSize().elasticListEdges().testTag("task-day-table"), overscrollEffect = null,
+        contentPadding = PaddingValues(20.dp, 12.dp, 20.dp, 36.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        fixedHeader { FeatureHeader(date.format(DateTimeFormatter.ofPattern("M月d日")), onBack) }
+        item {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TaskGlassButton("前の日", icon = R.drawable.ic_mannaka_arrow_back, iconOnly = true,
+                    modifier = Modifier.size(44.dp), onClick = { onDay(date.minusDays(1)) })
+                Text("24時間の予定", Modifier.weight(1f).then(if (data != null) Modifier.testTag("task-day-ready") else Modifier), fontWeight = FontWeight.Bold)
+                TaskGlassButton("Multi-select", onClick = onFilter)
+                TaskGlassButton("次の日", icon = R.drawable.ic_mannaka_chevron_right, iconOnly = true,
+                    modifier = Modifier.size(44.dp), onClick = { onDay(date.plusDays(1)) })
+            }
+        }
+        val allDay = occurrences.filter { it.task.allDay }
+        if (allDay.isNotEmpty()) item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("終日", style = MaterialTheme.typography.labelLarge)
+                allDay.forEach { occurrence -> ScheduledTaskCard(occurrence, now, enabled,
+                    onEdit = { onEdit(occurrence.task) }, onComplete = { onComplete(occurrence) }) }
+            }
+        }
+        items(24, key = { it }) { hour ->
+            val start = date.atTime(hour, 0)
+            val end = start.plusHours(1)
+            val entries = occurrences.filter { !it.task.allDay && it.start < end && it.end > start }
+            Row(Modifier.fillMaxWidth().heightIn(min = 76.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("${hour.toString().padStart(2, '0')}:00", Modifier.width(48.dp).padding(top = 14.dp),
+                    style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (entries.isEmpty()) {
+                    Box(Modifier.weight(1f).height(72.dp).liquidGlass(20.dp).clickable(enabled = enabled) { onAdd(start) }
+                        .testTag("task-hour-$hour"), contentAlignment = Alignment.CenterStart) {
+                        Text("＋ 予定を追加", Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall)
+                    }
+                } else {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        entries.forEach { occurrence -> ScheduledTaskCard(occurrence, now, enabled,
+                            onEdit = { onEdit(occurrence.task) }, onComplete = { onComplete(occurrence) }) }
+                        TaskGlassButton("この時間に追加", enabled = enabled, onClick = { onAdd(start) })
                     }
                 }
             }

@@ -1,5 +1,7 @@
 package jp.essential.app.feature.files
 
+import jp.essential.app.ui.elasticListEdges
+
 import jp.essential.app.ui.fixedHeader
 import jp.essential.app.ui.FeatureHeader
 import jp.essential.app.ui.GlassFeatureTitle
@@ -142,7 +144,7 @@ private fun FileReferenceContent(initialFile: ReferencedFile?, onBack: () -> Uni
         }
     }
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        overscrollEffect = null, modifier = Modifier.elasticListEdges().fillMaxSize(),
         contentPadding = PaddingValues(start = 20.dp, top = 18.dp, end = 20.dp, bottom = 30.dp),
         verticalArrangement = Arrangement.spacedBy(15.dp),
     ) {
@@ -330,7 +332,7 @@ private fun FrameExtractionScreen(
     val mediaShape = RoundedCornerShape(if (portraitVideo) 28.dp else 21.dp)
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        overscrollEffect = null, modifier = Modifier.elasticListEdges().fillMaxSize(),
         contentPadding = PaddingValues(start = 20.dp, top = 18.dp, end = 20.dp, bottom = 30.dp),
         verticalArrangement = Arrangement.spacedBy(15.dp),
     ) {

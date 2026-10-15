@@ -28,6 +28,10 @@ Essentialは次のソフトウェアを利用します。配布時には各ラ�
   - 同梱するライセンス全文：`app/src/main/assets/licenses/material-icons-Apache-2.0.txt`
 - Google ML Kit Barcode Scanning — Google APIs Termsおよび配布物のライセンス条件
   - https://developers.google.com/ml-kit/terms
+- ZXing Core 3.5.3 — Apache License 2.0（QR Createの端末内生成）
+  - https://github.com/zxing/zxing/tree/zxing-3.5.3
+  - ライセンス全文：`app/src/main/assets/licenses/zxing-Apache-2.0.txt`
+  - 著作権表示：`app/src/main/assets/licenses/zxing-NOTICE.txt`
 - Google ML Kit Subject Segmentation 16.0.0-beta1 — Google APIs Termsおよび配布物のライセンス条件
   - https://developers.google.com/ml-kit/vision/subject-segmentation/android
 

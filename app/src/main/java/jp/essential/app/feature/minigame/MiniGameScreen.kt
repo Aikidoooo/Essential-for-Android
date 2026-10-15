@@ -1,5 +1,10 @@
 package jp.essential.app.feature.minigame
 
+import jp.essential.app.ui.elasticListEdges
+import jp.essential.app.ui.liquidGlass
+import jp.essential.app.ui.theme.LocalEssentialDark
+import androidx.compose.ui.platform.testTag
+
 import jp.essential.app.ui.fixedHeader
 import jp.essential.app.ui.FeatureHeader
 import jp.essential.app.ui.GlassFeatureTitle
@@ -124,7 +129,7 @@ private fun MiniGameMenu(
     onSnake: () -> Unit,
 ) {
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        overscrollEffect = null, modifier = Modifier.elasticListEdges().fillMaxSize(),
         contentPadding = PaddingValues(start = 20.dp, top = 22.dp, end = 20.dp, bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
@@ -197,13 +202,8 @@ private fun GameMenuCard(
         modifier = Modifier
             .fillMaxWidth()
             .height(132.dp)
-            .clip(shape)
-            .background(
-                Brush.linearGradient(
-                    listOf(Color.White.copy(alpha = 0.36f), Color.White.copy(alpha = 0.13f)),
-                ),
-            )
-            .border(1.dp, Color.White.copy(alpha = 0.62f), shape)
+            .liquidGlass(shape)
+            .testTag("game-menu-card-$title")
             .combinedClickable(onClick = onClick)
             .padding(18.dp),
     ) {
@@ -266,7 +266,7 @@ private fun MinesweeperSizeScreen(
 ) {
     BackHandler(onBack = onBack)
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        overscrollEffect = null, modifier = Modifier.elasticListEdges().fillMaxSize(),
         contentPadding = PaddingValues(start = 20.dp, top = 22.dp, end = 20.dp, bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
@@ -347,7 +347,7 @@ private fun MinesweeperScreen(difficulty: MineDifficulty, onBack: () -> Unit) {
     }
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        overscrollEffect = null, modifier = Modifier.elasticListEdges().fillMaxSize(),
         contentPadding = PaddingValues(start = 20.dp, top = 22.dp, end = 20.dp, bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
@@ -358,8 +358,7 @@ private fun MinesweeperScreen(difficulty: MineDifficulty, onBack: () -> Unit) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.62f))
+                    .liquidGlass(24.dp)
                     .padding(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
@@ -399,9 +398,7 @@ private fun MinesweeperScreen(difficulty: MineDifficulty, onBack: () -> Unit) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.68f))
-                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(20.dp))
+                    .liquidGlass(20.dp)
                     .padding(10.dp),
                 verticalArrangement = Arrangement.spacedBy(3.dp),
             ) {
@@ -520,6 +517,7 @@ private fun revealSafeCells(source: List<MineCell>, start: Int, columns: Int, ro
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 private fun DosukoiWebViewScreen(onBack: () -> Unit, motionFps: Int) {
+    val darkGlass = LocalEssentialDark.current
     val context = LocalContext.current
     val activity = context as? Activity
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
@@ -685,6 +683,7 @@ private fun DosukoiWebViewScreen(onBack: () -> Unit, motionFps: Int) {
                         }
 
                         override fun onPageFinished(view: WebView, url: String) {
+                            view.evaluateJavascript(homeGlassWebScript(darkGlass), null)
                             // DOMが描画可能になったことを確認してからローディングを外す。
                             pageFinished = true
                             connectionState = "Firebase連携対応"
@@ -764,6 +763,7 @@ private fun DosukoiWebViewScreen(onBack: () -> Unit, motionFps: Int) {
                 }
                 },
                 update = { view ->
+                    view.evaluateJavascript(homeGlassWebScript(darkGlass), null)
                     // Android 15以降はWebView自身へ希望fpsを伝え、DOSUKOIのCSSモーションを同じ描画レートへ揃える。
                     if (Build.VERSION.SDK_INT >= 35) view.requestedFrameRate = motionFps.toFloat()
                     view.evaluateJavascript(
@@ -774,7 +774,7 @@ private fun DosukoiWebViewScreen(onBack: () -> Unit, motionFps: Int) {
             )
             if (!pageVisible) {
                 Column(
-                    modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)),
+                    modifier = Modifier.fillMaxSize().liquidGlass(24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center,
                 ) {

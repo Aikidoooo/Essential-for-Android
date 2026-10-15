@@ -46,13 +46,7 @@ class MainActivity : ComponentActivity() {
     private fun applyDarkAppearance(dark: Boolean) {
         getSharedPreferences("appearance", MODE_PRIVATE).edit().putBoolean("dark_theme", dark).apply()
         val savedOption = AppIconManager.load(this)
-        val isDefaultIcon = savedOption.id == AppIconManager.defaultLight.id || savedOption.id == AppIconManager.defaultDark.id
-        appIconOption = if (isDefaultIcon) {
-            AppIconManager.optionForId(if (dark) "default_dark" else "default_light")
-        } else {
-            savedOption
-        }
-        AppIconManager.apply(this, appIconOption)
+        appIconOption = savedOption
         androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).apply {
             isAppearanceLightStatusBars = !dark
             isAppearanceLightNavigationBars = !dark
@@ -61,16 +55,18 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun applyAppIcon(styleId: String) {
-        val option = AppIconManager.optionForId(styleId)
-        appIconOption = option
-        AppIconManager.apply(this, option)
-        applyWindowBackground(option)
+        val requested = AppIconManager.optionForId(styleId)
+        AppIconManager.apply(this, requested)
+        // 押下直後に期限を越えた場合も、実際に許可された選択へ背景を合わせる。
+        appIconOption = AppIconManager.load(this)
+        applyWindowBackground(appIconOption)
     }
 
     private fun applyWindowBackground(option: AppIconOption) {
         window.setBackgroundDrawable(android.graphics.drawable.GradientDrawable(
-            android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
-            intArrayOf(option.backgroundStart, option.backgroundEnd),
+            android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+            option.backgroundColors(getSharedPreferences("appearance", MODE_PRIVATE).getBoolean("dark_theme",
+                resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES)),
         ))
     }
 

@@ -11,118 +11,82 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import jp.essential.app.MainActivity
 import jp.essential.app.R
-import java.time.LocalDate
 import java.time.LocalDateTime
-import java.time.LocalTime
 import java.time.ZoneId
 
 private const val routineNotificationChannelId = "routine_reminders"
 
-/** 日課の通知を端末のアラームへ登録し、設定変更時は以前の登録を解除する。 */
+/** 繰り返しの次回分だけを登録し、編集・完了・削除時に旧アラームを置き換える。 */
 internal object RoutineNotificationScheduler {
-    private const val intervalDay = 24L * 60L * 60L * 1000L
-    private const val intervalWeek = 7L * intervalDay
-
-    fun schedule(context: Context, task: RoutineTask) {
+    fun schedule(context: Context, task: ScheduledTask) {
         cancel(context, task.id)
-        if (!task.notificationEnabled) return
-        val trigger = nextTrigger(task) ?: return
+        val trigger = nextTaskReminder(task, LocalDateTime.now()) ?: return
         val alarm = context.getSystemService(AlarmManager::class.java) ?: return
-        val pendingIntent = pendingIntent(context, task, PendingIntent.FLAG_UPDATE_CURRENT)
-        val interval = if (task.cadence == RoutineCadence.Weekly) intervalWeek else intervalDay
-        alarm.setInexactRepeating(AlarmManager.RTC_WAKEUP, trigger, interval, pendingIntent)
+        val occurrenceDate = if (task.legacyNotificationTime != null) trigger.toLocalDate()
+            else trigger.plusMinutes(task.reminderMinutes.toLong()).toLocalDate()
+        val intent = reminderIntent(context, task.id).putExtra("task_id", task.id)
+            .putExtra("occurrence_key", occurrenceDate.toString())
+        val pending = PendingIntent.getBroadcast(context, task.id.hashCode(), intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        // 正確なアラーム権限を要求せず、OSの省電力制約内で通知する。
+        alarm.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,
+            trigger.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(), pending)
     }
 
     fun cancel(context: Context, taskId: String) {
-        val alarm = context.getSystemService(AlarmManager::class.java) ?: return
-        val intent = Intent(context, RoutineNotificationReceiver::class.java).setData(android.net.Uri.parse("essential://routine/$taskId"))
-        PendingIntent.getBroadcast(context, taskId.hashCode(), intent, PendingIntent.FLAG_NO_CREATE or immutableFlag)?.let {
-            alarm.cancel(it)
-            it.cancel()
-        }
+        val pending = PendingIntent.getBroadcast(context, taskId.hashCode(), reminderIntent(context, taskId),
+            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE) ?: return
+        context.getSystemService(AlarmManager::class.java)?.cancel(pending)
+        pending.cancel()
     }
 
-    private fun pendingIntent(context: Context, task: RoutineTask, flags: Int): PendingIntent {
-        val intent = Intent(context, RoutineNotificationReceiver::class.java)
-            .setData(android.net.Uri.parse("essential://routine/${task.id}"))
-            .putExtra("title", task.title)
-            .putExtra("emoji", task.emoji)
-            .putExtra("cadence", task.cadence.name)
-            .putExtra("eventStartDate", task.eventStartDate)
-            .putExtra("eventDurationDays", task.eventDurationDays)
-        return PendingIntent.getBroadcast(context, task.id.hashCode(), intent, flags or immutableFlag)
-    }
-
-    private fun nextTrigger(task: RoutineTask): Long? {
-        val now = LocalDateTime.now()
-        val time = LocalTime.of(task.notificationHour.coerceIn(0, 23), task.notificationMinute.coerceIn(0, 59))
-        val candidate = when (task.cadence) {
-            RoutineCadence.Daily -> nextDaily(now, time)
-            RoutineCadence.Weekly -> nextWeekly(now, time)
-            RoutineCadence.Event -> nextEvent(task, now, time)
-        } ?: return null
-        return candidate.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
-    }
-
-    private fun nextDaily(now: LocalDateTime, time: LocalTime): LocalDateTime {
-        val today = now.toLocalDate().atTime(time)
-        return if (today.isAfter(now)) today else today.plusDays(1)
-    }
-
-    private fun nextWeekly(now: LocalDateTime, time: LocalTime): LocalDateTime {
-        val daysUntilMonday = (8 - now.toLocalDate().dayOfWeek.value) % 7
-        var candidate = now.toLocalDate().plusDays(daysUntilMonday.toLong()).atTime(time)
-        if (!candidate.isAfter(now)) candidate = candidate.plusWeeks(1)
-        return candidate
-    }
-
-    private fun nextEvent(task: RoutineTask, now: LocalDateTime, time: LocalTime): LocalDateTime? {
-        val start = runCatching { LocalDate.parse(task.eventStartDate.orEmpty()) }.getOrNull() ?: return null
-        val end = start.plusDays(task.eventDurationDays.coerceAtLeast(1) - 1L)
-        if (now.toLocalDate().isAfter(end)) return null
-        val firstDate = if (now.toLocalDate().isBefore(start)) start else now.toLocalDate()
-        val eventStartTime = runCatching { LocalTime.parse(task.eventStartTime.orEmpty()) }.getOrNull() ?: LocalTime.MIN
-        // 開催初日の通知がイベント開始時刻より前に飛ばないよう、初日だけ境界をそろえる。
-        val firstTime = if (firstDate == start) maxOf(time, eventStartTime) else time
-        var candidate = firstDate.atTime(firstTime)
-        if (!candidate.isAfter(now)) candidate = candidate.plusDays(1)
-        return candidate.takeIf { !it.toLocalDate().isAfter(end) }
-    }
-
-    private val immutableFlag: Int
-        get() = if (Build.VERSION.SDK_INT >= 23) PendingIntent.FLAG_IMMUTABLE else 0
+    internal fun reminderIntent(context: Context, taskId: String) = Intent(context, RoutineNotificationReceiver::class.java)
+        .setData(android.net.Uri.parse("essential://routine/$taskId"))
 }
 
-/** スケジュールされた日課通知を表示するBroadcastReceiver。 */
+/** 起動・時刻変更時の再登録と、保存済み予定を確認した上での通知を行う。 */
 internal class RoutineNotificationReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (Build.VERSION.SDK_INT >= 33 &&
-            ContextCompat.checkSelfPermission(context, "android.permission.POST_NOTIFICATIONS") != android.content.pm.PackageManager.PERMISSION_GRANTED
-        ) return
-        val manager = context.getSystemService(NotificationManager::class.java)
-        if (Build.VERSION.SDK_INT >= 26) {
-            manager?.createNotificationChannel(
-                NotificationChannel(routineNotificationChannelId, "日課の通知", NotificationManager.IMPORTANCE_DEFAULT).apply {
-                    description = "日課・イベントミッションの設定時刻に通知します"
-                },
-            )
-        }
-        val title = intent.getStringExtra("title").orEmpty().ifBlank { "日課" }
-        val emoji = intent.getStringExtra("emoji").orEmpty()
-        if (intent.getStringExtra("cadence") == RoutineCadence.Event.name) {
-            val start = runCatching { LocalDate.parse(intent.getStringExtra("eventStartDate").orEmpty()) }.getOrNull()
-            val duration = intent.getIntExtra("eventDurationDays", 1).coerceAtLeast(1)
-            val today = LocalDate.now()
-            if (start == null || today !in start..start.plusDays(duration - 1L)) return
-        }
-        val notification = NotificationCompat.Builder(context, routineNotificationChannelId)
-            .setSmallIcon(R.drawable.essential_icon)
-            .setContentTitle("$emoji 日課の時間")
-            .setContentText(title)
-            .setAutoCancel(true)
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-            .build()
-        runCatching { NotificationManagerCompat.from(context).notify(title.hashCode(), notification) }
+        val result = goAsync()
+        Thread({
+            try {
+                val store = TaskStore(context.applicationContext)
+                if (intent.action in listOf(Intent.ACTION_BOOT_COMPLETED, Intent.ACTION_TIME_CHANGED,
+                        Intent.ACTION_TIMEZONE_CHANGED, Intent.ACTION_MY_PACKAGE_REPLACED)) {
+                    store.rescheduleAll()
+                    return@Thread
+                }
+                val tasks = store.load()
+                val id = intent.getStringExtra("task_id") ?: intent.data?.lastPathSegment
+                val task = tasks.firstOrNull { it.id == id } ?: return@Thread
+                if (!task.notificationEnabled) return@Thread
+                val now = LocalDateTime.now()
+                val occurrence = intent.getStringExtra("occurrence_key")?.let {
+                    occurrenceStartingOn(task, java.time.LocalDate.parse(it))
+                }
+                val expectedTrigger = occurrence?.let(::taskReminderTime)
+                if (occurrence != null && expectedTrigger != null && expectedTrigger <= now &&
+                    occurrence.key !in task.completed && occurrence.end > now &&
+                    (Build.VERSION.SDK_INT < 33 || ContextCompat.checkSelfPermission(context,
+                        "android.permission.POST_NOTIFICATIONS") == android.content.pm.PackageManager.PERMISSION_GRANTED)) {
+                    val manager = context.getSystemService(NotificationManager::class.java)
+                    manager?.createNotificationChannel(NotificationChannel(routineNotificationChannelId,
+                        "タスクのリマインダー", NotificationManager.IMPORTANCE_DEFAULT))
+                    val open = Intent(context, MainActivity::class.java).putExtra("open_feature", "routine")
+                    val content = PendingIntent.getActivity(context, task.id.hashCode(), open,
+                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+                    val notification = NotificationCompat.Builder(context, routineNotificationChannelId)
+                        .setSmallIcon(R.drawable.essential_icon).setContentTitle(task.title)
+                        .setContentText(if (task.memo.isBlank()) "${task.xp} XP · ${reminderLabel(task.reminderMinutes)}" else task.memo)
+                        .setContentIntent(content).setAutoCancel(true).build()
+                    NotificationManagerCompat.from(context).notify(task.id.hashCode(), notification)
+                }
+                store.rescheduleAll()
+            } catch (_: Exception) {
+                // 保存データが読めない場合は変更や通知をせず、画面のエラー表示へ委ねる。
+            } finally { result.finish() }
+        }, "task-reminders").start()
     }
 }

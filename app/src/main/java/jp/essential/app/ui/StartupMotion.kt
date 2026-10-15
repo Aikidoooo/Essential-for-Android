@@ -23,6 +23,7 @@ import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import jp.essential.app.R
@@ -33,6 +34,8 @@ internal val LocalProgressiveMotionDirection = compositionLocalOf { 0 }
 internal val LocalProgressiveMotionCompleted = compositionLocalOf { false }
 internal val LocalProgressiveMotionEager = compositionLocalOf { false }
 internal val LocalProgressiveMotionStartedAt = compositionLocalOf { 0L }
+internal val LocalProgressiveMotionPending = compositionLocalOf { false }
+internal val ProgressiveMotionFraction = androidx.compose.ui.semantics.SemanticsPropertyKey<Float>("ProgressiveMotionFraction")
 
 /** 画面を開いた時刻を共有し、遅れて構成された項目も同じ入場時刻に合わせる。 */
 @Composable
@@ -88,6 +91,7 @@ internal fun ProgressiveWidget(index: Int, modifier: Modifier = Modifier, conten
     val motionCompleted = LocalProgressiveMotionCompleted.current
     val eagerMotion = LocalProgressiveMotionEager.current
     val startedAt = LocalProgressiveMotionStartedAt.current
+    val motionPending = LocalProgressiveMotionPending.current
     // タブ入場時は保存済みの表示完了状態を復元せず、毎回最初から再生する。
     var revealed by if (motionCycle == 0L) {
         rememberSaveable { mutableStateOf(false) }
@@ -98,9 +102,13 @@ internal fun ProgressiveWidget(index: Int, modifier: Modifier = Modifier, conten
     val progress = remember(motionCycle) { Animatable(if (revealed) 1f else 0f) }
     val rootView = LocalView.current
     // 入場時刻と完了通知を共有し、後から見えた項目の演出を遅らせない。
-    LaunchedEffect(if (eagerMotion) true else visibleInViewport, revealed, motionCycle, motionCompleted) {
+    LaunchedEffect(if (eagerMotion) true else visibleInViewport, revealed, motionCycle, motionCompleted, motionPending) {
         val elapsed = if (startedAt == 0L) 0L else android.os.SystemClock.elapsedRealtime() - startedAt
-        if (motionCompleted || elapsed >= 1_000L) {
+        if (motionPending) {
+            // 画面の整列中に入場演出を消費せず、表示できる時点から再生する。
+            progress.snapTo(0f)
+            revealed = false
+        } else if (motionCompleted || elapsed >= 1_000L) {
             progress.snapTo(1f)
             revealed = true
         } else if ((startedAt != 0L || eagerMotion || visibleInViewport) && !revealed) {
@@ -114,6 +122,7 @@ internal fun ProgressiveWidget(index: Int, modifier: Modifier = Modifier, conten
     // 各フレームの状態は描画レイヤーで読み、子の再コンポーズや再計測を避ける。
     Box(
         modifier
+            .then(Modifier.semantics { this[ProgressiveMotionFraction] = progress.value })
             .onGloballyPositioned { coordinates ->
                 val bounds = coordinates.boundsInWindow()
                 val viewportWidth = rootView.width.toFloat()

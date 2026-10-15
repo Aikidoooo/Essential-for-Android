@@ -6,6 +6,8 @@ import androidx.compose.material3.OutlinedButton
 import android.content.Context
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.progressBarRangeInfo
 
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
@@ -17,7 +19,6 @@ import android.graphics.RuntimeShader
 import android.graphics.drawable.AnimatedImageDrawable
 import android.os.Build
 import android.widget.ImageView
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.AnimatedVisibility
@@ -37,11 +38,9 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.togetherWith
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.Canvas
@@ -80,7 +79,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
@@ -149,6 +147,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -176,10 +175,9 @@ import jp.essential.app.feature.mannaka.meetingBackgroundColor
 import jp.essential.app.feature.routine.RoutineScreen
 import jp.essential.app.feature.schedule.ScheduleGeneratorScreen
 import jp.essential.app.profile.AppProgressStore
+import jp.essential.app.profile.AppNotice
 import jp.essential.app.profile.AppLevel
-import jp.essential.app.profile.AppReward
 import jp.essential.app.profile.ProfileStore
-import jp.essential.app.profile.appRewards
 import jp.essential.app.profile.calculateAppLevel
 import jp.essential.app.ui.theme.EssentialLime
 import jp.essential.app.ui.theme.EssentialOrange
@@ -202,6 +200,7 @@ private enum class ProfilePanel {
     Arrange,
     Settings,
     Updates,
+    Notices,
 }
 
 // 最終項目全体が下部タブの影に隠れないための追加スクロール余白。
@@ -226,6 +225,7 @@ private enum class EssentialSymbol {
     Game,
     Routine,
     TextScan,
+    Bars,
 }
 
 private enum class FeatureRoute(val requestId: String) {
@@ -239,6 +239,7 @@ private enum class FeatureRoute(val requestId: String) {
     NotificationLog("notification_log"),
     Subscriptions("subscriptions"),
     Tuning("tuning"),
+    QrCreate("qr_create"),
 }
 
 // 旧ショートカットとクイック設定からも、最後に使った統合モードを開く。
@@ -286,7 +287,6 @@ fun EssentialRoot(
                 initialAppIconId = initialAppIconId,
                 onAppIconChange = { option ->
                     onAppIconChange(option.id)
-                    darkTheme = option.prefersDarkTheme
                 },
                 sharedUrl = sharedUrl,
                 requestedFeature = requestedFeature,
@@ -315,12 +315,25 @@ private fun EssentialApp(
 ) {
     val context = LocalContext.current
     val profileStore = remember(context) { ProfileStore(context.applicationContext) }
+    val progressStore = remember(context) { AppProgressStore(context.applicationContext) }
+    var totalXp by remember(progressStore) { mutableStateOf(progressStore.loadXp()) }
+    var rewardNotices by remember(progressStore) { mutableStateOf(progressStore.loadNotices()) }
+    DisposableEffect(progressStore) {
+        val unsubscribe = progressStore.observeChanges {
+            totalXp = progressStore.loadXp()
+            rewardNotices = progressStore.loadNotices()
+        }
+        onDispose { unsubscribe() }
+    }
+
     var navigationProfileIcon by remember { mutableStateOf(profileStore.loadIcon()) }
     var navigationProfileImagePath by remember { mutableStateOf(profileStore.loadImagePath()) }
     // 下部タブはActivityの保存状態から復元せず、タスクを開き直したときはホームから始める。
     var destination by remember {
         mutableStateOf(if (initialSetupRequired) Destination.Profile else Destination.Home)
     }
+    val scope = rememberCoroutineScope()
+    val tabMotion = remember { TabMotionState(destination.ordinal) }
     val tabMotionCycles = remember { mutableStateMapOf(destination to 1L) }
     val tabEntryDirections = remember { mutableStateMapOf(destination to 0) }
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -345,12 +358,19 @@ private fun EssentialApp(
     val profilePanelState = rememberSaveable {
         mutableStateOf(if (initialSetupRequired) ProfilePanel.Arrange else ProfilePanel.Main)
     }
-    fun selectDestination(next: Destination) {
+    fun commitDestination(next: Destination, progressive: Boolean) {
         if (next == Destination.Profile) profilePanelState.value = ProfilePanel.Main
         if (next != destination) {
             tabMotionCycles[next] = (tabMotionCycles[next] ?: 0L) + 1L
-            tabEntryDirections[next] = if (next.ordinal > destination.ordinal) 1 else -1
+            tabEntryDirections[next] = if (progressive) {
+                if (next.ordinal > destination.ordinal) 1 else -1
+            } else 0
             destination = next
+        }
+    }
+    fun selectDestination(next: Destination) {
+        tabMotion.select(scope, next.ordinal) { page, progressive ->
+            commitDestination(Destination.entries[page], progressive)
         }
     }
     var activeFeature by rememberSaveable { mutableStateOf<FeatureRoute?>(null) }
@@ -359,14 +379,21 @@ private fun EssentialApp(
         mutableStateOf(featureRouteFromId(initialHomeShortcut) ?: FeatureRoute.Downloader)
     }
     var appIconId by rememberSaveable { mutableStateOf(initialAppIconId) }
-    LaunchedEffect(darkTheme) {
-        if (appIconId == AppIconManager.defaultLight.id || appIconId == AppIconManager.defaultDark.id) {
-            appIconId = if (darkTheme) AppIconManager.defaultDark.id else AppIconManager.defaultLight.id
-        }
+    jp.essential.app.design.AppDesignExpiryEffect { option ->
+        if (appIconId != option.id) { appIconId = option.id; onAppIconChange(option) }
     }
     val destinationState = rememberSaveableStateHolder()
     val snackbarHostState = remember { SnackbarHostState() }
-    val scope = rememberCoroutineScope()
+    val previewActive by remember { androidx.compose.runtime.derivedStateOf { tabMotion.previewProgress > 0f } }
+    val previewFullyHidden by remember { androidx.compose.runtime.derivedStateOf { tabMotion.previewProgress >= .999f } }
+    val homeBackgroundVisible by remember { androidx.compose.runtime.derivedStateOf { tabMotion.homeWeight > 0f } }
+    BackgroundPreviewSystemBars(tabMotion.targetPage == -1 && previewFullyHidden && activeFeature == null)
+    LaunchedEffect(activeFeature) {
+        if (activeFeature != null) tabMotion.resetTo(destination.ordinal)
+    }
+    BackHandler(enabled = activeFeature == null && previewActive) {
+        tabMotion.select(scope, 0, false) { page, progressive -> commitDestination(Destination.entries[page], progressive) }
+    }
     val onComingSoon = remember(snackbarHostState, scope) {
         {
             scope.launch {
@@ -398,6 +425,7 @@ private fun EssentialApp(
     val defaultHomeArtworkPainter = painterResource(R.drawable.home_hero_art)
     val homeBackgroundStore = remember { ProfileStore(context.applicationContext) }
     var homeBackgroundPath by remember { mutableStateOf(homeBackgroundStore.loadHomeBackgroundPath()) }
+    var homeBackgroundEnabled by remember { mutableStateOf(homeBackgroundStore.loadHomeBackgroundEnabled()) }
     val homeBitmap by produceState<Bitmap?>(null, homeBackgroundPath) {
         value = withContext(Dispatchers.IO) {
             homeBackgroundPath?.let { path -> runCatching { BitmapFactory.decodeFile(path) }.getOrNull() }
@@ -406,6 +434,7 @@ private fun EssentialApp(
     val homeArtworkPainter = homeBitmap?.let { androidx.compose.ui.graphics.painter.BitmapPainter(it.asImageBitmap()) }
         ?: defaultHomeArtworkPainter
     val homeScrollState = rememberLazyListState()
+    val homeArtworkHeight = 378.dp + WindowInsets.safeDrawing.asPaddingValues().calculateTopPadding() + 18.dp
     val homeArtworkAlpha by animateFloatAsState(
         if (activeFeature == null) 1f else 0f,
         spring(dampingRatio = 1f, stiffness = 380f), label = "ホーム専用背景の開閉",
@@ -413,7 +442,10 @@ private fun EssentialApp(
     val navigationBackground = rememberGraphicsLayer()
     val navigationContent = rememberGraphicsLayer()
     var navigationContentOrigin by remember { mutableStateOf(Offset.Zero) }
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = Modifier.fillMaxSize().testTag("home-background-preview-root")
+        .tabMotionGesture(tabMotion, activeFeature == null) { page, progressive ->
+            commitDestination(Destination.entries[page], progressive)
+        }) {
         Box(Modifier.fillMaxSize().drawWithContent {
             navigationBackground.record { this@drawWithContent.drawContent() }
             drawLayer(navigationBackground)
@@ -421,22 +453,39 @@ private fun EssentialApp(
             if (dosukoiActive) {
                 // DOSUKOIはWebView自身がFluid Gradientを描画するため、背面のCanvasを止めて二重描画を避ける。
                 Box(Modifier.fillMaxSize().background(Color(0xFF0F0F1A)))
-            } else if (activeFeature == FeatureRoute.Mannaka) {
-                // まんなかの背景色をシステムバーの背面まで連続させる。
-                Box(Modifier.fillMaxSize().background(meetingBackgroundColor()))
             } else {
-                AnimatedBackdrop(AppIconManager.optionForId(appIconId))
-                if (destination == Destination.Home) {
+                AnimatedBackdrop(AppIconManager.optionForId(appIconId),
+                    motionEnabled = !(destination == Destination.Profile && profilePanelState.value in listOf(ProfilePanel.Settings, ProfilePanel.Updates)))
+                ThemeMotifBackground(appIconId, darkTheme, motionEnabled = !(destination == Destination.Profile && profilePanelState.value in listOf(ProfilePanel.Settings, ProfilePanel.Updates)), modifier = Modifier
+                    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                    .drawWithContent {
+                        drawContent()
+                        if (homeBackgroundEnabled && tabMotion.homeWeight > 0f && activeFeature == null && homeScrollState.firstVisibleItemIndex == 0) {
+                            // 写真が終わった位置から線画を表示し、写真内への重なりを防ぐ。
+                            val imageBottom = homeArtworkHeight.toPx() - homeScrollState.firstVisibleItemScrollOffset
+                            drawRect(Brush.verticalGradient(
+                                0f to Color.Black.copy(alpha = 1f - tabMotion.homeWeight),
+                                1f to Color.Black,
+                                startY = imageBottom,
+                                endY = imageBottom + 48.dp.toPx(),
+                            ), blendMode = BlendMode.DstIn)
+                        }
+                    })
+                if (homeBackgroundVisible && homeBackgroundEnabled) {
                     // ホーム画像は開閉中だけ薄くつなぎ、機能画面では表示しない。
-                    Box(Modifier.fillMaxSize().graphicsLayer { alpha = homeArtworkAlpha }) {
-                        HomeArtworkBackground(homeArtworkPainter) { homeScrollState.firstVisibleItemScrollOffset.toFloat() }
+                    Box(Modifier.fillMaxSize().graphicsLayer { alpha = homeArtworkAlpha * tabMotion.homeWeight }) {
+            HomeArtworkBackground(homeArtworkPainter) { homeScrollState.firstVisibleItemScrollOffset.toFloat() }
                     }
                 }
             }
         }
         CompositionLocalProvider(LocalGlassBackdrop provides remember(navigationBackground) { GlassBackdrop(navigationBackground) { Offset.Zero } }) {
         Scaffold(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().then(if (previewFullyHidden)
+                Modifier.clearAndSetSemantics {} else Modifier).graphicsLayer {
+                alpha = 1f - tabMotion.previewProgress
+                translationX = size.width * TabMotionParameters.translationFraction * tabMotion.previewProgress
+            },
             containerColor = Color.Transparent,
             contentColor = MaterialTheme.colorScheme.onSurface,
             // どすこいは暗色の背景をステータス／ナビゲーションバーまで連続させる。
@@ -448,7 +497,10 @@ private fun EssentialApp(
                         selected = destination,
                         profileIcon = navigationProfileIcon,
                         profileImagePath = navigationProfileImagePath,
+                        hasUnreadNotices = rewardNotices.any { !it.read },
                         onSelected = ::selectDestination,
+                        motionState = tabMotion,
+                        onDragCommitted = { page, progressive -> commitDestination(Destination.entries[page], progressive) },
                         backdrop = navigationContent,
                         backdropOrigin = navigationContentOrigin,
                     )
@@ -505,39 +557,24 @@ private fun EssentialApp(
                     FeatureRoute.Routine -> RoutineScreen { activeFeature = null }
                     FeatureRoute.Subscriptions -> jp.essential.app.feature.subscriptions.SubscriptionScreen { activeFeature = null }
                     FeatureRoute.Tuning -> jp.essential.app.feature.tuning.TuningScreen { activeFeature = null }
-                    null -> AnimatedContent(
-                        targetState = destination,
-                        modifier = Modifier.fillMaxSize().testTag("main-tabs").tabSwipeNavigation { direction ->
-                            Destination.entries.getOrNull(currentDestination.ordinal + direction)?.let(::selectDestination)
-                        },
-                        contentAlignment = Alignment.TopStart,
-                        transitionSpec = {
-                            val direction = tabEntryDirections[targetState] ?: 0
-                            // 起動と再表示は縦の項目演出だけにし、タブ移動時だけ横方向へ入れる。
-                            val enter = if (direction == 0) {
-                                fadeIn(tween(180))
-                            } else {
-                                fadeIn(tween(260, easing = FastOutSlowInEasing)) +
-                                    slideInHorizontally(tween(300, easing = FastOutSlowInEasing)) {
-                                        it * direction / 18
-                                    }
-                            }
-                            (enter togetherWith fadeOut(tween(120))).using(null)
-                        },
-                        label = "画面切り替え",
-                    ) { current ->
+                    FeatureRoute.QrCreate -> jp.essential.app.feature.qr.QrCreateScreen { activeFeature = null }
+                    null -> TabMotionPages(tabMotion, destination.ordinal) { page ->
+                        val current = Destination.entries[page]
                         val motionCycle = tabMotionCycles[current] ?: 0L
-                        val motionStartedAt = remember(current, motionCycle) { android.os.SystemClock.elapsedRealtime() }
-                        var motionCompleted by remember(current, motionCycle) { mutableStateOf(false) }
-                        LaunchedEffect(current, motionCycle) {
+                        val motionPending = tabMotion.progressivePage == page && tabMotion.animating
+                        val motionStartedAt = remember(current, motionCycle, motionPending) { android.os.SystemClock.elapsedRealtime() }
+                        var motionCompleted by remember(current, motionCycle, motionPending) { mutableStateOf(false) }
+                        LaunchedEffect(current, motionCycle, motionPending) {
+                            if (motionPending) return@LaunchedEffect
                             kotlinx.coroutines.delay(1_000L)
                             motionCompleted = true
                         }
                         CompositionLocalProvider(
                             LocalProgressiveMotionCycle provides motionCycle,
+                            LocalProgressiveMotionPending provides motionPending,
                             LocalProgressiveMotionStartedAt provides motionStartedAt,
                             LocalProgressiveMotionDirection provides (tabEntryDirections[current] ?: 0),
-                            LocalProgressiveMotionCompleted provides motionCompleted,
+                            LocalProgressiveMotionCompleted provides (motionCompleted || tabMotion.progressivePage != page),
                             // 画面を開いた時点から進め、スクロールで入場演出を開始しない。
                             LocalProgressiveMotionEager provides true,
                         ) {
@@ -563,17 +600,25 @@ private fun EssentialApp(
                                 darkTheme = darkTheme,
                                 onDarkThemeChange = onDarkThemeChange,
                                 appIcon = AppIconManager.optionForId(appIconId),
-                                appLevel = calculateAppLevel(AppProgressStore(LocalContext.current).loadXp()),
+                                totalXp = totalXp,
+                                rewardNotices = rewardNotices,
+                                onNoticesRead = progressStore::markNoticesRead,
                                 initialSetupRequired = initialSetupRequired,
                                 onProfileIconChange = { navigationProfileIcon = it },
                                 onProfileImagePathChange = { navigationProfileImagePath = it },
                                 onAppIconChange = { option ->
-                                    appIconId = option.id
-                                    onAppIconChange(option)
+                                    val allowed = if (AppIconManager.available(context, option)) option else AppIconManager.load(context)
+                                    appIconId = allowed.id
+                                    onAppIconChange(allowed)
                                 },
                                 motionFps = motionFps,
                                                 homeBackgroundPath = homeBackgroundPath,
                                 onHomeBackgroundChange = { homeBackgroundPath = it },
+                                homeBackgroundEnabled = homeBackgroundEnabled,
+                                onHomeBackgroundEnabledChange = {
+                                    homeBackgroundStore.saveHomeBackgroundEnabled(it)
+                                    homeBackgroundEnabled = it
+                                },
                                 homeShortcut = homeShortcut,
                                 onHomeShortcutChange = {
                                     homeShortcut = it
@@ -591,48 +636,173 @@ private fun EssentialApp(
             }
         }
         SiriEdgeGlow(active = activeFeature == null && destination == Destination.Profile && profilePanelState.value in listOf(ProfilePanel.Settings, ProfilePanel.Updates))
+        if (previewActive) {
+            // 透明な面で鑑賞中のタップを受け止め、隠れたカードを誤操作しない。
+            Box(Modifier.fillMaxSize().testTag("home-background-preview")
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {})
+        }
     }
 }
 }
 
 @Composable
-private fun AnimatedBackdrop(appIcon: AppIconOption = AppIconManager.defaultLight) {
+internal fun AnimatedBackdrop(appIcon: AppIconOption = AppIconManager.defaultLight, motionEnabled: Boolean = true) {
     val dark = LocalEssentialDark.current
-    val backdropSpec = tween<Color>(360, easing = FastOutSlowInEasing)
-    val iconStart by animateColorAsState(Color(appIcon.backgroundStart), backdropSpec, label = "アイコン背景開始色")
-    val iconEnd by animateColorAsState(Color(appIcon.backgroundEnd), backdropSpec, label = "アイコン背景終了色")
+    val fullGradient = appIcon.id in setOf("mint", "sunset", "violet", "forest", "ocean", "ruby", "sky", "rose")
+    // アイコンの色相を保ち、本文のコントラストに合わせて背景の濃さだけを調整する。
+    val backgroundColors = remember(appIcon, dark) { appIcon.backgroundColors(dark) }
+    val backdropSpec = spring<Color>(dampingRatio = 1f, stiffness = 380f)
+    val iconStart by animateColorAsState(Color(backgroundColors[0]), backdropSpec, label = "アイコン背景開始色")
+    val iconEnd by animateColorAsState(Color(backgroundColors[1]), backdropSpec, label = "アイコン背景終了色")
     // 下端色を二重に補間すると追従が遅れるため、同じ補間値を直接使用する。
     val bottom = iconEnd
-    val firstGlow = iconEnd.copy(alpha = if (dark) 0.34f else 0.26f)
-    val secondGlow = iconStart.copy(alpha = if (dark) 0.24f else 0.18f)
-    val horizontal = remember { androidx.compose.animation.core.Animatable(0.18f) }
-    val vertical = remember { androidx.compose.animation.core.Animatable(0.16f) }
-    LaunchedEffect(dark) {
-        // 起動とテーマ変更時だけ光彩を動かし、停止中の全画面再描画をなくす。
-        launch { horizontal.animateTo(if (dark) 0.72f else 0.30f, tween(1_200)) }
-        launch { vertical.animateTo(if (dark) 0.36f else 0.24f, tween(1_200)) }
+    val firstGlow by animateColorAsState(Color(appIcon.backgroundEnd).copy(alpha = if (fullGradient) { if (dark) .15f else .12f } else if (dark) .075f else .055f),
+        backdropSpec, label = "淡い背景光の終了色")
+    val secondGlow by animateColorAsState(Color(appIcon.backgroundStart).copy(alpha = if (fullGradient) { if (dark) .10f else .08f } else if (dark) .045f else .035f),
+        backdropSpec, label = "淡い背景光の開始色")
+    var reducedMotion by remember { mutableStateOf(!android.animation.ValueAnimator.areAnimatorsEnabled()) }
+    val context = LocalContext.current
+    DisposableEffect(context) {
+        val observer = object : android.database.ContentObserver(android.os.Handler(android.os.Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean) { reducedMotion = !android.animation.ValueAnimator.areAnimatorsEnabled() }
+        }
+        context.contentResolver.registerContentObserver(android.provider.Settings.Global.getUriFor(
+            android.provider.Settings.Global.ANIMATOR_DURATION_SCALE), false, observer)
+        onDispose { context.contentResolver.unregisterContentObserver(observer) }
     }
+    // 56秒の周期で広い光をわずかに動かす。線画とホーム写真の位置は変えない。
+    val phase = rememberDecorativePhase(56_000, enabled = motionEnabled && !reducedMotion)
+    val effectPaths = remember { List(3) { androidx.compose.ui.graphics.Path() } }
 
     Canvas(modifier = Modifier.fillMaxSize()) {
-        drawRect(Brush.verticalGradient(listOf(iconStart, bottom)))
+        val angle = phase.value * 2f * kotlin.math.PI.toFloat()
+        val horizontal = .32f + .12f * kotlin.math.sin(angle)
+        val vertical = .26f + .08f * kotlin.math.cos(angle)
+        // 全画面の三段グラデーション自体を緩やかに動かし、部分的な光だけに見せない。
+        if (fullGradient) drawRect(Brush.linearGradient(
+            0f to iconStart,
+            .48f to androidx.compose.ui.graphics.lerp(iconStart, bottom, .45f),
+            1f to bottom,
+            start = Offset(size.width * (-.12f + .10f * kotlin.math.sin(angle)), 0f),
+            end = Offset(size.width * (1.12f + .10f * kotlin.math.cos(angle)), size.height),
+        )) else drawRect(Brush.linearGradient(listOf(iconStart, bottom), Offset.Zero, Offset(size.width, size.height)))
         drawCircle(
             brush = Brush.radialGradient(
-                colors = listOf(firstGlow.copy(alpha = 0.28f), Color.Transparent),
-                center = Offset(size.width * horizontal.value, size.height * vertical.value),
-                radius = size.maxDimension * 0.64f,
+                colors = listOf(firstGlow, Color.Transparent),
+                center = Offset(size.width * horizontal, size.height * vertical),
+                radius = size.maxDimension * 0.80f,
             ),
-            radius = size.maxDimension * 0.64f,
-            center = Offset(size.width * horizontal.value, size.height * vertical.value),
+            radius = size.maxDimension * 0.80f,
+            center = Offset(size.width * horizontal, size.height * vertical),
         )
         drawCircle(
             brush = Brush.radialGradient(
-                colors = listOf(secondGlow.copy(alpha = 0.22f), Color.Transparent),
-                center = Offset(size.width * (1f - horizontal.value), size.height * 0.76f),
-                radius = size.maxDimension * 0.56f,
+                colors = listOf(secondGlow, Color.Transparent),
+                center = Offset(size.width * (1f - horizontal), size.height * (1f - vertical)),
+                radius = size.maxDimension * 0.72f,
             ),
-            radius = size.maxDimension * 0.56f,
-            center = Offset(size.width * (1f - horizontal.value), size.height * 0.76f),
+            radius = size.maxDimension * 0.72f,
+            center = Offset(size.width * (1f - horizontal), size.height * (1f - vertical)),
         )
+        if (appIcon.id == "violet") {
+            // 紫の粒子は画面内の異なる位置でゆっくり上下左右へ漂う。
+            for (index in 0 until 36) {
+                val speed = 1f + (index % 4) * .25f
+                val drift = angle * speed + index * 2.399f
+                val center = Offset(
+                    size.width * (.06f + ((index * 43 + 17) % 101) / 101f * .88f + .022f * kotlin.math.sin(drift)),
+                    size.height * (.06f + ((index * 67 + 29) % 103) / 103f * .88f + .025f * kotlin.math.cos(drift)),
+                )
+                val radius = size.width * (.0018f + (index % 4) * .0007f)
+                val opacity = .45f + .25f * kotlin.math.sin(drift)
+                val particleColor = if (dark) Color(0xFFD8ADFF) else Color(0xFF8850C8)
+                drawCircle(particleColor.copy(alpha = opacity * .06f), radius * 4f, center)
+                drawCircle(particleColor.copy(alpha = opacity * .16f), radius * 2f, center)
+                drawCircle(particleColor.copy(alpha = opacity * if (dark) .85f else .65f), radius, center)
+            }
+            // 位置をずらした落雷が上から伸び、短い発光を残して消える。
+            for (index in 0 until 3) {
+                val progress = (phase.value * 14f + index * .337f) % 1f
+                val strike = (progress / .12f).coerceIn(0f, 1f)
+                val opacity = if (progress < .12f) strike else ((.30f - progress) / .18f).coerceIn(0f, 1f)
+                if (opacity > 0f) {
+                    val baseX = .16f + index * .34f
+                    val bolt = effectPaths[index].apply {
+                        reset()
+                        moveTo(size.width * baseX, -size.height * .02f)
+                        for (step in 1..8) {
+                            val y = step / 8f * .84f * strike
+                            val zigzag = (if (step % 2 == 0) -.045f else .045f) + .018f * kotlin.math.sin(index + step.toFloat())
+                            lineTo(size.width * (baseX + zigzag), size.height * y)
+                        }
+                    }
+                    val lightning = if (dark) Color(0xFFCCA7FF) else Color(0xFF9664D9)
+                    drawPath(bolt, lightning.copy(alpha = opacity * .11f), style = androidx.compose.ui.graphics.drawscope.Stroke(size.width * .016f))
+                    drawPath(bolt, lightning.copy(alpha = opacity * .42f), style = androidx.compose.ui.graphics.drawscope.Stroke(size.width * .003f))
+                }
+            }
+        }
+        if (appIcon.id == "ocean") {
+            // 泡は下端で生まれて上へ昇り、速さ・半径・横揺れに個体差を付ける。
+            for (index in 0 until 48) {
+                val speed = 2f + index % 3
+                val progress = (phase.value * speed + ((index * 67 + 13) % 113) / 113f) % 1f
+                val fade = kotlin.math.sin(progress * kotlin.math.PI.toFloat()).coerceAtLeast(0f)
+                val x = ((index * 41 + 23) % 109) / 109f
+                val center = Offset(size.width * (x + .035f * kotlin.math.sin(angle * speed + index)), size.height * (1.05f - progress * 1.10f))
+                val radius = size.width * (.009f + (index % 5) * .004f) * (.6f + progress * .4f)
+                val bubbleColor = if (dark) Color(0xFFABE9FF) else Color(0xFF357FAB)
+                drawCircle(bubbleColor.copy(alpha = fade * .045f), radius, center)
+                drawCircle(bubbleColor.copy(alpha = fade * .40f), radius, center,
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(size.width * .0015f))
+                drawCircle((if (dark) Color.White else Color(0xFF77CBE3)).copy(alpha = fade * .65f),
+                    radius * .14f, center + Offset(-radius * .36f, -radius * .36f))
+            }
+        }
+        if (appIcon.id == "rose") {
+            // 雪は個々の開始位置と速さを変え、横へ揺れながら上から下へ降らせる。
+            for (index in 0 until 42) {
+                val speed = 3f + index % 3
+                val progress = (phase.value * speed + ((index * 61 + 7) % 109) / 109f) % 1f
+                val fade = kotlin.math.sin(progress * kotlin.math.PI.toFloat()).coerceAtLeast(0f)
+                val x = ((index * 43 + 17) % 107) / 107f
+                val center = Offset(size.width * (x + .028f * kotlin.math.sin(angle * speed + index)), size.height * progress)
+                val radius = size.width * (.0013f + (index % 4) * .00055f)
+                val snowColor = if (dark) Color(0xFFE4F7FF) else Color(0xFF5C9DBE)
+                drawCircle(snowColor.copy(alpha = fade * .07f), radius * 2.5f, center)
+                drawCircle(snowColor.copy(alpha = fade * if (dark) .68f else .40f), radius, center)
+            }
+        }
+        if (appIcon.id == "sky") {
+            val inkColor = if (dark) Color(0xFF8FE6F5) else Color(0xFF268BA9)
+            // 水墨の線は太さと透明度を変化させ、波の形だけを上へ流す。
+            for (lane in 0..2) {
+                for (segment in 0 until 64) {
+                    fun inkPoint(step: Int): Offset {
+                        val y = step / 64f
+                        val wave = kotlin.math.sin(y * 11f + angle * 4f + lane * 1.7f)
+                        return Offset(size.width * (.12f + lane * .37f + wave * .055f), size.height * y)
+                    }
+                    val y = segment / 64f
+                    val fade = kotlin.math.sin(y * kotlin.math.PI.toFloat()).coerceAtLeast(0f)
+                    val width = size.width * (.002f + .004f * (.5f + .5f * kotlin.math.sin(y * 16f + lane)))
+                    drawLine(inkColor.copy(alpha = fade * if (dark) .15f else .10f), inkPoint(segment), inkPoint(segment + 1),
+                        strokeWidth = width, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+                }
+            }
+            // 粒子は周期をずらして上昇し、上下端で消えるため折り返しが見えない。
+            for (index in 0 until 48) {
+                val progress = (phase.value * 4f + ((index * 73 + 19) % 101) / 101f) % 1f
+                val envelope = kotlin.math.sin(progress * kotlin.math.PI.toFloat()).coerceAtLeast(0f)
+                val fade = envelope * (.25f + .75f * (.5f + .5f * kotlin.math.sin(angle * 3f + index * 2.37f)))
+                val x = ((index * 47 + 11) % 103) / 103f * .90f + .05f
+                val center = Offset(size.width * (x + .025f * kotlin.math.sin(angle + index)), size.height * (1f - progress))
+                val radius = size.width * (.0017f + (index % 3) * .0006f)
+                drawCircle(inkColor.copy(alpha = fade * .055f), radius * 6f, center)
+                drawCircle(inkColor.copy(alpha = fade * .16f), radius * 3f, center)
+                drawCircle((if (dark) Color(0xFFE8FCFF) else Color(0xFF62C7DD)).copy(alpha = fade * .78f), radius, center)
+            }
+        }
     }
 }
 
@@ -657,7 +827,8 @@ private fun HomeScreen(
         "${jp.essential.app.feature.subscriptions.yenText(subscriptions.filter { it.paymentIn(java.time.YearMonth.now()) != null }.sumOf { it.yen })}／月 · ${subscriptions.size}件"
     LazyColumn(
         state = homeListState,
-        modifier = Modifier.fillMaxSize(),
+        overscrollEffect = null,
+        modifier = Modifier.fillMaxSize().elasticListEdges(),
         contentPadding = PaddingValues(
             start = 20.dp,
             top = 0.dp,
@@ -679,11 +850,12 @@ private fun HomeScreen(
                         FeatureItem("行程表", "経由地を含めて3形式へ", EssentialSymbol.Calendar, EssentialYellow, FeatureRoute.Schedule),
                         FeatureItem("ファイル参照", "圧縮・変換・背景透過", EssentialSymbol.Media, EssentialRed, FeatureRoute.Files),
                         FeatureItem("ミニゲーム", "言葉遊び・マインスイーパー", EssentialSymbol.Game, Color(0xFF9C6BFF), FeatureRoute.MiniGame),
-                        FeatureItem("日課", "毎日の目標をポイントに", EssentialSymbol.Routine, Color(0xFF27B99A), FeatureRoute.Routine),
+                        FeatureItem("日課", "カレンダーでタスクとXPを管理", EssentialSymbol.Routine, Color(0xFF27B99A), FeatureRoute.Routine),
                         FeatureItem("まんなか！", "みんなの駅から集合・遊びを提案", EssentialSymbol.Spark, Color(0xFFFF90B5), FeatureRoute.Mannaka),
                         FeatureItem("通知ログ", "通知を秒単位で記録・keep", EssentialSymbol.Notification, Color(0xFF78D9EF), FeatureRoute.NotificationLog),
                         FeatureItem("サブスク管理", subscriptionSummary, EssentialSymbol.Calendar, Color(0xFF69C9B0), FeatureRoute.Subscriptions),
                         FeatureItem("チューニング", "ギター・ウクレレの音程を調整", EssentialSymbol.Media, Color(0xFFB09AF5), FeatureRoute.Tuning),
+                        FeatureItem("QR Create", "URLからQRを作成・保存・共有", EssentialSymbol.Qr, EssentialLime, FeatureRoute.QrCreate),
                     ).sortedBy { widgetOrder.indexOf(it.route?.requestId).takeIf { index -> index >= 0 } ?: Int.MAX_VALUE },
                     onReorder = { reordered ->
                         widgetOrder = reordered.mapNotNull { it.route?.requestId }
@@ -726,7 +898,8 @@ private fun AppHeader() {
 
 /** 背景画像を入場演出から分離し、一覧と同じスクロール量を描画へ直接反映する。 */
 @Composable
-private fun HomeArtworkBackground(painter: androidx.compose.ui.graphics.painter.Painter, scrollOffset: () -> Float = { 0f }) {
+private fun HomeArtworkBackground(painter: androidx.compose.ui.graphics.painter.Painter,
+    scrollOffset: () -> Float = { 0f }) {
     val topPadding = WindowInsets.safeDrawing.asPaddingValues().calculateTopPadding() + 18.dp
     Box(Modifier.fillMaxWidth().height(306.dp + topPadding + 72.dp)
         .graphicsLayer { translationY = -scrollOffset() }
@@ -825,16 +998,7 @@ private fun LiquidGlassHeroBackdrop(
             RenderEffect.createRuntimeShaderEffect(shader, "contents").asComposeRenderEffect()
         } else null
     }
-    val lightTransition = rememberInfiniteTransition(label = "液体ガラスの光")
-    val lightTravel by lightTransition.animateFloat(
-        initialValue = 0.08f,
-        targetValue = 0.92f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(4_600, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "光の移動",
-    )
+    val lightTravel = rememberDecorativePhase(4600, .08f, .92f, RepeatMode.Reverse)
 
     Box(
         modifier = Modifier
@@ -883,7 +1047,7 @@ private fun LiquidGlassHeroBackdrop(
                     colors = listOf(Color.White.copy(alpha = 0.22f), Color.Transparent),
                 ),
                 radius = size.width * 0.30f,
-                center = Offset(size.width * lightTravel, size.height * 0.12f),
+                center = Offset(size.width * lightTravel.value, size.height * 0.12f),
             )
         }
     }
@@ -1090,8 +1254,8 @@ private fun FeatureCard(
                     )
                 }
                 Spacer(Modifier.weight(1f))
-                Text(
-                    text = if (feature.route == null) "準備中" else "利用可能",
+                if (feature.route == null) Text(
+                    text = "準備中",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.labelLarge.copy(fontSize = 11.sp),
                     modifier = Modifier
@@ -1126,7 +1290,8 @@ private fun FeaturesScreen(
     contentBottomPadding: Dp,
 ) {
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        overscrollEffect = null,
+        modifier = Modifier.fillMaxSize().elasticListEdges(),
         contentPadding = PaddingValues(
             start = 20.dp,
             top = 22.dp,
@@ -1197,7 +1362,7 @@ private fun FeaturesScreen(
                 ProgressiveWidget(6) {
                     CategoryPanel(
                         title = "日課",
-                        description = "デイリー・ウィークリー目標とポイントを管理",
+                        description = "日時を決めてタスクとXPを管理",
                         symbol = EssentialSymbol.Routine,
                         accent = Color(0xFF27B99A),
                         onClick = { onOpenFeature(FeatureRoute.Routine) },
@@ -1230,6 +1395,11 @@ private fun FeaturesScreen(
                     CategoryPanel(title = "チューニング", description = "ギター・ウクレレなどの音程を調整",
                         symbol = EssentialSymbol.Media, accent = Color(0xFFB09AF5),
                         onClick = { onOpenFeature(FeatureRoute.Tuning) })
+                }
+                ProgressiveWidget(12) {
+                    CategoryPanel(title = "QR Create", description = "URLをQRコードへ変換して画像保存・共有",
+                        symbol = EssentialSymbol.Qr, accent = EssentialLime,
+                        onClick = { onOpenFeature(FeatureRoute.QrCreate) })
                 }
             }
         }
@@ -1296,7 +1466,9 @@ private fun ProfileScreen(
     darkTheme: Boolean,
     onDarkThemeChange: (Boolean) -> Unit,
     appIcon: AppIconOption,
-    appLevel: AppLevel,
+    totalXp: Int,
+    rewardNotices: List<AppNotice>,
+    onNoticesRead: (Set<String>) -> Unit,
     initialSetupRequired: Boolean,
     onProfileIconChange: (String) -> Unit,
     onProfileImagePathChange: (String?) -> Unit,
@@ -1307,17 +1479,17 @@ private fun ProfileScreen(
     contentBottomPadding: Dp,
     homeBackgroundPath: String? = null,
     onHomeBackgroundChange: (String?) -> Unit = {},
+    homeBackgroundEnabled: Boolean = true,
+    onHomeBackgroundEnabledChange: (Boolean) -> Unit = {},
 ) {
     val context = LocalContext.current
     val profileWindowOrigin = remember { WindowExpansionOrigin() }
     val profileStore = remember { ProfileStore(context.applicationContext) }
-    val progressStore = remember { AppProgressStore(context.applicationContext) }
+    val appLevel = calculateAppLevel(totalXp)
     var profileName by remember { mutableStateOf(profileStore.loadName()) }
     var profileIcon by remember { mutableStateOf(profileStore.loadIcon()) }
     var profileImagePath by remember { mutableStateOf(profileStore.loadImagePath()) }
     var profileBannerPath by remember { mutableStateOf(profileStore.loadBannerPath()) }
-    var claimedRewards by remember { mutableStateOf(progressStore.loadClaimedRewards()) }
-    var rewardsExpanded by rememberSaveable { mutableStateOf(false) }
     var settingsCategory by rememberSaveable { mutableStateOf("すべて") }
     LaunchedEffect(settingsCategory) { if (settingsCategory == "更新") settingsCategory = "すべて" }
     val backgroundResetRotation = remember { androidx.compose.animation.core.Animatable(0f) }
@@ -1327,6 +1499,11 @@ private fun ProfileScreen(
     val settingsScope = rememberCoroutineScope()
     // タブ側でメインへ確定してから表示するため、以前の設定パネルを復元しない。
     var panel by panelState
+    LaunchedEffect(panel, rewardNotices) {
+        if (panel == ProfilePanel.Notices) {
+            onNoticesRead(rewardNotices.filter { !it.read }.map { it.id }.toSet())
+        }
+    }
     BackHandler(enabled = panel != ProfilePanel.Main) { panel = if (panel == ProfilePanel.Updates) ProfilePanel.Settings else ProfilePanel.Main }
     var cropUri by remember { mutableStateOf<android.net.Uri?>(null) }
     var cropBanner by remember { mutableStateOf(false) }
@@ -1371,7 +1548,7 @@ private fun ProfileScreen(
     GlassBackdropScope(Modifier.fillMaxSize(), enabled = settingsVisible,
         background = { if (settingsVisible) SettingsGradientBackground() }) {
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        overscrollEffect = null, modifier = Modifier.elasticListEdges().fillMaxSize(),
         contentPadding = PaddingValues(
             start = 20.dp,
             top = 22.dp + if (settingsVisible) 0.dp else WindowInsets.safeDrawing.asPaddingValues().calculateTopPadding(),
@@ -1405,6 +1582,17 @@ private fun ProfileScreen(
                                 .clip(CircleShape)
                                 .clickable { profileImagePicker.launch(arrayOf("image/*")) },
                         )
+                        BadgedBox(modifier = Modifier.align(Alignment.BottomEnd).offset(y = 8.dp).size(48.dp), badge = {
+                            if (rewardNotices.any { !it.read }) UnreadNoticeDot("profile-bell-unread")
+                        }) {
+                        ProfileActionButton(
+                            icon = EssentialSymbol.Notification,
+                            label = "おしらせ",
+                            showLabel = false,
+                            modifier = Modifier.size(48.dp),
+                            onClick = { panel = ProfilePanel.Notices },
+                        )
+                        }
                     }
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text(
@@ -1415,15 +1603,6 @@ private fun ProfileScreen(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
-                        Spacer(Modifier.width(12.dp))
-                        Column(Modifier.width(112.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                            Text("LV ${appLevel.level}", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-                            Box(Modifier.fillMaxWidth().height(7.dp).clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f))) {
-                                Box(Modifier.fillMaxWidth(appLevel.progress.coerceIn(0f, 1f)).fillMaxHeight()
-                                    .background(MaterialTheme.colorScheme.primary, CircleShape))
-                            }
-                        }
                     }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -1446,17 +1625,7 @@ private fun ProfileScreen(
             }
             if (!settingsVisible) {
                 progressiveItem(1, keyPrefix = panelKey) {
-                    ProfileRewards(
-                        currentLevel = appLevel,
-                        claimedRewards = claimedRewards,
-                        expanded = rewardsExpanded,
-                        onExpandedChange = { rewardsExpanded = it },
-                        onClaim = { rewardLevel ->
-                            if (appLevel.level >= rewardLevel && rewardLevel !in claimedRewards) {
-                                claimedRewards = progressStore.claimReward(rewardLevel)
-                            }
-                        },
-                    )
+                    ProfileLevelCard(totalXp = totalXp, level = appLevel)
                 }
             }
         }
@@ -1503,7 +1672,7 @@ private fun ProfileScreen(
             }
         }
         progressiveItem(2, keyPrefix = "profile-settings") {
-            AppIconSettingsCard(
+            AppDesignSettingsCard(
                 selected = appIcon,
                 currentLevel = appLevel.level,
                 onSelect = onAppIconChange,
@@ -1527,6 +1696,16 @@ private fun ProfileScreen(
                     }, modifier = Modifier.testTag("home-background-reset")) {
                         HomeBackgroundResetIcon(Modifier.graphicsLayer { rotationZ = backgroundResetRotation.value })
                     }
+                }
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("ホーム画像を表示", Modifier.weight(1f))
+                    androidx.compose.material3.Switch(
+                        checked = homeBackgroundEnabled,
+                        onCheckedChange = onHomeBackgroundEnabledChange,
+                        modifier = Modifier.testTag("home-background-enabled").semantics {
+                            contentDescription = "ホーム画像を表示"
+                        },
+                    )
                 }
                 Box(Modifier.fillMaxWidth().height(150.dp).clip(RoundedCornerShape(20.dp))
                     .clickable { homeBackgroundPicker.launch(arrayOf("image/*")) }.testTag("home-background-picker")) {
@@ -1651,6 +1830,23 @@ private fun ProfileScreen(
             onBack = { panel = ProfilePanel.Settings }, bottomPadding = contentBottomPadding + NAVIGATION_CONTENT_CLEARANCE)
     }
     IconWindowContent(
+        targetState = if (panel == ProfilePanel.Notices) true else null,
+        sharedOrigin = profileWindowOrigin,
+        icon = { EssentialSymbol(EssentialSymbol.Notification, MaterialTheme.colorScheme.primary, Modifier.fillMaxSize(), null) },
+        modifier = Modifier.fillMaxSize(),
+    ) { noticesVisible ->
+        if (noticesVisible == true) {
+            GlassBackdropScope(Modifier.fillMaxSize(), background = {
+                AnimatedBackdrop(appIcon)
+                ThemeMotifBackground(appIcon.id, darkTheme)
+            }) {
+                RewardNoticesContent(rewardNotices,
+                    bottomPadding = contentBottomPadding + NAVIGATION_CONTENT_CLEARANCE,
+                    onBack = { panel = ProfilePanel.Main })
+            }
+        }
+    }
+    IconWindowContent(
         targetState = if (panel == ProfilePanel.Arrange) true else null,
         icon = { EssentialSymbol(EssentialSymbol.Edit, MaterialTheme.colorScheme.primary, Modifier.fillMaxSize(), null) },
         modifier = Modifier.fillMaxSize().padding(bottom = contentBottomPadding),
@@ -1735,6 +1931,7 @@ private fun ProfileActionButton(
     icon: EssentialSymbol,
     label: String,
     modifier: Modifier = Modifier,
+    showLabel: Boolean = true,
     onClick: () -> Unit,
 ) {
     val (originModifier, openWindow) = rememberWindowExpansionClick(onClick)
@@ -1760,8 +1957,10 @@ private fun ProfileActionButton(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         EssentialSymbol(icon, MaterialTheme.colorScheme.onSurface, Modifier.size(20.dp), label)
-        Spacer(Modifier.width(7.dp))
-        Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
+        if (showLabel) {
+            Spacer(Modifier.width(7.dp))
+            Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
+        }
     }
 }
 
@@ -1800,7 +1999,7 @@ private fun ProfileEditorPanel(
             }
             TextButton(onClick = onDone) { Text("閉じる") }
         }
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Column(Modifier.weight(1f).elasticListEdges().verticalScroll(rememberScrollState(), overscrollEffect = null), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Box(Modifier.fillMaxWidth().height(170.dp)) {
                 ProfileBanner(profileBannerPath, Modifier.fillMaxWidth().height(125.dp)
                     .clip(RoundedCornerShape(24.dp)).clickable(onClick = onChooseBanner))
@@ -1960,123 +2159,52 @@ private fun decodeProfileAvatar(path: String): Bitmap? {
 
 @Composable
 private fun ProfileLevelCard(totalXp: Int, level: AppLevel) {
-    val shape = RoundedCornerShape(36.dp, 36.dp, 18.dp, 36.dp)
-    Box(
-        modifier = Modifier.fillMaxWidth().clip(shape)
-            .background(Brush.linearGradient(listOf(Color(0xCC21B79B), Color(0xCC5B8DFF), Color(0xAA8D6AFF))))
-            .border(1.dp, Color.White.copy(alpha = 0.56f), shape)
-            .padding(22.dp),
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    Modifier.size(70.dp).clip(RoundedCornerShape(25.dp)).background(Color.White.copy(alpha = 0.18f)),
-                    contentAlignment = Alignment.Center,
-                ) { Text("LV\n${level.level}", color = Color.White, fontWeight = FontWeight.Black) }
-                Spacer(Modifier.width(16.dp))
-                Column {
-                    Text("アプリXP $totalXp", color = Color.White, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black)
-                    Text(
-                        if (level.level == 60) "MAX LEVEL" else "次のレベルまで ${level.pointsForNextLevel - level.pointsInLevel} XP",
-                        color = Color.White.copy(alpha = 0.82f),
-                    )
-                    if (level.level < 60) {
-                        Text("必要XP ${level.pointsForNextLevel}", color = Color.White.copy(alpha = 0.68f), style = MaterialTheme.typography.bodySmall)
-                    }
-                }
-            }
-            EssentialBubblyProgressBar(progress = level.progress, modifier = Modifier.fillMaxWidth())
-            Text("日課とミニゲームのXPが、アプリレベルへ合算されます。", color = Color.White.copy(alpha = 0.78f), style = MaterialTheme.typography.bodySmall)
-        }
-    }
-}
-
-@Composable
-private fun ProfileRewards(
-    currentLevel: AppLevel,
-    claimedRewards: Set<Int>,
-    expanded: Boolean,
-    onExpandedChange: (Boolean) -> Unit,
-    onClaim: (Int) -> Unit,
-) {
+    val progress by animateFloatAsState(level.progress.coerceIn(0f, 1f),
+        animationSpec = spring(dampingRatio = .9f, stiffness = 650f), label = "プロフィールXPゲージ")
     Column(
-        modifier = Modifier,
-        verticalArrangement = Arrangement.spacedBy(11.dp),
+        modifier = Modifier.fillMaxWidth().liquidGlass(24.dp).padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Row(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).clickable { onExpandedChange(!expanded) }.padding(vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text("レベル報酬", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
-                Text(if (expanded) "プロフィールでのみ確認・受取できます" else "タップして報酬一覧を表示", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-            }
-            Text("${claimedRewards.size}/${appRewards.size}", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Black)
-            Spacer(Modifier.width(10.dp))
-            Text(if (expanded) "⌃" else "⌄", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleLarge)
-        }
-        AnimatedVisibility(
-            visible = expanded,
-            enter = expandVertically(animationSpec = tween(420, easing = FastOutSlowInEasing)) + fadeIn(animationSpec = tween(280)),
-            exit = shrinkVertically(animationSpec = tween(360, easing = FastOutSlowInEasing)) + fadeOut(animationSpec = tween(220)),
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(11.dp)) {
-                appRewards.forEach { reward ->
-                    ProfileRewardCard(
-                        reward = reward,
-                        unlocked = currentLevel.level >= reward.level,
-                        claimed = reward.level in claimedRewards,
-                        onClaim = { onClaim(reward.level) },
-                    )
-                }
+        Text("LV ${level.level}", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
+        Text(
+            if (level.level >= 60) "次のLVまで 0 XP（最大レベル）"
+            else "次のLVまで ${level.pointsForNextLevel - level.pointsInLevel} XP",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Box(Modifier.fillMaxWidth().height(8.dp).clip(CircleShape)
+            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = .16f))
+            .testTag("profile-xp-progress")
+            .semantics { progressBarRangeInfo = ProgressBarRangeInfo(level.progress.coerceIn(0f, 1f), 0f..1f) }) {
+            if (progress > 0f) {
+                Box(Modifier.fillMaxWidth(progress).fillMaxHeight()
+                    .background(MaterialTheme.colorScheme.primary, CircleShape))
             }
         }
+        Text("総XP $totalXp", style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
 @Composable
-private fun ProfileRewardCard(
-    reward: AppReward,
-    unlocked: Boolean,
-    claimed: Boolean,
-    onClaim: () -> Unit,
-) {
-    val shape = RoundedCornerShape(25.dp, 25.dp, 13.dp, 25.dp)
-    Column(
-        modifier = Modifier.fillMaxWidth().clip(shape)
-            .background(if (unlocked) MaterialTheme.colorScheme.surface.copy(alpha = 0.78f) else MaterialTheme.colorScheme.surface.copy(alpha = 0.42f))
-            .border(1.dp, if (unlocked) MaterialTheme.colorScheme.primary.copy(alpha = 0.42f) else Color.White.copy(alpha = 0.28f), shape)
-            .padding(13.dp),
-        verticalArrangement = Arrangement.spacedBy(9.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Image(
-                painter = painterResource(reward.imageRes),
-                contentDescription = reward.title,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.size(56.dp).clip(RoundedCornerShape(17.dp)),
-            )
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(reward.title, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(reward.description, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-            }
-            Text("LV${reward.level}", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Black)
-        }
-        when {
-            claimed -> Text("✓ 獲得済み", color = Color(0xFF168B74), fontWeight = FontWeight.Black)
-            unlocked -> Button(onClick = onClaim, modifier = Modifier.fillMaxWidth()) { Text("報酬を受け取る") }
-            else -> Text("LV${reward.level}で解放", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-        }
-    }
-}
-
-@Composable
-private fun AppIconSettingsCard(
+internal fun AppDesignSettingsCard(
     selected: AppIconOption,
     currentLevel: Int,
     onSelect: (AppIconOption) -> Unit,
 ) {
+    val context = LocalContext.current
+    val access = remember(context) { jp.essential.app.design.AppDesignAccessStore(context) }
+    var accessRevision by remember { mutableStateOf(0) }
+    DisposableEffect(access) {
+        val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, _ -> accessRevision++ }
+        access.preferences.registerOnSharedPreferenceChangeListener(listener)
+        onDispose { access.preferences.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+    // 有効期間を越えた際の再描画を、利用権の更新通知から受け取る。
+    val periods = remember(accessRevision) { AppIconManager.options.associate { it.id to access.activeUntil(it.id) } }
+    val upcoming = remember(accessRevision) { AppIconManager.options.associate { it.id to access.upcomingStart(it.id) } }
+    val periodFormatter = remember { java.time.format.DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm") }
+    fun periodText(time: Long) = periodFormatter.format(java.time.Instant.ofEpochSecond(time).atZone(java.time.ZoneId.systemDefault()))
     var expanded by rememberSaveable { mutableStateOf(false) }
     Column(
         modifier = Modifier
@@ -2098,7 +2226,7 @@ private fun AppIconSettingsCard(
             )
             Spacer(Modifier.width(13.dp))
             Column(Modifier.weight(1f)) {
-                Text("アプリアイコン", style = MaterialTheme.typography.titleLarge)
+                Text("アプリデザイン", style = MaterialTheme.typography.titleLarge)
                 Text("${selected.label}・設定からいつでも変更", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             }
             ChevronIndicator(expanded = expanded)
@@ -2116,15 +2244,17 @@ private fun AppIconSettingsCard(
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    "報酬で解放されたアイコンを選ぶと、アイコンの雰囲気に合わせて背景とテーマを調整します。DOSUKOIの画面色は変更しません。",
+                    "アイコンと背景のデザインを変更します。レベル報酬で解放するか、正規の期間限定QRを読み取ると利用できます。ライト・ダークは表示モードのスイッチで変更します。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 AppIconManager.options.forEach { option ->
-                    val available = option.unlockLevel == 0 || currentLevel >= option.unlockLevel
+                    val permanent = option.unlockLevel == 0 || currentLevel >= option.unlockLevel
+                    val available = permanent || periods[option.id] != null
                     val isSelected = option.id == selected.id
                     Row(
                         modifier = Modifier.fillMaxWidth()
+                            .testTag("app-icon-${option.id}")
                             .clip(RoundedCornerShape(18.dp))
                             .background(
                                 if (isSelected) MaterialTheme.colorScheme.primaryContainer
@@ -2145,7 +2275,12 @@ private fun AppIconSettingsCard(
                         Column(Modifier.weight(1f)) {
                             Text(option.label, fontWeight = FontWeight.Bold)
                             Text(
-                                if (available) option.description else "LV${option.unlockLevel}で解放",
+                                when {
+                                    permanent -> option.description
+                                    periods[option.id] != null -> "期間限定：${periodText(periods[option.id]!!)}まで"
+                                    upcoming[option.id] != null -> "${periodText(upcoming[option.id]!!)}から利用可能"
+                                    else -> "LV${option.unlockLevel}、または期間限定QRで解放"
+                                },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -2178,20 +2313,83 @@ private fun ThemeToggle(dark: Boolean, onToggle: () -> Unit) {
     )
 }
 
-/** 五つの分類を一つのガラストラックで切り替える。 */
+/** 指に追従する選択枠と押下位置の光で、四つの分類を切り替える。 */
 @Composable
 private fun SettingsSegmentedControl(selected: String, onSelected: (String) -> Unit) {
     val labels = listOf("すべて", "外観", "操作", "管理")
-    val position by animateFloatAsState(labels.indexOf(selected).coerceAtLeast(0).toFloat(),
-        spring(dampingRatio = 1f, stiffness = 520f), label = "設定カテゴリの選択位置")
-    BoxWithConstraints(Modifier.fillMaxWidth().glassSurface(24.dp).padding(4.dp).selectableGroup().testTag("settings-segments")) {
+    val currentSelected by rememberUpdatedState(selected)
+    val currentOnSelected by rememberUpdatedState(onSelected)
+    val position = remember { androidx.compose.animation.core.Animatable(labels.indexOf(selected).coerceAtLeast(0).toFloat()) }
+    var dragPosition by remember { mutableStateOf<Float?>(null) }
+    var releasedPosition by remember { mutableStateOf<Float?>(null) }
+    var releaseVelocity by remember { mutableStateOf(0f) }
+    val dragging = dragPosition != null
+    LaunchedEffect(selected, dragging) {
+        if (dragging) position.stop() else {
+            releasedPosition?.let { position.snapTo(it) }
+            releasedPosition = null
+            val velocity = releaseVelocity
+            releaseVelocity = 0f
+            position.animateTo(labels.indexOf(selected).coerceAtLeast(0).toFloat(),
+                spring(dampingRatio = .88f, stiffness = 520f), initialVelocity = velocity)
+        }
+    }
+    BoxWithConstraints(Modifier.fillMaxWidth().glassSurface(24.dp).padding(4.dp).selectableGroup().testTag("settings-segments")
+        .pointerInput(Unit) {
+            val tracker = androidx.compose.ui.input.pointer.util.VelocityTracker()
+            fun updatePosition(x: Float) {
+                dragPosition = (x / (size.width / labels.size.toFloat()) - .5f).coerceIn(0f, labels.lastIndex.toFloat())
+            }
+            detectHorizontalDragGestures(
+                onDragStart = { offset -> tracker.resetTracking(); updatePosition(offset.x) },
+                onHorizontalDrag = { change, _ ->
+                    change.consume()
+                    tracker.addPosition(change.uptimeMillis, change.position)
+                    updatePosition(change.position.x)
+                },
+                onDragEnd = {
+                    val value = dragPosition ?: position.value
+                    val velocity = (tracker.calculateVelocity().x / (size.width / labels.size.toFloat())).coerceIn(-8f, 8f)
+                    releasedPosition = value
+                    releaseVelocity = velocity
+                    // 速い操作は慣性を少し反映し、指を離した位置の近くへ収束する。
+                    currentOnSelected(labels[kotlin.math.round(value + velocity * .06f).toInt().coerceIn(0, labels.lastIndex)])
+                    dragPosition = null
+                },
+                onDragCancel = { releasedPosition = dragPosition; releaseVelocity = 0f; dragPosition = null },
+            )
+        }) {
         val segmentWidth = maxWidth / labels.size
-        Box(Modifier.offset(x = segmentWidth * position).width(segmentWidth).height(48.dp)
+        Box(Modifier.width(segmentWidth).height(48.dp).graphicsLayer {
+            translationX = segmentWidth.toPx() * (dragPosition ?: releasedPosition ?: position.value)
+        }
             .clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.9f)))
         Row(Modifier.fillMaxWidth()) {
             labels.forEach { label ->
-                Box(Modifier.weight(1f).height(48.dp).clip(RoundedCornerShape(20.dp))
-                    .selectable(selected == label, role = Role.Tab, onClick = { onSelected(label) }),
+                val interaction = remember { MutableInteractionSource() }
+                val pressed by interaction.collectIsPressedAsState()
+                var pressPosition by remember { mutableStateOf(Offset.Zero) }
+                LaunchedEffect(interaction) {
+                    interaction.interactions.collect { event ->
+                        if (event is androidx.compose.foundation.interaction.PressInteraction.Press) pressPosition = event.pressPosition
+                    }
+                }
+                val scale by animateFloatAsState(if (pressed) .98f else 1f,
+                    spring(dampingRatio = .85f, stiffness = 620f), label = "設定タブの押下")
+                val highlight by animateFloatAsState(if (pressed) .16f else 0f,
+                    spring(dampingRatio = 1f, stiffness = 620f), label = "設定タブの光")
+                val highlightColor = MaterialTheme.colorScheme.primary
+                Box(Modifier.weight(1f).height(48.dp)
+                    .graphicsLayer { scaleX = scale; scaleY = scale }
+                    .clip(RoundedCornerShape(20.dp))
+                    .drawWithContent {
+                        drawContent()
+                        drawRect(Brush.radialGradient(listOf(highlightColor.copy(alpha = highlight), Color.Transparent),
+                            center = pressPosition, radius = size.width.coerceAtLeast(1f)))
+                    }
+                    .testTag("settings-segment-$label")
+                    .selectable(selected == label, role = Role.Tab, interactionSource = interaction, indication = null,
+                        onClick = { currentOnSelected(label) }),
                     contentAlignment = Alignment.Center) {
                     Text(label, fontSize = 13.sp, maxLines = 1, fontWeight = if (selected == label) FontWeight.Bold else FontWeight.Medium,
                         color = if (selected == label) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant)
@@ -2238,7 +2436,10 @@ private fun EssentialNavigationBar(
     selected: Destination,
     profileIcon: String,
     profileImagePath: String?,
+    hasUnreadNotices: Boolean,
     onSelected: (Destination) -> Unit,
+    motionState: TabMotionState,
+    onDragCommitted: (Int, Boolean) -> Unit,
     backdrop: GraphicsLayer,
     backdropOrigin: Offset,
 ) {
@@ -2253,29 +2454,18 @@ private fun EssentialNavigationBar(
         } else null
     }
     val glassShape = CircleShape
-    var dragPosition by remember { mutableStateOf<Float?>(null) }
     var touchingNavigation by remember { mutableStateOf(false) }
-    val currentSelected by rememberUpdatedState(selected)
-    val currentOnSelected by rememberUpdatedState(onSelected)
+    val scope = rememberCoroutineScope()
+    val dragCommitted by rememberUpdatedState(onDragCommitted)
     val previewIndex by remember { androidx.compose.runtime.derivedStateOf {
-        dragPosition?.let { kotlin.math.round(it).toInt() } ?: currentSelected.ordinal
+        kotlin.math.round(motionState.position.coerceAtLeast(0f)).toInt()
     } }
-    val dragging by remember { androidx.compose.runtime.derivedStateOf { dragPosition != null } }
+    val dragging = motionState.dragging
     val expansionAnimation by animateFloatAsState(if (touchingNavigation || dragging) 1f else 0f,
         spring(dampingRatio = .76f, stiffness = 420f), label = "ガラスの膨らみ")
     val expansion = remember { { expansionAnimation.coerceIn(0f, 1f) } }
-    val selectionPosition = remember { androidx.compose.animation.core.Animatable(selected.ordinal.toFloat()) }
-    var releasedPosition by remember { mutableStateOf<Float?>(null) }
-    LaunchedEffect(selected, dragging) {
-        if (!dragging) {
-            // 指を離した地点からだけ整列を始め、ドラッグ中は同期コルーチンを起動しない。
-            releasedPosition?.let { selectionPosition.snapTo(it) }
-            releasedPosition = null
-            selectionPosition.animateTo(selected.ordinal.toFloat(), spring(dampingRatio = .76f, stiffness = 420f))
-        }
-    }
-    val displayedPosition = remember { { dragPosition ?: releasedPosition ?: selectionPosition.value } }
-    val waterMotion by animateFloatAsState(if (touchingNavigation || dragging || selectionPosition.isRunning) 1f else 0f,
+    val displayedPosition = remember(motionState) { { motionState.position.coerceAtLeast(0f) } }
+    val waterMotion by animateFloatAsState(if (touchingNavigation || dragging || motionState.animating) 1f else 0f,
         tween(180), label = "選択枠の水滴屈折")
 
     Box(
@@ -2286,6 +2476,7 @@ private fun EssentialNavigationBar(
             .height(74.dp)
             .onGloballyPositioned { barOrigin = it.positionInRoot() }
             .testTag("liquid-glass-navigation")
+            .semantics { this[TabMotionPosition] = motionState.position; this[TabMotionProgressive] = motionState.progressivePage != null }
             .pointerInput(Unit) {
                 // タップを奪わず、触れた瞬間から水滴を反応させる。
                 awaitEachGesture {
@@ -2302,31 +2493,35 @@ private fun EssentialNavigationBar(
                 }
             }
             .pointerInput(Unit) {
-                var lastIndex = currentSelected.ordinal
-                fun updatePosition(x: Float) {
-                    val position = (x / (size.width / Destination.entries.size.toFloat()) - .5f)
-                        .coerceIn(0f, Destination.entries.lastIndex.toFloat())
-                    dragPosition = position
-                    val index = kotlin.math.round(position).toInt()
+                val tracker = androidx.compose.ui.input.pointer.util.VelocityTracker()
+                var lastIndex = selected.ordinal
+                val cellWidth = size.width / Destination.entries.size.toFloat()
+                fun updatePosition(amount: Float) {
+                    motionState.dragBy(amount / cellWidth, allowPreview = false)
+                    val index = kotlin.math.round(motionState.position).toInt()
                     if (index != lastIndex) {
                         haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                         lastIndex = index
                     }
                 }
                 detectHorizontalDragGestures(
-                    onDragStart = { offset ->
-                        lastIndex = currentSelected.ordinal
+                    onDragStart = {
+                        motionState.beginDrag(multiplePages = true)
+                        tracker.resetTracking()
+                        lastIndex = kotlin.math.round(motionState.position).toInt()
                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                        updatePosition(offset.x)
                     },
-                    onHorizontalDrag = { change, _ -> change.consume(); updatePosition(change.position.x) },
+                    onHorizontalDrag = { change, amount ->
+                        change.consume()
+                        tracker.addPosition(change.uptimeMillis, change.position)
+                        updatePosition(amount)
+                    },
                     onDragEnd = {
-                        // 離した位置へ確定し、キャンセルされた操作では画面を移動しない。
-                        releasedPosition = dragPosition
-                        dragPosition?.let { currentOnSelected(Destination.entries[kotlin.math.round(it).toInt()]) }
-                        dragPosition = null
+                        val speed = tracker.calculateVelocity().x
+                        motionState.release(scope, speed / cellWidth,
+                            kotlin.math.abs(speed) > TabMotionParameters.fastSwipeDpPerSecond.dp.toPx(), false, dragCommitted)
                     },
-                    onDragCancel = { releasedPosition = dragPosition; dragPosition = null },
+                    onDragCancel = { motionState.cancelDrag(scope) },
                 )
             }
             .graphicsLayer {
@@ -2393,7 +2588,7 @@ private fun EssentialNavigationBar(
                     modifier = Modifier.weight(1f).fillMaxSize().clip(RoundedCornerShape(24.dp))
                         .semantics { contentDescription = destination.label }
                         .selectable(selected = destination == selected, role = Role.Tab, interactionSource = interaction, indication = null) {
-                        if (!isSelected || destination == Destination.Profile) {
+                        if (destination != selected || motionState.dragging || motionState.animating || destination == Destination.Profile) {
                             haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             onSelected(destination)
                         }
@@ -2404,8 +2599,8 @@ private fun EssentialNavigationBar(
                     Box(Modifier.size(38.dp), contentAlignment = Alignment.Center) {
                         BadgedBox(
                             badge = {
-                                if (destination == Destination.Features) {
-                                    Badge(containerColor = EssentialOrange)
+                                if (destination == Destination.Profile && hasUnreadNotices) {
+                                    UnreadNoticeDot("profile-tab-unread")
                                 }
                             },
                         ) {
@@ -2710,11 +2905,17 @@ private fun EssentialSymbol(
                 drawLine(tint, Offset(size.width * 0.14f, size.height * 0.52f), Offset(size.width * 0.40f, size.height * 0.76f), strokeWidth = stroke.width, cap = StrokeCap.Round)
                 drawLine(tint, Offset(size.width * 0.40f, size.height * 0.76f), Offset(size.width * 0.86f, size.height * 0.22f), strokeWidth = stroke.width, cap = StrokeCap.Round)
             }
+            EssentialSymbol.Bars -> {
+                val points = listOf(Offset(size.width * 0.14f, size.height * 0.74f), Offset(size.width * 0.38f, size.height * 0.46f),
+                    Offset(size.width * 0.58f, size.height * 0.60f), Offset(size.width * 0.86f, size.height * 0.22f))
+                points.zipWithNext().forEach { (start, end) -> drawLine(tint, start, end, stroke.width, StrokeCap.Round) }
+            }
         }
     }
 }
 
 private fun FeatureRoute.displayName(): String = when (this) {
+    FeatureRoute.QrCreate -> "QR Create"
     FeatureRoute.Subscriptions -> "サブスク管理"
     FeatureRoute.Tuning -> "チューニング"
     FeatureRoute.NotificationLog -> "通知ログ"
@@ -2728,6 +2929,7 @@ private fun FeatureRoute.displayName(): String = when (this) {
 }
 
 private fun FeatureRoute.symbol(): EssentialSymbol = when (this) {
+    FeatureRoute.QrCreate -> EssentialSymbol.Qr
     FeatureRoute.Subscriptions -> EssentialSymbol.Calendar
     FeatureRoute.Tuning -> EssentialSymbol.Media
     FeatureRoute.NotificationLog -> EssentialSymbol.Notification

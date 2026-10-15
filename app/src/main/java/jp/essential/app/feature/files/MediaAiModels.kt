@@ -5,6 +5,7 @@ import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
+import android.os.SystemClock
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -26,21 +27,27 @@ enum class UpscaleMode(val label: String, val scale: Int) {
 
 internal object MediaAiModels {
     private val mutex = Mutex()
+    private val verified = mutableMapOf<String, Pair<Long, Long>>()
     val stems = MediaAiModel("htdemucs-6s", "https://huggingface.co/StemSplitio/htdemucs-6s-onnx/resolve/49df9b6989cf2150840ea65b0bef77a2e471b678/htdemucs_6s_fp16weights.onnx", "7ce55792e2231c93fbf92de95f5fd5b3a5e6c89f7db690dfd693e8f1dce56869")
 
     suspend fun obtain(context: Context, model: MediaAiModel, progress: (Float?) -> Unit): File = mutex.withLock {
         withContext(Dispatchers.IO) {
             val target = File(context.noBackupFilesDir, "media-ai/${model.id}.onnx")
             target.parentFile?.mkdirs()
-            fun digest(file: File): String {
+            suspend fun digest(file: File): String {
                 val sha = MessageDigest.getInstance("SHA-256")
                 file.inputStream().use { input ->
                     val bytes = ByteArray(65536)
-                    while (true) { val count = input.read(bytes); if (count < 0) break; sha.update(bytes, 0, count) }
+                    while (true) { currentCoroutineContext().ensureActive(); val count = input.read(bytes); if (count < 0) break; sha.update(bytes, 0, count) }
                 }
                 return sha.digest().joinToString("") { "%02x".format(it) }
             }
-            if (target.exists() && digest(target) == model.sha256) return@withContext target
+            val key = target.absolutePath + model.sha256
+            val stamp = target.length() to target.lastModified()
+            if (target.exists() && (verified[key] == stamp || digest(target) == model.sha256)) {
+                verified[key] = stamp
+                return@withContext target
+            }
             val partial = File(target.parentFile, "${model.id}.part")
             val connection = URL(model.url).openConnection() as HttpURLConnection
             connection.connectTimeout = 30000
@@ -51,6 +58,8 @@ internal object MediaAiModels {
                 val total = connection.contentLengthLong
                 var received = 0L
                 var reported = -1
+                var lastReportedAt = 0L
+                val sha = MessageDigest.getInstance("SHA-256")
                 connection.inputStream.use { input -> partial.outputStream().use { output ->
                     val bytes = ByteArray(65536)
                     while (true) {
@@ -58,13 +67,20 @@ internal object MediaAiModels {
                         val count = input.read(bytes)
                         if (count < 0) break
                         output.write(bytes, 0, count)
+                        sha.update(bytes, 0, count)
                         received += count
                         val percent = if (total > 0) (received * 100 / total).toInt() else -1
-                        if (percent != reported) { reported = percent; progress(if (total > 0) received.toFloat() / total else null) }
+                        val now = SystemClock.elapsedRealtime()
+                        if (percent != reported && now - lastReportedAt >= 100) {
+                            reported = percent; lastReportedAt = now
+                            progress(if (total > 0) (received.toFloat() / total).coerceAtMost(.99f) else null)
+                        }
                     }
                 } }
-                check(digest(partial) == model.sha256) { "モデルの検証に失敗しました。再度取得してください" }
+                currentCoroutineContext().ensureActive()
+                check(sha.digest().joinToString("") { "%02x".format(it) } == model.sha256) { "モデルの検証に失敗しました。再度取得してください" }
                 check(partial.renameTo(target)) { "モデルを保存できませんでした" }
+                verified[key] = target.length() to target.lastModified()
                 progress(1f)
                 target
             } finally { partial.delete(); connection.disconnect() }

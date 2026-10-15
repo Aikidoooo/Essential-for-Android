@@ -1,8 +1,13 @@
 package jp.essential.app.feature.schedule
 
+import jp.essential.app.ui.elasticListEdges
+
 import jp.essential.app.ui.fixedHeader
 import jp.essential.app.ui.FeatureHeader
 import jp.essential.app.ui.GlassFeatureTitle
+import jp.essential.app.ui.liquidGlass
+import androidx.compose.ui.graphics.Color
+import androidx.compose.material3.ButtonDefaults
 
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -46,6 +51,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -114,7 +120,7 @@ fun ScheduleGeneratorScreen(onBack: () -> Unit) {
     }
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        overscrollEffect = null, modifier = Modifier.elasticListEdges().fillMaxSize(),
         contentPadding = PaddingValues(start = 20.dp, top = 18.dp, end = 20.dp, bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
@@ -123,13 +129,13 @@ fun ScheduleGeneratorScreen(onBack: () -> Unit) {
         progressiveItem(motionIndex++) {
             Box(
                 modifier = Modifier.fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f), RoundedCornerShape(22.dp))
+                    .liquidGlass(RoundedCornerShape(22.dp))
                     .padding(16.dp),
             ) {
                 Text(
                     "日付範囲、参加者、経由地を含む行程を入力すると、3形式へ自動整形します。",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    color = MaterialTheme.colorScheme.onSurface,
                 )
             }
         }
@@ -187,7 +193,7 @@ fun ScheduleGeneratorScreen(onBack: () -> Unit) {
             OutlinedButton(
                 onClick = { if (scheduleEntries.size < 20) scheduleEntries += ScheduleEntry() },
                 enabled = scheduleEntries.size < 20,
-                modifier = Modifier.fillMaxWidth().height(52.dp),
+                modifier = Modifier.fillMaxWidth().height(52.dp).liquidGlass(RoundedCornerShape(18.dp), drawBorder = false),
                 shape = RoundedCornerShape(18.dp),
             ) { Text(if (scheduleEntries.size < 20) "行程を追加" else "行程は20件まで") }
         }
@@ -206,7 +212,7 @@ fun ScheduleGeneratorScreen(onBack: () -> Unit) {
             AnimatedVisibility(isWriting || message != null) {
                 Row(
                     modifier = Modifier.fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.80f), RoundedCornerShape(18.dp))
+                        .liquidGlass(RoundedCornerShape(18.dp))
                         .padding(14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -235,7 +241,7 @@ private fun DateRangeField(startDate: String, endDate: String, onSelected: (Stri
     }
     OutlinedButton(
         onClick = { showPicker = true },
-        modifier = Modifier.fillMaxWidth().height(58.dp),
+        modifier = Modifier.fillMaxWidth().height(58.dp).liquidGlass(RoundedCornerShape(20.dp), drawBorder = false),
         shape = RoundedCornerShape(20.dp),
     ) {
         Text("日付範囲　$rangeText", modifier = Modifier.weight(1f))
@@ -267,13 +273,13 @@ private fun ScheduleEntryEditor(
 ) {
     Column(
         modifier = Modifier.fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.78f), RoundedCornerShape(24.dp))
+            .liquidGlass(RoundedCornerShape(24.dp))
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
-                modifier = Modifier.size(34.dp).background(MaterialTheme.colorScheme.secondaryContainer, CircleShape),
+                modifier = Modifier.size(34.dp).liquidGlass(CircleShape),
                 contentAlignment = Alignment.Center,
             ) { Text("${index + 1}", fontWeight = FontWeight.Bold) }
             Spacer(Modifier.width(10.dp))
@@ -308,7 +314,7 @@ private fun ScheduleEntryEditor(
         OutlinedButton(
             onClick = { if (entry.waypoints.size < 8) onChange(entry.copy(waypoints = entry.waypoints + "")) },
             enabled = entry.waypoints.size < 8,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().liquidGlass(RoundedCornerShape(16.dp), drawBorder = false),
             shape = RoundedCornerShape(16.dp),
         ) { Text("＋ 経由地を追加") }
         RoutePoint("到着", entry.destination, { onChange(entry.copy(destination = it)) }, isEndpoint = true)
@@ -353,16 +359,21 @@ private fun ScheduleField(
     keyboardType: KeyboardType = KeyboardType.Text,
     minLines: Int = 1,
 ) {
+    val labelInset = with(LocalDensity.current) { MaterialTheme.typography.bodySmall.lineHeight.toDp() / 2 }
+    Box(modifier) {
+        // 浮動ラベル用の上余白を除き、ガラスの形を入力欄の実際の枠へ揃える。
+        Box(Modifier.matchParentSize().padding(top = labelInset).liquidGlass(RoundedCornerShape(20.dp), drawBorder = false))
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
-        modifier = modifier,
+        modifier = Modifier.fillMaxWidth(),
         label = { Text(label) },
         placeholder = { Text(placeholder) },
         shape = RoundedCornerShape(20.dp),
         minLines = minLines,
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
     )
+    }
 }
 
 @Composable
@@ -370,9 +381,14 @@ private fun OutputButton(label: String, modifier: Modifier, isWriting: Boolean, 
     Button(
         onClick = onClick,
         enabled = !isWriting,
-        modifier = modifier.height(54.dp),
+        modifier = modifier.height(54.dp).liquidGlass(RoundedCornerShape(18.dp)),
         shape = RoundedCornerShape(18.dp),
         contentPadding = PaddingValues(horizontal = 8.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            disabledContainerColor = Color.Transparent,
+            disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)),
     ) { Text(label, maxLines = 1) }
 }
 

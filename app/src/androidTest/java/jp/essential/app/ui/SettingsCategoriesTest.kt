@@ -13,6 +13,59 @@ import org.junit.Test
 /** 設定値を変更せず、カテゴリー切替と一覧の展開・復帰を確認する。 */
 class SettingsCategoriesTest {
     @get:Rule val compose = createEmptyComposeRule()
+    @Test fun segmentDragReversalAndCancellationKeepSelectionUsable() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val scenario = ActivityScenario.launch<MainActivity>(Intent(context, MainActivity::class.java))
+        try {
+            compose.onNodeWithContentDescription("プロフィール").performClick()
+            compose.onNodeWithText("設定").performClick()
+            val segments = compose.onNodeWithTag("settings-segments")
+            segments.performTouchInput {
+                down(androidx.compose.ui.geometry.Offset(width * .125f, height * .5f))
+                moveTo(androidx.compose.ui.geometry.Offset(width * .875f, height * .5f), 250)
+                moveTo(androidx.compose.ui.geometry.Offset(width * .375f, height * .5f), 250)
+                advanceEventTime(150)
+                up()
+            }
+            compose.onNodeWithTag("settings-segment-外観").assertIsSelected()
+            compose.onNodeWithText("ダークテーマ").assertExists()
+            segments.performTouchInput {
+                down(androidx.compose.ui.geometry.Offset(width * .375f, height * .5f))
+                moveTo(androidx.compose.ui.geometry.Offset(width * .875f, height * .5f), 250)
+                cancel()
+            }
+            compose.onNodeWithTag("settings-segment-外観").assertIsSelected()
+            for (label in listOf("管理", "操作", "すべて", "外観", "管理", "すべて")) {
+                compose.onNodeWithTag("settings-segment-$label").performClick().assertIsSelected()
+            }
+            capture("settings-progressive-tabs.png")
+        } finally { scenario.close() }
+    }
+    @Test fun captureLightSettingsAndUpdatesBackgrounds() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val scenario = ActivityScenario.launch<MainActivity>(Intent(context, MainActivity::class.java))
+        var original: androidx.compose.ui.state.ToggleableState? = null
+        try {
+            compose.onNodeWithContentDescription("プロフィール").performClick()
+            compose.onNodeWithText("設定").performClick()
+            val toggle = compose.onNodeWithTag("settings-theme-toggle")
+            original = toggle.fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsProperties.ToggleableState]
+            if (original == androidx.compose.ui.state.ToggleableState.On) toggle.performClick()
+            capture("settings-light-reference.png")
+            compose.onNodeWithTag("settings-update-entry").performClick()
+            compose.onNodeWithTag("app-updates-screen").assertExists()
+            capture("updates-light-reference.png")
+            compose.onNodeWithTag("updates-back").performClick()
+            compose.waitUntil(5000) { compose.onAllNodesWithTag("app-updates-screen").fetchSemanticsNodes().isEmpty() }
+        } finally {
+            if (original != null) {
+                val toggle = compose.onNodeWithTag("settings-theme-toggle")
+                if (toggle.fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsProperties.ToggleableState] != original) toggle.performClick()
+            }
+            compose.waitForIdle()
+            scenario.close()
+        }
+    }
     @Test fun themeSwitchAndCollapsedIconsKeepTheirState() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val scenario = ActivityScenario.launch<MainActivity>(Intent(context, MainActivity::class.java))
@@ -27,16 +80,17 @@ class SettingsCategoriesTest {
             capture("settings-theme-alternate.png")
             toggle.performClick()
             org.junit.Assert.assertEquals(original, toggle.fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsProperties.ToggleableState])
-            compose.onNodeWithText("報酬で解放されたアイコン", substring = true).assertDoesNotExist()
-            compose.onNodeWithText("アプリアイコン").performClick()
-            compose.onNodeWithText("報酬で解放されたアイコン", substring = true).assertExists()
-            compose.onNodeWithText("アプリアイコン").performClick()
-            compose.onNodeWithText("報酬で解放されたアイコン", substring = true).assertDoesNotExist()
+            compose.onNodeWithText("アイコンと背景のデザインを変更", substring = true).assertDoesNotExist()
+            compose.onNodeWithText("アプリデザイン").performClick()
+            compose.onNodeWithText("アイコンと背景のデザインを変更", substring = true).assertExists()
+            compose.onNodeWithText("アプリデザイン").performClick()
+            compose.onNodeWithText("アイコンと背景のデザインを変更", substring = true).assertDoesNotExist()
         } finally {
             if (original != null) {
                 val toggle = compose.onNodeWithTag("settings-theme-toggle")
                 if (toggle.fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsProperties.ToggleableState] != original) toggle.performClick()
             }
+            compose.waitForIdle()
             scenario.close()
         }
     }
@@ -59,7 +113,7 @@ class SettingsCategoriesTest {
             compose.onNodeWithText("使い心地を整える").assertDoesNotExist()
             compose.onNodeWithTag("settings-segments").assertExists()
             compose.onNodeWithText("更新", substring = false).assertDoesNotExist()
-            compose.onNodeWithText("報酬で解放されたアイコン", substring = true).assertDoesNotExist()
+            compose.onNodeWithText("アイコンと背景のデザインを変更", substring = true).assertDoesNotExist()
             capture("settings-refined.png")
             compose.onNodeWithTag("settings-update-entry").performClick()
             compose.onNodeWithTag("app-updates-screen").assertExists()

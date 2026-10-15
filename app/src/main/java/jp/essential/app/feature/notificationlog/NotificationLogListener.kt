@@ -61,14 +61,19 @@ class NotificationLogListener : NotificationListenerService() {
         val packageName = notification.packageName
         val postedAt = notification.notification.`when`
         scope.launch {
-            val fingerprint = Triple(title, body, postedAt)
-            if (recent[sourceKey] == fingerprint) return@launch
             runCatching {
+                val store = NotificationLogStore.get(this@NotificationLogListener)
+                if (!store.isAppSelected(packageName)) {
+                    recent.remove(sourceKey)
+                    return@runCatching
+                }
+                val fingerprint = Triple(title, body, postedAt)
+                if (recent[sourceKey] == fingerprint) return@runCatching
                 val appName = appNames.get(packageName) ?: runCatching { packageManager.getApplicationLabel(
                     packageManager.getApplicationInfo(packageName, 0)).toString() }.getOrDefault(packageName)
                     .also { appNames.put(packageName, it) }
-                NotificationLogStore.get(this@NotificationLogListener).record(packageName, appName, title, body, receivedAt)
-                recent[sourceKey] = fingerprint
+                if (store.recordSelected(packageName, appName, title, body, receivedAt) >= 0)
+                    recent[sourceKey] = fingerprint
             }.onFailure { android.util.Log.e("NotificationLog", "通知ログの保存に失敗", it) }
         }
     }

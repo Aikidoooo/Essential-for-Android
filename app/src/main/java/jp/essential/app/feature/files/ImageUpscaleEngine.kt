@@ -24,7 +24,7 @@ internal class ImageUpscaleEngine(private val context: Context) {
             val source = loadMediaImage(context, file, 2048)
             val output = Bitmap.createBitmap(source.width * mode.scale, source.height * mode.scale, Bitmap.Config.ARGB_8888)
             val environment = OrtEnvironment.getEnvironment()
-            val options = OrtSession.SessionOptions().apply { setIntraOpNumThreads(2) }
+            val options = mediaInferenceOptions()
             try {
                 environment.createSession(model.absolutePath, options).use { session ->
                     val tile = 64

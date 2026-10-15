@@ -1,5 +1,7 @@
 package jp.essential.app.feature.subscriptions
 
+import jp.essential.app.ui.elasticListEdges
+
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -78,7 +80,7 @@ fun SubscriptionScreen(onBack: () -> Unit) {
             else error = "保存できませんでした。もう一度お試しください。"
         }
     }
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp, 12.dp, 20.dp, 36.dp),
+    LazyColumn(overscrollEffect = null, modifier = Modifier.elasticListEdges().fillMaxSize(), contentPadding = PaddingValues(20.dp, 12.dp, 20.dp, 36.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)) {
         fixedHeader { FeatureHeader("サブスク管理", onBack) }
         item { SubscriptionGlass {
@@ -184,7 +186,7 @@ internal fun SubscriptionDeleteDialog(entry: Subscription, saving: Boolean, erro
             .liquidGlass(shape), shape = shape,
             color = Color.Transparent, shadowElevation = 12.dp) {
             Column(Modifier
-                .verticalScroll(rememberScrollState()).padding(22.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                .elasticListEdges().verticalScroll(rememberScrollState(), overscrollEffect = null).padding(22.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
                 GlassFeatureTitle("サブスクを削除")
                 SubscriptionGlass {
                     Text(entry.name, style = MaterialTheme.typography.titleLarge)
@@ -231,7 +233,7 @@ private fun SubscriptionEditor(entry: Subscription?, saving: Boolean, error: Str
                 Column(Modifier
                     .padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     GlassFeatureTitle(if (entry == null) "サブスクを追加" else "サブスクを編集")
-                    Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
+                    Column(Modifier.weight(1f, fill = false).elasticListEdges().verticalScroll(rememberScrollState(), overscrollEffect = null),
                         verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         GlassSubscriptionField(name, { name = it.take(80) }, "サービス名", enabled = !saving)
                         GlassSubscriptionField(amount, { amount = it }, "月額（円）", KeyboardType.Number, !saving)

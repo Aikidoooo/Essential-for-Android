@@ -1,5 +1,7 @@
 package jp.essential.app.feature.minigame
 
+import jp.essential.app.ui.liquidGlass
+
 import jp.essential.app.ui.fixedHeader
 import jp.essential.app.ui.FeatureHeader
 import jp.essential.app.ui.GlassFeatureTitle
@@ -305,9 +307,7 @@ internal fun SnakeGameScreen(onBack: () -> Unit) {
 private fun SnakeStat(label: String, value: String, modifier: Modifier = Modifier) {
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(18.dp))
-            .background(Brush.linearGradient(listOf(Color.White.copy(alpha = 0.58f), Color.White.copy(alpha = 0.29f))))
-            .border(1.dp, Color.White.copy(alpha = 0.68f), RoundedCornerShape(18.dp))
+            .liquidGlass(18.dp)
             .padding(vertical = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -338,9 +338,7 @@ private fun SnakeMovementStick(
             modifier = Modifier
                 .size(138.dp)
                 .graphicsLayer { alpha = if (isEnabled) 1f else 0.52f }
-                .clip(CircleShape)
-                .background(Color(0xB32B5660))
-                .border(1.dp, Color.White.copy(alpha = 0.4f), CircleShape)
+                .liquidGlass(CircleShape)
                 .semantics { contentDescription = "移動スティック。現在の方向は${direction.label}です" }
                 .pointerInput(Unit) {
                     val stickDiameter = minOf(size.width, size.height).toFloat()
@@ -395,9 +393,7 @@ private fun SnakeMovementStick(
                     .offset { IntOffset(thumbOffset.x.roundToInt(), thumbOffset.y.roundToInt()) }
                     .size(54.dp)
                     .shadow(16.dp, CircleShape)
-                    .clip(CircleShape)
-                    .background(Color(0xC77FB3BA))
-                    .border(1.dp, Color.White.copy(alpha = 0.82f), CircleShape),
+                    .liquidGlass(CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
                 Box(

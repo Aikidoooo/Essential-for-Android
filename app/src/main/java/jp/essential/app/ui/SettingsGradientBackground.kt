@@ -34,15 +34,33 @@ internal fun SettingsGradientBackground() {
             infiniteRepeatable(tween(24_000, easing = LinearEasing), RepeatMode.Restart), label = "設定背景の周期")
     } else remember { mutableFloatStateOf(0f) }
     val dark = LocalEssentialDark.current
-    val base = MaterialTheme.colorScheme.background
+    val base = if (dark) MaterialTheme.colorScheme.background else Color(0xFFFBEFF8)
     Box(Modifier.fillMaxSize().drawWithCache {
         val radius = size.maxDimension * 0.85f
         val blue = Brush.radialGradient(listOf(Color(0xFF284BDB).copy(alpha = if (dark) 0.42f else 0.14f), Color.Transparent), Offset.Zero, radius)
         val purple = Brush.radialGradient(listOf(Color(0xFF9953D6).copy(alpha = if (dark) 0.34f else 0.12f), Color.Transparent), Offset.Zero, radius)
+        // 参照画像の淡いラベンダー、中央の桜色、右下の水色を広い範囲で重ねる。
+        val lightWash = Brush.verticalGradient(listOf(Color(0xFFE9E8FC), Color(0xFFFBEAF5), Color(0xFFF8F3FA)))
+        val pink = Brush.radialGradient(listOf(Color(0xFFF7CDDF).copy(alpha = .72f), Color.Transparent), Offset.Zero, size.maxDimension * .58f)
+        val lavender = Brush.radialGradient(listOf(Color(0xFFDAD7F5).copy(alpha = .65f), Color.Transparent), Offset.Zero, size.maxDimension * .52f)
+        val sky = Brush.radialGradient(listOf(Color(0xFFCADBFF).copy(alpha = .85f), Color.Transparent), Offset.Zero, size.maxDimension * .65f)
         onDrawBehind {
             // 進行度を描画時だけ読み、グラデーションやレイアウトをフレームごとに作り直さない。
             val value = phase.value
             drawRect(base)
+            if (!dark) {
+                drawRect(lightWash)
+                translate(size.width * (.55f + .035f * sin(value)), size.height * .15f) {
+                    drawCircle(lavender, size.maxDimension * .52f, Offset.Zero)
+                }
+                translate(size.width * (.42f + .035f * cos(value)), size.height * (.52f + .025f * sin(value))) {
+                    drawCircle(pink, size.maxDimension * .58f, Offset.Zero)
+                }
+                translate(size.width * 1.04f, size.height * (.82f + .025f * cos(value))) {
+                    drawCircle(sky, size.maxDimension * .65f, Offset.Zero)
+                }
+                return@onDrawBehind
+            }
             translate(size.width * (0.2f + 0.18f * sin(value)), size.height * (0.28f + 0.12f * cos(value))) {
                 drawCircle(blue, radius, Offset.Zero)
             }

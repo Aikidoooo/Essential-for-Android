@@ -1,5 +1,7 @@
 package jp.essential.app.feature.textscan
 
+import jp.essential.app.ui.elasticListEdges
+
 import androidx.compose.ui.platform.testTag
 import jp.essential.app.ui.fixedHeader
 import jp.essential.app.feature.scanner.scannerSafeArea
@@ -104,7 +106,7 @@ private suspend fun <T> Task<T>.awaitScan(): T = suspendCancellableCoroutine { c
 @Composable
 fun TextScanScreen(modePosition: Float = 1f, transitionFrame: android.graphics.Bitmap? = null,
     onTransitionFrame: (android.graphics.Bitmap?) -> Unit = {},
-    onTransitionFinished: () -> Unit = {}, onModeChange: () -> Unit = {}, onBack: () -> Unit) {
+    onTransitionFinished: () -> Unit = {}, onModeChange: () -> Unit = {}, initialPhotoUri: Uri? = null, onBack: () -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val haptics = LocalHapticFeedback.current
@@ -127,25 +129,50 @@ fun TextScanScreen(modePosition: Float = 1f, transitionFrame: android.graphics.B
     var error by remember { mutableStateOf<String?>(null) }
     var result by rememberSaveable { mutableStateOf<String?>(null) }
     var copied by remember { mutableStateOf(false) }
+    var photoUri by rememberSaveable { mutableStateOf(initialPhotoUri?.toString()) }
+    var photoFilePath by rememberSaveable { mutableStateOf<String?>(null) }
+    var translating by rememberSaveable { mutableStateOf(false) }
+    val cameraActive = permissionGranted && photoUri == null && result == null
+    fun releasePhoto() {
+        val temporary = photoFilePath
+        photoUri = null
+        photoFilePath = null
+        error = null
+        temporary?.let { scope.launch(Dispatchers.IO) { File(it).delete() } }
+    }
+    fun selectPhoto(uri: Uri, temporaryFile: File? = null) {
+        releasePhoto()
+        photoUri = uri.toString()
+        photoFilePath = temporaryFile?.absolutePath
+        busy = false
+    }
     val alive = remember { AtomicBoolean(true) }
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
         permissionGranted = it
     }
-    LaunchedEffect(Unit) { if (!permissionGranted) permissionLauncher.launch(Manifest.permission.CAMERA) }
+    LaunchedEffect(Unit) {
+        if (!permissionGranted && photoUri == null) permissionLauncher.launch(Manifest.permission.CAMERA)
+        // 強制終了で残った撮影用キャッシュだけを、次回起動時に回収する。
+        withContext(Dispatchers.IO) {
+            context.cacheDir.listFiles()?.filter { it.name.startsWith("text-scan-") &&
+                it.lastModified() < System.currentTimeMillis() - 24 * 60 * 60 * 1000L }?.forEach { it.delete() }
+        }
+    }
     DisposableEffect(Unit) {
         onDispose { alive.set(false); recognizer.close(); qrScanner.close() }
     }
 
-    fun recognize(uri: Uri, temporaryFile: File? = null) {
+    fun recognize(photo: android.graphics.Bitmap, regions: List<ScanRegion>) {
         busy = true
         error = null
         scope.launch {
+            var masked: android.graphics.Bitmap? = null
+            val pending = mutableListOf<Task<*>>()
             try {
-                val input = withContext(Dispatchers.IO) { InputImage.fromFilePath(context, uri) }
-                val textTask = recognizer.process(input)
-                val qrTask = qrScanner.process(input)
-                // 両方の認識が画像を読み終えた後に、一時撮影ファイルを回収する。
-                Tasks.whenAllComplete(textTask, qrTask).addOnCompleteListener { temporaryFile?.delete() }
+                masked = withContext(Dispatchers.Default) { maskScanRegions(photo, regions) }
+                val input = InputImage.fromBitmap(masked, 0)
+                val textTask = recognizer.process(input).also { pending.add(it) }
+                val qrTask = qrScanner.process(input).also { pending.add(it) }
                 val recognized = runCatching { textTask.awaitScan() }.getOrElse {
                     if (it is kotlinx.coroutines.CancellationException) throw it
                     null
@@ -184,13 +211,20 @@ fun TextScanScreen(modePosition: Float = 1f, transitionFrame: android.graphics.B
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
-                temporaryFile?.delete()
-                error = "画像の文字を読み取れませんでした。別の写真でお試しください。"
-            } finally { busy = false }
+                error = "囲んだ部分の文字を読み取れませんでした。範囲を選び直してお試しください。"
+            } finally {
+                // キャンセル時もML Kitが画像を使い終えるまで解放しない。
+                val owned = masked
+                if (owned != null) {
+                    if (pending.isEmpty()) owned.recycle()
+                    else Tasks.whenAllComplete(pending).addOnCompleteListener { owned.recycle() }
+                }
+                busy = false
+            }
         }
     }
     val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        if (uri != null && !busy) recognize(uri)
+        if (uri != null && !busy) selectPhoto(uri)
     }
     val applyZoom: (Float) -> Unit = {
         zoom = it.coerceIn(minZoom, maxZoom)
@@ -198,7 +232,7 @@ fun TextScanScreen(modePosition: Float = 1f, transitionFrame: android.graphics.B
     }
 
     Box(Modifier.fillMaxSize().background(Color(0xFF101623))) {
-        if (permissionGranted) {
+        if (cameraActive) {
             AndroidView(factory = { viewContext ->
                 PreviewView(viewContext).apply {
                     layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
@@ -211,10 +245,10 @@ fun TextScanScreen(modePosition: Float = 1f, transitionFrame: android.graphics.B
         ScannerPreviewTransition(transitionFrame, previewView, onTransitionFinished)
         ScannerOverlay(1f - modePosition)
 
-        DisposableEffect(previewView, permissionGranted, lifecycleOwner) {
+        DisposableEffect(previewView, cameraActive, lifecycleOwner) {
             val view = previewView
             val active = AtomicBoolean(true)
-            val future = if (view != null && permissionGranted) ProcessCameraProvider.getInstance(context) else null
+            val future = if (view != null && cameraActive) ProcessCameraProvider.getInstance(context) else null
             var provider: ProcessCameraProvider? = null
             var boundPreview: Preview? = null
             var boundCapture: ImageCapture? = null
@@ -322,7 +356,7 @@ fun TextScanScreen(modePosition: Float = 1f, transitionFrame: android.graphics.B
                             photoCapture.takePicture(ImageCapture.OutputFileOptions.Builder(file).build(), ContextCompat.getMainExecutor(context),
                                 object : ImageCapture.OnImageSavedCallback {
                                     override fun onImageSaved(output: ImageCapture.OutputFileResults) {
-                                        if (alive.get()) recognize(Uri.fromFile(file), file) else file.delete()
+                                        if (alive.get()) selectPhoto(Uri.fromFile(file), file) else file.delete()
                                     }
                                     override fun onError(exception: ImageCaptureException) {
                                         file.delete()
@@ -335,9 +369,15 @@ fun TextScanScreen(modePosition: Float = 1f, transitionFrame: android.graphics.B
                 }
             }
         }
-        AnimatedVisibility(visible = result != null, enter = fadeIn() + slideInVertically { it / 3 }) {
+        photoUri?.let { source ->
+            TextScanSelectionScreen(Uri.parse(source), busy, error,
+                onBack = { if (!busy) releasePhoto() }, onRead = ::recognize)
+        }
+        AnimatedVisibility(visible = result != null,
+            enter = fadeIn(androidx.compose.animation.core.spring(stiffness = 420f)) +
+                slideInVertically(androidx.compose.animation.core.spring(dampingRatio = .92f, stiffness = 420f)) { it / 5 }) {
             BackHandler { result = null }
-            Surface(Modifier.fillMaxSize(), color = Color(0xFF131D30), contentColor = Color.White) {
+            Surface(Modifier.fillMaxSize().testTag("text-scan-result"), color = Color(0xFF131D30), contentColor = Color.White) {
                 Column(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF20394B), Color(0xFF221D36)))).scannerSafeArea().padding(18.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -346,7 +386,7 @@ fun TextScanScreen(modePosition: Float = 1f, transitionFrame: android.graphics.B
                     }
                     if (qrUrls.isNotEmpty()) {
                         Surface(shape = RoundedCornerShape(20.dp), color = Color.White.copy(alpha = 0.1f)) {
-                            Column(Modifier.fillMaxWidth().heightIn(max = 180.dp).verticalScroll(rememberScrollState()).padding(16.dp),
+                            Column(Modifier.fillMaxWidth().heightIn(max = 180.dp).elasticListEdges().verticalScroll(rememberScrollState(), overscrollEffect = null).padding(16.dp),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text("QRコードのURL", color = Color(0xFFAAE6F3), style = MaterialTheme.typography.titleSmall)
                                 SelectionContainer { Text(qrUrls.joinToString("\n"), color = Color.White) }
@@ -359,7 +399,7 @@ fun TextScanScreen(modePosition: Float = 1f, transitionFrame: android.graphics.B
                         Box(Modifier.fillMaxSize()) {
                             var selectableText by remember(result) { mutableStateOf(TextFieldValue(result.orEmpty())) }
                             Box(Modifier.fillMaxSize().padding(start = 18.dp, top = 56.dp, end = 18.dp, bottom = 18.dp)
-                                .verticalScroll(rememberScrollState()).horizontalScroll(rememberScrollState())) {
+                                .elasticListEdges().verticalScroll(rememberScrollState(), overscrollEffect = null).horizontalScroll(rememberScrollState())) {
                             BasicTextField(
                                 value = selectableText,
                                 onValueChange = { selectableText = it },
@@ -391,11 +431,18 @@ fun TextScanScreen(modePosition: Float = 1f, transitionFrame: android.graphics.B
                             }
                         }
                     }
-                    TextButton(onClick = { result = null }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        ScanGlassButton("範囲を選び直す", modifier = Modifier.weight(1f)) { result = null }
+                        ScanGlassButton("Google翻訳", result.orEmpty().isNotBlank(),
+                            Modifier.weight(1f).testTag("text-scan-translate")) { translating = true }
+                    }
+                    Text("翻訳すると、読み取った文字をGoogleへ送信します。", style = MaterialTheme.typography.bodySmall, color = Color(0xFFBACDD8))
+                    TextButton(onClick = { result = null; releasePhoto() }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
                         Text("もう一度スキャン", color = Color.White)
                     }
                 }
             }
         }
+        if (translating && result != null) ScanTranslationScreen(result.orEmpty()) { translating = false }
     }
 }

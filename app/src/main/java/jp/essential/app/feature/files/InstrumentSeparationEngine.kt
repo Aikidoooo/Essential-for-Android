@@ -22,17 +22,23 @@ internal data class InstrumentStems(val files: Map<InstrumentStem, File>) {
 /** 6ステムを重なり付きチャンクで処理し、長い音声も一括で保持しない。 */
 internal class InstrumentSeparationEngine(private val context: Context) {
     suspend fun separate(file: ReferencedFile, progress: (String, Float?) -> Unit): InstrumentStems {
+        return InstrumentSeparationClient.separate(context, file, progress)
+    }
+
+    internal suspend fun separateLocally(file: ReferencedFile, progress: (String, Float?) -> Unit): InstrumentStems {
         require(file.type != ReferencedMediaType.Image)
         val model = MediaAiModels.obtain(context, MediaAiModels.stems) { progress("分離モデルをダウンロード", it) }
         return withContext(Dispatchers.Default) {
             val source = File.createTempFile("stems-source", ".bin", context.cacheDir)
             val normalized = File.createTempFile("stems-normalized", ".wav", context.cacheDir)
             val files = InstrumentStem.entries.associateWith { File.createTempFile("stem-${it.name}", ".wav", context.cacheDir) }
-            val options = OrtSession.SessionOptions().apply { setIntraOpNumThreads(2) }
+            val options = mediaInferenceOptions(lowMemory = true)
             try {
                 progress("音声を準備", null)
                 context.contentResolver.openInputStream(file.uri)?.use { input -> source.outputStream().use(input::copyTo) } ?: error("音声を読み込めませんでした")
                 FfmpegRunner.execute(context, listOf("-i", source.absolutePath, "-vn", "-ac", "2", "-ar", "44100", "-c:a", "pcm_s16le", "-y", normalized.absolutePath))
+                progress("分離モデルを読み込み", null)
+                currentCoroutineContext().ensureActive()
                 OrtEnvironment.getEnvironment().createSession(model.absolutePath, options).use { session ->
                     AudioStemSeparationEngine.PcmWavReader(normalized).use { reader ->
                         val writers = files.mapValues { AudioStemSeparationEngine.PcmWavWriter(it.value, 2, 44100) }

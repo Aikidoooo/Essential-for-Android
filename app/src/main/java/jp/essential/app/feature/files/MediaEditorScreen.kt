@@ -1,5 +1,7 @@
 package jp.essential.app.feature.files
 
+import jp.essential.app.ui.elasticListEdges
+
 import android.graphics.Bitmap
 import android.media.MediaPlayer
 import androidx.activity.compose.BackHandler
@@ -77,13 +79,15 @@ private fun MediaEditorContent(file: ReferencedFile, mode: MediaEditorMode, onBa
     })
     BackHandler(onBack = onBack)
 
-    fun report(label: String, value: Float?) { stage = label; progress = value }
+    fun report(label: String, value: Float?) {
+        scope.launch(Dispatchers.Main.immediate) { stage = label; progress = value }
+    }
     fun process(action: suspend () -> String) {
         if (busy) return
         scope.launch {
             busy = true; message = null; progress = null
             try { message = action() } catch (error: kotlinx.coroutines.CancellationException) { throw error }
-            catch (error: OutOfMemoryError) { message = "端末のメモリが不足しました。高画質化（2倍）で再実行してください" }
+            catch (error: OutOfMemoryError) { message = "端末のメモリが不足しました。他のアプリを閉じて再実行してください" }
             catch (error: Exception) { message = error.message ?: "処理に失敗しました" }
             finally { busy = false }
         }
@@ -134,15 +138,13 @@ private fun MediaEditorContent(file: ReferencedFile, mode: MediaEditorMode, onBa
         if (mode == MediaEditorMode.Trim && prepared) player?.seekTo(position.toInt()) else preview?.seekTo(position)
     }
 
-    LazyColumn(Modifier.fillMaxSize().padding(top = topSafePadding)
+    LazyColumn(overscrollEffect = null, modifier = Modifier.elasticListEdges().fillMaxSize().padding(top = topSafePadding)
         .consumeWindowInsets(PaddingValues(top = topSafePadding)).testTag("media-editor"),
         contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         fixedHeader { FeatureHeader(when (mode) { MediaEditorMode.Image -> "AI画像編集"; MediaEditorMode.Trim -> "音声切り取り"; MediaEditorMode.Mixer -> "ボーカル・楽器ミキサー" }, onBack) }
         item { MediaFilePreview(file, allowPlayback = false) }
         if (busy) item { MediaGlassCard {
-            Text(stage + (progress?.let { " ${(it * 100).roundToInt()}%" } ?: ""))
-            if (progress == null) LinearProgressIndicator(Modifier.fillMaxWidth())
-            else LinearProgressIndicator(progress = { progress!!.coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
+            MediaProcessingProgress(stage, progress)
         } }
         if (mode == MediaEditorMode.Image) {
             item { MediaGlassCard {
@@ -219,6 +221,14 @@ private fun MediaEditorContent(file: ReferencedFile, mode: MediaEditorMode, onBa
             message?.let { Text(it) }
         } }
     }
+}
+
+/** ダウンロード完了でnullへ切り替わっても、描画中の値を変えない。 */
+@Composable
+internal fun MediaProcessingProgress(stage: String, progress: Float?) {
+    Text(stage + (progress?.let { " ${(it * 100).roundToInt()}%" } ?: ""))
+    if (progress == null) LinearProgressIndicator(Modifier.fillMaxWidth())
+    else LinearProgressIndicator(progress = { progress.coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
 }
 
 @Composable

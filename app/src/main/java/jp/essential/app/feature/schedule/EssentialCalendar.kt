@@ -1,6 +1,7 @@
 package jp.essential.app.feature.schedule
 
-import jp.essential.app.ui.liquidGlass
+import jp.essential.app.ui.elasticListEdges
+
 import jp.essential.app.ui.LiquidGlassStyle
 
 import androidx.compose.foundation.background
@@ -11,12 +12,13 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.spring
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.window.DialogWindowProvider
@@ -34,6 +36,7 @@ internal fun EssentialCalendar(startDate: String, endDate: String, onDismiss: ()
     var start by remember { mutableStateOf(runCatching { LocalDate.parse(startDate, formatter) }.getOrNull()) }
     var end by remember { mutableStateOf(runCatching { LocalDate.parse(endDate, formatter) }.getOrNull()) }
     var month by remember { mutableStateOf(YearMonth.from(start ?: LocalDate.now())) }
+    // 別ウィンドウで背面の共有レイヤーを再描画せず、透明な面越しに実際の背面を見せる。
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         val view = LocalView.current
         DisposableEffect(view) {
@@ -54,11 +57,11 @@ internal fun EssentialCalendar(startDate: String, endDate: String, onDismiss: ()
         }
         val glassShape = RoundedCornerShape(32.dp)
         Surface(modifier = Modifier.widthIn(max = 420.dp).fillMaxWidth().padding(18.dp)
-            .liquidGlass(glassShape),
+            .border(1.dp, Brush.linearGradient(LiquidGlassStyle.edge), glassShape),
             shape = glassShape, color = Color.Transparent,
             contentColor = MaterialTheme.colorScheme.onSurface,
             tonalElevation = 0.dp, shadowElevation = 12.dp) {
-            Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(Modifier.elasticListEdges().verticalScroll(rememberScrollState(), overscrollEffect = null).padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("カレンダー", style = MaterialTheme.typography.titleMedium)
                 Text("開始日、終了日の順に選択", style = MaterialTheme.typography.bodySmall)
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -81,7 +84,7 @@ internal fun EssentialCalendar(startDate: String, endDate: String, onDismiss: ()
                                 val inRange = start != null && end != null && date >= start && date <= end
                                 val dayColor by animateColorAsState(
                                     if (selected) Color(0xFF008CFF) else if (inRange) Color(0xFF008CFF).copy(alpha = 0.18f) else Color.Transparent,
-                                    animationSpec = tween(160), label = "カレンダーの日付選択")
+                                    animationSpec = spring(dampingRatio = .92f, stiffness = 520f), label = "カレンダーの日付選択")
                                 TextButton(onClick = {
                                     if (start == null || end != null || date < start) { start = date; end = null }
                                     else end = date
@@ -105,4 +108,5 @@ internal fun EssentialCalendar(startDate: String, endDate: String, onDismiss: ()
             }
         }
     }
+
 }

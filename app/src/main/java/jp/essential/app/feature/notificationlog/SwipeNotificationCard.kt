@@ -81,17 +81,17 @@ internal fun SwipeNotificationCard(
                 val distanceReached = abs(offset) >= size.width * 0.30f
                 val flingReached = abs(offset) >= size.width * 0.12f && abs(velocity) >= 1000f && offset * velocity > 0f
                 if ((distanceReached || flingReached) && offset * velocity >= 0f) {
-                    if (offset > 0f) delete() else save()
+                    if (offset > 0f) save() else delete()
                 }
                 restore(velocity)
             },
         )
     }) {
         if (abs(offset) > 1f) {
-            val color = if (offset > 0f) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+            val color = if (offset < 0f) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
             Canvas(Modifier.align(if (offset > 0f) Alignment.CenterStart else Alignment.CenterEnd).padding(20.dp).size(24.dp)) {
                 val stroke = 2.dp.toPx()
-                if (offset > 0f) {
+                if (offset < 0f) {
                     drawLine(color, Offset(size.width * .15f, size.height * .25f), Offset(size.width * .85f, size.height * .25f), stroke)
                     drawLine(color, Offset(size.width * .35f, size.height * .1f), Offset(size.width * .65f, size.height * .1f), stroke)
                     val bin = Path().apply {
